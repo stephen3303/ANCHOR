@@ -92,14 +92,14 @@ export function AckPanel({ m, compact }: { m: Message; compact?: boolean }) {
 }
 
 /** AI summaries are kept visually and semantically apart from the official text. */
-export function AiSummary({ text }: { text: string }) {
+export function AiSummary({ text, from = "the official message below" }: { text: string; from?: string }) {
   return (
     <aside aria-label="AI-generated summary" className="mb-4 rounded-md border-2 border-dashed border-violet-300 bg-violet-50 p-3 text-sm">
       <div className="mb-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-violet-800">
         <Sparkles className="size-4" aria-hidden /> AI-assisted summary · Not authoritative
       </div>
       <p className="text-violet-950">{text}</p>
-      <p className="mt-1 text-xs text-violet-700">Generated from the official message below. Always act on the official text.</p>
+      <p className="mt-1 text-xs text-violet-700">Generated from {from}. Always act on the official text.</p>
     </aside>
   );
 }

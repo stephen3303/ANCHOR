@@ -1,0 +1,8 @@
+services:
+  anchor:
+    build: .
+    image: anchor-prototype
+    container_name: anchor-prototype
+    ports:
+      - "3000:3000"
+    restart: unless-stopped

@@ -86,10 +86,13 @@ export default function HomePage() {
             <p className="mb-2 text-sm text-muted">Messages amended, corrected, superseded, cancelled or expired.</p>
             <ul className="space-y-2">
               {changed.map((m) => (
-                <li key={m.id} className="flex items-center gap-2 text-sm">
-                  <LifecycleBadge l={m.lifecycle} />
-                  <Link href={`/messages/${m.id}`} className="truncate text-link hover:underline">{m.reference}</Link>
-                  {m.replacedBy && <span className="text-muted">→ {m.replacedBy}</span>}
+                <li key={m.id} className="flex items-start gap-2 text-sm">
+                  <span className="w-24 shrink-0"><LifecycleBadge l={m.lifecycle} /></span>
+                  <span>
+                    <Link href={`/messages/${m.id}`} className="text-link hover:underline">{m.reference}</Link>
+                    {m.replacedBy && <span className="block text-xs text-muted">Replaced by {m.replacedBy}</span>}
+                    {m.relatesTo && <span className="block text-xs text-muted">Updates {m.relatesTo}</span>}
+                  </span>
                 </li>
               ))}
             </ul>

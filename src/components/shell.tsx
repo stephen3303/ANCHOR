@@ -57,7 +57,7 @@ function Header({ onMenu }: { onMenu: () => void }) {
   const { offline } = useStore();
   const [open, setOpen] = useState(false);
   return (
-    <header className="no-print sticky top-0 z-40 flex h-16 items-center gap-3 bg-gradient-to-r from-navy-950 via-navy-900 to-navy-800 px-3 text-white shadow-md sm:h-[72px] sm:px-4">
+    <header className="no-print relative z-40 flex h-16 shrink-0 items-center gap-3 bg-gradient-to-r from-navy-950 via-navy-900 to-navy-800 px-3 text-white shadow-md sm:h-[72px] sm:px-4">
       <button type="button" onClick={onMenu} aria-label="Toggle navigation" className="rounded-md border border-white/30 p-1.5 hover:bg-white/10">
         <Menu className="size-6" />
       </button>
@@ -133,7 +133,7 @@ function Sidebar({ open, onClose }: { open: boolean | null; onClose: () => void 
       <nav
         aria-label="Main"
         className={cx(
-          "no-print fixed inset-y-0 left-0 z-30 flex w-60 flex-col bg-gradient-to-b from-navy-900 via-navy-950 to-[#04101f] pt-16 text-white transition-transform sm:pt-[72px] lg:sticky lg:top-[72px] lg:h-[calc(100vh-72px-40px)] lg:pt-0",
+          "no-print fixed inset-y-0 left-0 z-30 flex w-60 flex-col bg-gradient-to-b from-navy-900 via-navy-950 to-[#04101f] pt-16 text-white transition-transform sm:pt-[72px] lg:static lg:z-auto lg:pt-0",
           open === null ? "-translate-x-full lg:translate-x-0" : open ? "translate-x-0" : "-translate-x-full lg:hidden",
         )}
       >
@@ -204,7 +204,7 @@ function AlertStrip() {
 
 function Footer() {
   return (
-    <footer className="no-print sticky bottom-0 z-40 flex h-10 items-center gap-3 overflow-hidden bg-navy-950 px-4 text-[13px] tracking-wide text-white">
+    <footer className="no-print relative z-40 flex h-10 shrink-0 items-center gap-3 overflow-hidden bg-navy-950 px-4 text-[13px] tracking-wide text-white">
       <span className="hidden sm:inline">UNITED STATES NAVY</span>
       <span className="hidden text-white/40 sm:inline">|</span>
       <span>ANCHOR</span>
@@ -232,12 +232,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState<boolean | null>(null);
   const toggle = () => setOpen((o) => (o === null ? window.innerWidth < 1024 : !o));
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="print-full flex h-screen flex-col overflow-hidden">
       <Header onMenu={toggle} />
       <AlertStrip />
-      <div className="flex flex-1">
+      <div className="print-full flex min-h-0 flex-1">
         <Sidebar open={open} onClose={() => setOpen(false)} />
-        <main className="print-full min-w-0 flex-1 px-4 py-5 sm:px-6">{children}</main>
+        <main className="print-full min-w-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">{children}</main>
       </div>
       <Footer />
       <Toast />

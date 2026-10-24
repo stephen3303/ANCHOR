@@ -1,69 +1,114 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import Link from "next/link";
+import { AlertTriangle, BellRing, CheckCircle2, ClipboardList, FileText, Home, Mail, ShieldCheck, WifiOff } from "lucide-react";
+import { CURRENT_USER, MESSAGES } from "@/lib/data";
+import { fmtDateTime, hoursUntil } from "@/lib/format";
+import { useStore } from "@/lib/store";
+import { MiniMessageTable } from "@/components/message";
+import { Button, LifecycleBadge, PageHeader, Panel, PrecedenceBadge, StatCard, tableWrap, td, th, theadRow, tbodyRow } from "@/components/ui";
+
+export default function HomePage() {
+  const { userState, acknowledge, subscriptions, syncQueue, offline, approvals } = useStore();
+  const needAck = MESSAGES.filter((m) => m.ackRequired && m.lifecycle !== "SUPERSEDED" && m.lifecycle !== "CANCELLED");
+  const pending = needAck.filter((m) => !userState[m.id].acknowledgedAt);
+  const unread = MESSAGES.filter((m) => userState[m.id].read !== "read").length;
+  const changed = MESSAGES.filter((m) => m.lifecycle !== "ACTIVE").slice(0, 5);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <>
+      <PageHeader icon={Home} title={`Welcome back, ${CURRENT_USER.name}`} subtitle={`${CURRENT_USER.billet} · ${CURRENT_USER.unit}`} />
+
+      <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={Mail} value={unread} label="Unread Messages" note="From your approved subscriptions" />
+        <StatCard icon={BellRing} value={pending.length} label="Awaiting Your Acknowledgement" tone="red" note="Mandatory by precedence or command rule" />
+        <StatCard icon={ClipboardList} value={subscriptions.filter((s) => s.status === "Active").length} label="Active Subscriptions" tone="green" note={`${subscriptions.filter((s) => s.status === "Pending Approval").length} pending approval`} />
+        <StatCard icon={offline ? WifiOff : ShieldCheck} value={offline ? syncQueue.length : "100%"} label={offline ? "Items Queued for Sync" : "Records Validated"} tone={offline ? "amber" : "green"} note={offline ? "EMCON: local store active" : "No tampering detected"} />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1fr_380px]">
+        <div className="space-y-4">
+          <div id="acknowledge" className="scroll-mt-24">
+            <Panel title="Acknowledgements" icon={BellRing} action={<span className="text-sm text-muted">{needAck.length - pending.length} of {needAck.length} complete</span>}>
+              <div className={tableWrap}>
+                <table className="w-full min-w-[640px]">
+                  <thead>
+                    <tr className={theadRow}>
+                      <th className={th}>Precedence</th>
+                      <th className={th}>Subject</th>
+                      <th className={th}>Reference</th>
+                      <th className={th}>Due</th>
+                      <th className={th}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {needAck.map((m) => {
+                      const at = userState[m.id].acknowledgedAt;
+                      const h = m.ackDue ? hoursUntil(m.ackDue) : 99;
+                      return (
+                        <tr key={m.id} className={tbodyRow}>
+                          <td className={td}><PrecedenceBadge p={m.precedence} /></td>
+                          <td className={td}>
+                            <Link href={`/messages/${m.id}`} className="text-link hover:underline">{m.subject}</Link> <LifecycleBadge l={m.lifecycle} />
+                          </td>
+                          <td className={td}>{m.reference}</td>
+                          <td className={td}>
+                            {m.ackDue ? fmtDateTime(m.ackDue) : "—"}
+                            {!at && h <= 24 && (
+                              <span className="ml-2 inline-flex items-center gap-1 text-xs font-semibold text-red-700">
+                                <AlertTriangle className="size-3" /> escalates in {Math.max(h, 0)}h
+                              </span>
+                            )}
+                          </td>
+                          <td className={td}>
+                            {at ? (
+                              <span className="inline-flex items-center gap-1 text-green-700"><CheckCircle2 className="size-4" /> Acknowledged</span>
+                            ) : (
+                              <Button size="sm" variant="danger" onClick={() => acknowledge(m.id)}>Acknowledge</Button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Panel>
+          </div>
+
+          <Panel title="Latest Traffic" icon={Mail} action={<Link href="/messages" className="text-sm text-link">View All</Link>}>
+            <MiniMessageTable items={MESSAGES.slice(0, 6)} cols={["subject", "reference", "prec", "date"]} />
+          </Panel>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        <div className="space-y-4">
+          <Panel title="Status Changes" icon={AlertTriangle}>
+            <p className="mb-2 text-sm text-muted">Messages amended, corrected, superseded, cancelled or expired.</p>
+            <ul className="space-y-2">
+              {changed.map((m) => (
+                <li key={m.id} className="flex items-center gap-2 text-sm">
+                  <LifecycleBadge l={m.lifecycle} />
+                  <Link href={`/messages/${m.id}`} className="truncate text-link hover:underline">{m.reference}</Link>
+                  {m.replacedBy && <span className="text-muted">→ {m.replacedBy}</span>}
+                </li>
+              ))}
+            </ul>
+          </Panel>
+          <Panel title="Quick Actions" icon={FileText}>
+            <div className="grid gap-2">
+              <Button variant="primary" href="/briefings">Build a Briefing</Button>
+              <Button href="/watch-turnover">Start Watch Turnover</Button>
+              <Button href="/search">Advanced Search</Button>
+              {approvals.length > 0 && <Button variant="warning" href="/admin">Review {approvals.length} subscription requests</Button>}
+            </div>
+          </Panel>
+          <Panel title="About This Prototype" icon={ShieldCheck}>
+            <p className="text-sm text-muted">
+              ANCHOR ingests official traffic from C2OIX into an immutable store and presents it through one CAC-authenticated interface. It does not replace C2OIX, NC2 or Designated Release Authority processes. All data on this site is mock data.
+            </p>
+          </Panel>
         </div>
-      </main>
-    </div>
+      </div>
+    </>
   );
 }

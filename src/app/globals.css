@@ -1,26 +1,47 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * ANCHOR design tokens, taken from the mockups.
+ * navy-*  : header, sidebar and primary buttons
+ * gold    : brand accent (anchor mark, sidebar motto, footer rule)
+ * page    : app background behind panels
+ */
+@theme {
+  --color-navy-950: #06142b;
+  --color-navy-900: #0a1f3f;
+  --color-navy-800: #0f2d5c;
+  --color-navy-700: #123e7c;
+  --color-navy-600: #1a56b0;
+  --color-navy-100: #e3ecf8;
+  --color-navy-50: #f1f5fb;
+  --color-gold: #f2b705;
+  --color-page: #eef2f7;
+  --color-line: #dbe2ec;
+  --color-ink: #0f1b2d;
+  --color-muted: #5b6b82;
+  --color-link: #1652b8;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial,
+    sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, "SFMono-Regular", Menlo, monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-page);
+  color: var(--color-ink);
+}
+
+/* Print: drop the app chrome so a message prints as an official rendition. */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white;
+  }
+  .print-full {
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
 }

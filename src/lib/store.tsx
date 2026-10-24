@@ -63,6 +63,7 @@ interface Store {
   setOffline: (v: boolean) => void;
   syncQueue: SyncItem[];
   syncNow: () => void;
+  queueLocal: (type: SyncItem["type"], description: string) => void;
   lastSync: Date;
 
   audit: AuditEvent[];
@@ -200,6 +201,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setLastSync(new Date());
         log("Sync", `Offline cache (${n} items)`, "Queued items replicated. Hashes verified.");
         notify(`Synced ${n} items`);
+      },
+      queueLocal: (type, description) => {
+        queue(type, description);
+        log("Create", description, "Created in local store; queued for sync.");
       },
       lastSync,
 

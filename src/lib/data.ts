@@ -777,14 +777,14 @@ export const AUDIT_BY_CLASSIFICATION = [
 ];
 
 export const SYNC_QUEUE: SyncItem[] = [
-  { id: "s1", type: "Acknowledgement", description: "Ack: COMSUBLANT 080/26", created: "24 OCT 0630L", status: "Pending" },
-  { id: "s2", type: "Message Record", description: "New message record (local)", created: "24 OCT 0615L", status: "Pending" },
-  { id: "s3", type: "Briefing", description: "Watch Turnover Briefing", created: "24 OCT 0600L", status: "Pending" },
-  { id: "s4", type: "Action Item", description: "Action item update", created: "24 OCT 0555L", status: "Pending" },
-  { id: "s5", type: "Subscription", description: "Subscription change request", created: "24 OCT 0540L", status: "Pending" },
-  { id: "s6", type: "Watch Notes", description: "Watch notes", created: "24 OCT 0520L", status: "Pending" },
-  { id: "s7", type: "Report", description: "Report generation", created: "24 OCT 0510L", status: "Pending" },
-  { id: "s8", type: "Annotation", description: "Message annotation", created: "24 OCT 0505L", status: "Pending" },
+  { id: "s1", type: "Acknowledgement", description: "Ack: COMSUBLANT 080/26", created: "24 OCT 0630Z", status: "Pending" },
+  { id: "s2", type: "Message Record", description: "New message record (local)", created: "24 OCT 0615Z", status: "Pending" },
+  { id: "s3", type: "Briefing", description: "Watch Turnover Briefing", created: "24 OCT 0600Z", status: "Pending" },
+  { id: "s4", type: "Action Item", description: "Action item update", created: "24 OCT 0555Z", status: "Pending" },
+  { id: "s5", type: "Subscription", description: "Subscription change request", created: "24 OCT 0540Z", status: "Pending" },
+  { id: "s6", type: "Watch Notes", description: "Watch notes", created: "24 OCT 0520Z", status: "Pending" },
+  { id: "s7", type: "Report", description: "Report generation", created: "24 OCT 0510Z", status: "Pending" },
+  { id: "s8", type: "Annotation", description: "Message annotation", created: "24 OCT 0505Z", status: "Pending" },
 ];
 
 export const WATCH_NOTES = [

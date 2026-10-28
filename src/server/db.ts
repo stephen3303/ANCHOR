@@ -87,6 +87,31 @@ CREATE TABLE IF NOT EXISTS sync_applied (
   error      TEXT,
   PRIMARY KEY (login, qid)
 );
+
+-- Network topology demonstration: the C2OIX server's queue, the links between
+-- the nodes, and which workstation each message has reached. Simulation only;
+-- nothing here is official record, so it can be reset.
+CREATE TABLE IF NOT EXISTS sim_message (
+  seq         INTEGER PRIMARY KEY,
+  reference   TEXT NOT NULL,
+  subject     TEXT NOT NULL,
+  precedence  TEXT NOT NULL,
+  status      TEXT NOT NULL,          -- queued | waiting | ingested
+  released_at TEXT,
+  ingested_at TEXT
+);
+CREATE TABLE IF NOT EXISTS sim_link (
+  key        TEXT PRIMARY KEY,        -- circuit | ws1 | ws2 | ws3
+  up         INTEGER NOT NULL,
+  changed_at TEXT NOT NULL,
+  changed_by TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sim_delivery (
+  seq          INTEGER NOT NULL REFERENCES sim_message(seq) ON DELETE CASCADE,
+  station      TEXT NOT NULL,
+  delivered_at TEXT NOT NULL,
+  PRIMARY KEY (seq, station)
+);
 `;
 
 export function dbPath(): string {

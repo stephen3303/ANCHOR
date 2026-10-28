@@ -134,9 +134,9 @@ footer { font-size: 0.85rem; color: var(--muted); border-top: 1px solid var(--ru
 
 <section class="bluf" aria-labelledby="bluf">
   <h2 id="bluf">Bottom line</h2>
-  <p><b>Build ANCHOR as a set of SharePoint Framework (SPFx) web parts on a dedicated communication site, with SharePoint lists and a records library as the data store and Power Automate for ingestion, alerts and approvals.</b> SPFx keeps the existing React components, which is most of the work already done, and gives you full control over the precedence, acknowledgement and integrity UX that a Power Apps canvas app would flatten.</p>
+  <p><b>Build the ANCHOR pilot as a Power Apps canvas app embedded on a dedicated SharePoint site, with SharePoint lists as the data store and Power Automate for ingestion, alerts and approvals.</b> This is the path chosen for the pilot. It needs no custom code deployment, and it runs entirely on standard connectors (SharePoint, Outlook, Teams, Approvals), so it is covered by the Microsoft 365 licenses users already have.</p>
   <p>Two constraints shape everything else. SharePoint Online in the Navy tenant is an unclassified and CUI environment, so the SECRET and CONFIDENTIAL traffic in the prototype's data model is out of scope. And SharePoint Online has no disconnected mode, so EMCON support becomes a cached read-only export rather than the prototype's sync queue.</p>
-  <p><b>Fallback:</b> if the tenant will not deploy custom SPFx packages to the app catalog, build the same data layer and use a Power Apps canvas app embedded on the site. Confirm this in week 1; it is the single biggest unknown.</p>
+  <p><b>What Power Apps costs you:</b> the React screens are rebuilt by hand rather than ported, and the print rendition and rich message text are harder to do well. The data layer and flows do not depend on the UI, so moving to SharePoint Framework (SPFx) web parts later only replaces the app, not the lists or flows.</p>
 </section>
 
 <section aria-labelledby="assume">
@@ -144,7 +144,8 @@ footer { font-size: 0.85rem; color: var(--muted); border-top: 1px solid var(--ru
   <div class="prose">
     <ul>
       <li><b>Tenant:</b> the Navy's Microsoft 365 DoD tenant (Flank Speed, IL5). If the pilot runs in a different tenant (GCC High or commercial), the architecture holds but approvals and endpoints change.</li>
-      <li><b>Goal:</b> a working pilot that real watchstanders use, not just a place to host the clickable demo. If you only need a demo link inside SharePoint, skip to option C in the comparison; it is a one-day job.</li>
+      <li><b>Goal:</b> a working pilot that real watchstanders use, not just a place to host the clickable demo (confirmed 28 OCT 26).</li>
+      <li><b>UI:</b> Power Apps canvas app for now (decided 28 OCT 26). SPFx stays the upgrade path.</li>
       <li><b>Scope:</b> UNCLASSIFIED and CUI message traffic for COMSUBLANT first, matching the requirements package.</li>
       <li><b>Team:</b> you plus one or two developers, with a tenant SharePoint admin who can approve app catalog deployments and site creation.</li>
     </ul>
@@ -159,7 +160,7 @@ footer { font-size: 0.85rem; color: var(--muted); border-top: 1px solid var(--ru
     <div class="con"><span class="pill p-bad sev">Changes design</span><h3>Offline and EMCON</h3><p>SharePoint Online pages do not work disconnected, and acknowledgements cannot queue locally for later sync. Plan for a pre-EMCON export (a PDF briefing and a CSV of open acknowledgements) and record acknowledgements on reconnection, with the offline time noted.</p></div>
     <div class="con"><span class="pill p-warn sev">Needs approval</span><h3>C2OIX ingestion</h3><p>SharePoint cannot pull from C2OIX by itself. The likely path is C2OIX delivering to an organizational mailbox, with Power Automate parsing each message into the library. This connection needs its own approval from the C2OIX program office and the tenant's cyber team.</p></div>
     <div class="con"><span class="pill p-warn sev">Needs care</span><h3>Immutability</h3><p>SharePoint items are editable by default. Use Microsoft Purview retention labels that declare each message a record, which locks content and metadata against edit and delete. Store the SHA-256 computed at ingest and re-check it on display.</p></div>
-    <div class="con"><span class="pill p-warn sev">Needs care</span><h3>Volume</h3><p>Any list query that touches more than 5,000 items is blocked by the list view threshold. Index the columns you filter on (received date, precedence, type, lifecycle) and split the message library by year.</p></div>
+    <div class="con"><span class="pill p-warn sev">Needs care</span><h3>Volume</h3><p>Any list query that touches more than 5,000 items is blocked by the list view threshold. Power Apps adds its own limit: a filter SharePoint cannot run server side (delegation) only sees the first 500 rows, at most 2,000. Index the columns you filter on (received date, precedence, type, lifecycle), write only delegable filters, and start a new Messages list each year.</p></div>
     <div class="con"><span class="pill p-warn sev">Needs care</span><h3>Access by command and group</h3><p>Per-item permissions do not scale; a list slows sharply past a few thousand unique permission scopes. Put each access group in its own library or site and grant access with Entra ID groups.</p></div>
     <div class="con"><span class="pill p-warn sev">Open</span><h3>AI summaries</h3><p>Which AI service is authorized in the DoD tenant decides this feature. Leave summaries out of the pilot unless an approved service is in place, and keep the "Not authoritative" treatment if they come back.</p></div>
   </div>
@@ -167,24 +168,24 @@ footer { font-size: 0.85rem; color: var(--muted); border-top: 1px solid var(--ru
 
 <section aria-labelledby="options">
   <h2 id="options">Options compared</h2>
-  <p class="prose">All four keep data in Microsoft 365, except option C. The highlighted row is the recommendation.</p>
+  <p class="prose">All four keep data in Microsoft 365, except option C. The highlighted row is the path chosen for the pilot.</p>
   <div class="tbl">
     <table>
       <thead><tr><th>Option</th><th>How it works</th><th>Reuses prototype</th><th>Fit to requirements</th><th>Tenant hurdles</th><th>Effort</th></tr></thead>
       <tbody>
-        <tr class="pick"><td>A. SPFx web parts + lists</td><td>React web parts on a SharePoint site, reading and writing lists through PnPjs or Microsoft Graph. Power Automate does ingest, alerts and approvals.</td><td><span class="pill p-good">High</span> Components, types and mock data carry over. Routing and Next.js server features do not.</td><td><span class="pill p-good">Strong</span> Custom precedence chips, two-step acknowledgement, integrity block and print view all possible.</td><td><span class="pill p-warn">App catalog</span> Tenant admin must approve the package.</td><td>8 to 10 weeks</td></tr>
-        <tr><td>B. Power Apps canvas + lists</td><td>Low-code app embedded in a SharePoint page, same lists and flows as A.</td><td><span class="pill p-bad">Low</span> Rebuilt by hand in Power Fx.</td><td><span class="pill p-warn">Adequate</span> Inbox and approvals are easy; print rendition, rich message text and keyboard flows are weak.</td><td><span class="pill p-good">Usually allowed</span> Maker access and connector policy.</td><td>6 to 8 weeks</td></tr>
+        <tr><td>A. SPFx web parts + lists</td><td>React web parts on a SharePoint site, reading and writing lists through PnPjs or Microsoft Graph. Power Automate does ingest, alerts and approvals.</td><td><span class="pill p-good">High</span> Components, types and mock data carry over. Routing and Next.js server features do not.</td><td><span class="pill p-good">Strong</span> Custom precedence chips, two-step acknowledgement, integrity block and print view all possible.</td><td><span class="pill p-warn">App catalog</span> Tenant admin must approve the package.</td><td>8 to 10 weeks</td></tr>
+        <tr class="pick"><td>B. Power Apps canvas + lists (chosen)</td><td>Low-code app embedded in a SharePoint page, same lists and flows as A.</td><td><span class="pill p-bad">Low</span> Rebuilt by hand in Power Fx; the types, data and screen designs still guide it.</td><td><span class="pill p-warn">Adequate</span> Inbox and approvals are easy; print rendition, rich message text and keyboard flows are weak.</td><td><span class="pill p-good">Usually allowed</span> Maker access and connector policy.</td><td>6 to 8 weeks</td></tr>
         <tr><td>C. Embed the hosted Next.js app</td><td>Host the existing app elsewhere and show it in an Embed web part or link from the site.</td><td><span class="pill p-good">Full</span> No code changes.</td><td><span class="pill p-bad">Weak</span> Data and identity live outside Microsoft 365; the host needs its own ATO and backend.</td><td><span class="pill p-bad">Hosting ATO</span> Embed domains must be allowlisted.</td><td>1 day for a demo; months for production</td></tr>
         <tr><td>D. Model-driven app on Dataverse</td><td>Dataverse tables instead of lists, model-driven or canvas UI, linked from SharePoint.</td><td><span class="pill p-bad">Low</span></td><td><span class="pill p-good">Strong data</span> Better for volume, auditing and row-level security.</td><td><span class="pill p-warn">Licensing</span> Needs Power Apps premium licenses per user.</td><td>8 to 12 weeks</td></tr>
       </tbody>
     </table>
   </div>
-  <p class="prose">Why A over D: lists are included in every Microsoft 365 license and are enough for one force's traffic in a pilot. If ANCHOR grows past COMSUBLANT, moving the data layer to Dataverse is the natural second step, and SPFx web parts can call Dataverse too, so the UI survives that move.</p>
+  <p class="prose">Why lists over Dataverse for now: lists come with every Microsoft 365 license, and the SharePoint connector is a standard connector, so the pilot needs no premium Power Apps licenses. Lists are enough for one force's traffic. If ANCHOR grows past COMSUBLANT, Dataverse is the natural second step, and canvas apps switch data sources with formula changes rather than a rebuild.</p>
 </section>
 
 <section aria-labelledby="arch">
   <h2 id="arch">Recommended architecture</h2>
-  <div class="diagram" role="img" aria-label="Architecture: C2OIX delivers to an organizational mailbox; a Power Automate ingest flow hashes each message and writes it to the records library and message list; SPFx web parts on the ANCHOR site read the lists; Power Automate flows send Teams and email alerts and run subscription approvals; Purview applies record labels and the unified audit log.">
+  <div class="diagram" role="img" aria-label="Architecture: C2OIX delivers to an organizational mailbox; a Power Automate ingest flow hashes each message and writes it to the Messages list as a locked record; a Power Apps canvas app on the ANCHOR site reads and writes the lists; Power Automate flows send Teams and email alerts and run subscription approvals; Purview applies record labels and the unified audit log.">
     <svg viewBox="0 0 900 360" xmlns="http://www.w3.org/2000/svg">
       <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker></defs>
       <rect class="zone" x="200" y="20" width="680" height="320" rx="6"/>
@@ -203,9 +204,9 @@ footer { font-size: 0.85rem; color: var(--muted); border-top: 1px solid var(--ru
       <text class="small" x="535" y="113" text-anchor="middle">parse, SHA-256, label record</text>
 
       <rect class="box" x="670" y="60" width="190" height="76" rx="4"/>
-      <text x="765" y="88" text-anchor="middle" font-weight="700" font-size="14">Records library</text>
-      <text class="small" x="765" y="106" text-anchor="middle">official text, one item</text>
-      <text class="small" x="765" y="121" text-anchor="middle">per message, locked</text>
+      <text x="765" y="88" text-anchor="middle" font-weight="700" font-size="14">Messages list</text>
+      <text class="small" x="765" y="106" text-anchor="middle">official text + metadata,</text>
+      <text class="small" x="765" y="121" text-anchor="middle">locked as records</text>
 
       <rect class="box" x="670" y="170" width="190" height="76" rx="4"/>
       <text x="765" y="198" text-anchor="middle" font-weight="700" font-size="14">Lists</text>
@@ -213,9 +214,9 @@ footer { font-size: 0.85rem; color: var(--muted); border-top: 1px solid var(--ru
       <text class="small" x="765" y="231" text-anchor="middle">action items, watch notes</text>
 
       <rect class="box hot" x="440" y="170" width="190" height="76" rx="4"/>
-      <text x="535" y="198" text-anchor="middle" font-weight="700" font-size="14">ANCHOR site</text>
-      <text class="small" x="535" y="216" text-anchor="middle">SPFx web parts</text>
-      <text class="small" x="535" y="231" text-anchor="middle">(today's React screens)</text>
+      <text x="535" y="198" text-anchor="middle" font-weight="700" font-size="14">ANCHOR app</text>
+      <text class="small" x="535" y="216" text-anchor="middle">Power Apps canvas app</text>
+      <text class="small" x="535" y="231" text-anchor="middle">on the SharePoint site</text>
 
       <rect class="box" x="230" y="170" width="170" height="76" rx="4"/>
       <text x="315" y="198" text-anchor="middle" font-weight="700" font-size="14">Alert + approval</text>
@@ -236,7 +237,7 @@ footer { font-size: 0.85rem; color: var(--muted); border-top: 1px solid var(--ru
     </svg>
   </div>
   <div class="prose">
-    <p>The SPFx web parts replace the in-memory store in <code>src/lib/store.tsx</code> with a thin data service that talks to SharePoint. Everything the user does (read, acknowledge, request a subscription) becomes a list write, and SharePoint's own audit log plus an ANCHOR audit list replace the mock audit trail.</p>
+    <p>The canvas app takes over from the in-memory store in <code>src/lib/store.tsx</code>. Everything the user does (read, acknowledge, request a subscription) becomes a list write through the SharePoint connector, and SharePoint's own audit log plus an ANCHOR audit list replace the mock audit trail. The official text sits in a multi-line column on the Messages list rather than in a file, because canvas apps read list columns directly but cannot easily read file contents from a library. The original message file and attachments go in a library beside it.</p>
   </div>
 </section>
 
@@ -246,15 +247,15 @@ footer { font-size: 0.85rem; color: var(--muted); border-top: 1px solid var(--ru
     <table>
       <thead><tr><th>Prototype screen</th><th>On SharePoint</th><th>Notes</th></tr></thead>
       <tbody>
-        <tr><td>Home</td><td>Site home page with Alert Strip and Latest Traffic web parts</td><td>Alert strip reads open items from the Acknowledgements list for the current user.</td></tr>
-        <tr><td>Messages, Message detail</td><td>Inbox web part plus a detail page that takes the message ID from the URL</td><td>Official text comes from the records library; metadata from indexed columns.</td></tr>
-        <tr><td>Print rendition</td><td>Print view in the detail web part, or a generated PDF stored beside the record</td><td>Generating the PDF at ingest gives a fixed artifact that matches the hash.</td></tr>
-        <tr><td>Search</td><td>Microsoft Search with a result source scoped to the records library, wrapped in a Search web part</td><td>Map precedence, type and lifecycle to managed properties so advanced search can filter on them.</td></tr>
+        <tr><td>Home</td><td>App home screen with an alert banner and a latest-traffic gallery</td><td>Alert banner reads open items from the Acknowledgements list for the current user.</td></tr>
+        <tr><td>Messages, Message detail</td><td>Inbox gallery with filters, and a detail screen; deep links pass the message ID as an app parameter</td><td>Keep every inbox filter delegable (equals, ranges and StartsWith on indexed columns).</td></tr>
+        <tr><td>Print rendition</td><td>A PDF generated by the ingest flow and stored beside the record</td><td>Canvas apps print poorly, so make the PDF the print path. It is also a fixed artifact that matches the hash.</td></tr>
+        <tr><td>Search</td><td>Simple search in the app on subject and reference; full-text and advanced search through Microsoft Search on the SharePoint site</td><td>Full-text search across message bodies is not delegable in Power Apps. Map precedence, type and lifecycle to managed properties so site search can filter on them.</td></tr>
         <tr><td>Subscriptions, Admin queue</td><td>Subscriptions list plus a Power Automate approval flow; approvers act in Teams or Outlook</td><td>Mandatory subscriptions set by a flow from Entra ID group membership, read-only to users.</td></tr>
         <tr><td>Mandatory alerts and acknowledgements</td><td>Ingest flow creates one Acknowledgement item per required recipient; a scheduled flow escalates overdue ones</td><td>Compute due times in the flow, not the browser, as the design review recommended.</td></tr>
-        <tr><td>Briefing Builder, Generated briefing</td><td>Briefing web part that queries lists and renders a page or Word file into a Briefings library</td><td>Port <code>src/lib/briefing.ts</code> directly.</td></tr>
-        <tr><td>Watch Turnover</td><td>Watch Notes and Turnover Checklist lists, one item per watch</td><td>Simple; good first web part to prove the data service.</td></tr>
-        <tr><td>Reports</td><td>Power BI report embedded on a page, or a Reports web part for the small roll-ups</td><td>Power BI is available in the DoD cloud.</td></tr>
+        <tr><td>Briefing Builder, Generated briefing</td><td>Builder screen that passes its choices to a flow, which fills a Word template and saves it to a Briefings library</td><td>Rewrite the rules in <code>src/lib/briefing.ts</code> as flow filters.</td></tr>
+        <tr><td>Watch Turnover</td><td>Watch Notes and Turnover Checklist lists, one item per watch</td><td>Simple; good first screen to prove the data connections.</td></tr>
+        <tr><td>Reports</td><td>Power BI report embedded on a page or in the app</td><td>Power BI is available in the DoD cloud and avoids the row limits for counts.</td></tr>
         <tr><td>Audit and Integrity</td><td>ANCHOR Audit list for app actions, Purview audit search for platform events</td><td>Make the audit list append-only by giving users add rights but not edit.</td></tr>
         <tr><td>Offline / EMCON</td><td>Pre-EMCON export page</td><td>See the constraint above; the sync queue does not carry over.</td></tr>
         <tr><td>Profile and Settings</td><td>Per-user settings list or the user's Entra profile</td><td>Notification channels feed the alert flow.</td></tr>
@@ -270,7 +271,8 @@ footer { font-size: 0.85rem; color: var(--muted); border-top: 1px solid var(--ru
     <table>
       <thead><tr><th>List or library</th><th>Key columns</th><th>Written by</th></tr></thead>
       <tbody>
-        <tr><td>Messages (records library)</td><td class="mono">C2OIXId*, DTG, Received*, Subject, Reference*, Type*, Originator, Precedence*, Classification, Lifecycle*, RelatesTo, ReplacedBy, Communities, AckRequired*, AckDue, SHA256, Retention</td><td>Ingest flow only</td></tr>
+        <tr><td>Messages (list, record-labeled, one per year)</td><td class="mono">C2OIXId*, DTG, Received*, Subject, Reference*, Type*, Originator, Precedence*, Classification, Lifecycle*, RelatesTo, ReplacedBy, Communities, AckRequired*, AckDue, SHA256, Retention, OfficialText</td><td>Ingest flow only</td></tr>
+        <tr><td>Message Files (library)</td><td class="mono">Message (lookup)*, original file, PDF rendition, attachments</td><td>Ingest flow only</td></tr>
         <tr><td>Acknowledgements</td><td class="mono">Message (lookup)*, Recipient (person)*, Due*, AcknowledgedAt, Escalated, OfflineAt</td><td>Ingest flow creates; user completes</td></tr>
         <tr><td>Subscriptions</td><td class="mono">Name, Category, Criteria (JSON), Frequency, Status*, Mandatory, Channels, RequestedBy*, Approver, Justification</td><td>User requests; approval flow decides</td></tr>
         <tr><td>Action Items</td><td class="mono">Message (lookup), Text, AssignedTo*, Suspense*, Status*, Importance</td><td>Users</td></tr>
@@ -286,9 +288,9 @@ footer { font-size: 0.85rem; color: var(--muted); border-top: 1px solid var(--ru
   <h2 id="phases">Migration phases</h2>
   <p class="prose">Sized to fit inside the 90-day discovery pilot, with the go or no-go points where a tenant decision could change the path.</p>
   <div class="phases">
-    <div class="phase"><span class="when">WEEKS 1 TO 2</span><h3>Confirm the tenant</h3><p>Meet the Flank Speed SharePoint admin and cyber team. Confirm custom SPFx is allowed, which Power Automate connectors are allowed, how C2OIX can reach a mailbox, and what AI service (if any) is authorized. Request the site and a dev site.</p><p class="exit"><b>Exit:</b> written yes or no on SPFx. A no switches the UI to option B; the rest of the plan stays.</p></div>
-    <div class="phase"><span class="when">WEEKS 2 TO 4</span><h3>Data layer and ingest</h3><p>Create the lists and library by script (PnP provisioning template, kept in the repo). Apply indexes and the record retention label. Build the ingest flow against a test mailbox, loading the prototype's mock messages first, then sample real UNCLAS traffic.</p><p class="exit"><b>Exit:</b> a message sent to the mailbox shows up as a locked record with a matching hash in under 5 minutes.</p></div>
-    <div class="phase"><span class="when">WEEKS 3 TO 7</span><h3>Port the screens</h3><p>Scaffold an SPFx solution, move <code>types.ts</code>, <code>format.ts</code>, <code>briefing.ts</code> and the components across, and replace <code>store.tsx</code> with a SharePoint data service. Order: Watch Turnover (simplest), Messages and detail, Home and alerts, Subscriptions, Briefings, Reports, Audit. Swap Tailwind for scoped SCSS or keep Tailwind with a prefix, so styles do not leak into SharePoint chrome.</p><p class="exit"><b>Exit:</b> every screen in the table above works against real lists on the dev site.</p></div>
+    <div class="phase"><span class="when">WEEKS 1 TO 2</span><h3>Set up the environment</h3><p>Meet the Flank Speed Power Platform admin and cyber team. Get a Power Platform environment for ANCHOR (a dev one and a pilot one), confirm the data loss prevention policy allows the SharePoint, Outlook, Teams and Approvals connectors together, find out how C2OIX can reach a mailbox, and ask what AI service (if any) is authorized. Request the SharePoint site.</p><p class="exit"><b>Exit:</b> environments exist, connectors are allowed, and you have maker rights.</p></div>
+    <div class="phase"><span class="when">WEEKS 2 TO 4</span><h3>Data layer and ingest</h3><p>Create the lists and library by script (PnP provisioning template, kept in the repo). Apply indexes and the record retention label. Build the ingest flow against a test mailbox, loading the prototype's mock messages from <code>src/lib/data.ts</code> first, then sample real UNCLAS traffic.</p><p class="exit"><b>Exit:</b> a message sent to the mailbox shows up as a locked record with a matching hash in under 5 minutes.</p></div>
+    <div class="phase"><span class="when">WEEKS 3 TO 7</span><h3>Build the app</h3><p>Build the canvas app in a solution so it moves cleanly from dev to pilot. Use the prototype as the design spec: same screens, same precedence and lifecycle labels, same two-step acknowledgement. Order: Watch Turnover (simplest), Messages and detail, Home and alerts, Subscriptions, Briefings, Audit, then embed the Power BI report. Turn on delegation warnings and treat each one as a bug. Export the solution to the repo after each screen so the work is under version control.</p><p class="exit"><b>Exit:</b> every screen in the table above works against real lists in the dev environment.</p></div>
     <div class="phase"><span class="when">WEEKS 6 TO 8</span><h3>Workflows</h3><p>Acknowledgement escalation, subscription approval, mandatory subscriptions from group membership, Teams and email alerts by precedence.</p><p class="exit"><b>Exit:</b> a FLASH test message alerts the right group, and an unacknowledged one escalates on schedule.</p></div>
     <div class="phase"><span class="when">WEEKS 8 TO 10</span><h3>Pilot with one unit</h3><p>One submarine squadron staff or one boat's in-port team uses ANCHOR alongside their current process. Measure time to find a message, acknowledgement rate and time, and missed-message reports.</p><p class="exit"><b>Exit:</b> pilot metrics for the COMSUBLANT decision brief.</p></div>
     <div class="phase"><span class="when">WEEKS 11 TO 13</span><h3>Decision and handoff</h3><p>Brief results, decide whether to scale, and record what scale would need (Dataverse, more commands, a classified version).</p></div>
@@ -301,12 +303,13 @@ footer { font-size: 0.85rem; color: var(--muted); border-top: 1px solid var(--ru
     <table>
       <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
       <tbody>
-        <tr><td>Tenant does not allow custom SPFx</td><td><span class="pill p-warn">Medium</span></td><td><span class="pill p-bad">High</span></td><td>Ask in week 1. Data layer and flows are shared with option B, so only the UI is rebuilt.</td></tr>
+        <tr><td>Connector policy blocks a needed connector</td><td><span class="pill p-warn">Medium</span></td><td><span class="pill p-bad">High</span></td><td>Ask in week 1. Everything planned uses standard Microsoft connectors, which are the easiest to get allowed.</td></tr>
+        <tr><td>Delegation limits return incomplete results</td><td><span class="pill p-warn">Medium</span></td><td><span class="pill p-bad">High</span></td><td>A non-delegable filter silently sees only the first 500 to 2,000 rows, so a watchstander could miss a message. Treat delegation warnings as bugs, test with more than 2,000 seeded messages, and do counts in Power BI.</td></tr>
+        <tr><td>Canvas app outgrows itself</td><td><span class="pill p-warn">Medium</span></td><td><span class="pill p-warn">Medium</span></td><td>If the UX limits hurt the pilot, move the UI to SPFx. Lists and flows stay as they are.</td></tr>
         <tr><td>C2OIX to mailbox connection not approved in time</td><td><span class="pill p-warn">Medium</span></td><td><span class="pill p-bad">High</span></td><td>Run the pilot on manually forwarded traffic and say so in the brief; keep the ingest flow ready.</td></tr>
         <tr><td>Users treat SharePoint copy as the official record</td><td><span class="pill p-warn">Medium</span></td><td><span class="pill p-warn">Medium</span></td><td>Same position as the prototype: ANCHOR complements C2OIX and DRA processes. Show the C2OIX ID and hash on every view and print.</td></tr>
         <tr><td>Ships lose access during EMCON or low bandwidth</td><td><span class="pill p-good">Certain</span></td><td><span class="pill p-warn">Medium</span></td><td>Pre-EMCON export; pilot ashore or in port first. A true offline client would be a later, separate build.</td></tr>
         <tr><td>List performance as traffic grows</td><td><span class="pill p-warn">Medium</span></td><td><span class="pill p-warn">Medium</span></td><td>Indexed columns, yearly libraries, and Dataverse as the scale-up path.</td></tr>
-        <tr><td>SPFx React version differs from the prototype's React 19</td><td><span class="pill p-good">Certain</span></td><td><span class="pill p-good">Low</span></td><td>SPFx pins its own React version. The prototype uses plain hooks and no React 19 only APIs in the components, so the port is mostly mechanical; check the current SPFx release before scaffolding.</td></tr>
         <tr><td>Power Automate throttling on bursts of FLASH traffic</td><td><span class="pill p-good">Low</span></td><td><span class="pill p-warn">Medium</span></td><td>Batch recipients per message, and use a dedicated service account with the right flow license.</td></tr>
       </tbody>
     </table>
@@ -317,8 +320,7 @@ footer { font-size: 0.85rem; color: var(--muted); border-top: 1px solid var(--ru
   <h2 id="qs">Decisions needed from you</h2>
   <div class="qs">
     <div class="q"><h3>Which tenant?</h3><p>This plan assumes Flank Speed (M365 DoD). Confirm, or name the tenant you have admin contacts in.</p></div>
-    <div class="q"><h3>Pilot or demo?</h3><p>If the near-term need is only to show the prototype inside SharePoint, option C gets you there now while option A is built.</p></div>
-    <div class="q"><h3>Who is the tenant sponsor?</h3><p>Week 1 depends on a SharePoint admin who can answer the SPFx question and approve the site.</p></div>
+    <div class="q"><h3>Who is the tenant sponsor?</h3><p>Week 1 depends on a Power Platform admin who can create the environments, confirm the connector policy, and approve the site.</p></div>
   </div>
 </section>
 
@@ -330,6 +332,7 @@ footer { font-size: 0.85rem; color: var(--muted); border-top: 1px solid var(--ru
     <li><a href="https://learn.microsoft.com/office365/servicedescriptions/office-365-platform-service-description/office-365-us-government/sharepoint" target="_blank" rel="noopener">SharePoint for US government environments</a></li>
     <li><a href="https://learn.microsoft.com/power-platform/admin/powerapps-us-government" target="_blank" rel="noopener">Power Apps US Government (DoD environment, IL5)</a></li>
     <li><a href="https://learn.microsoft.com/sharepoint/dev/spfx/spfx-sharepoint-online" target="_blank" rel="noopener">SharePoint Framework support on SharePoint Online</a></li>
+    <li><a href="https://learn.microsoft.com/power-apps/maker/canvas-apps/delegation-overview" target="_blank" rel="noopener">Power Apps delegation and query limits</a></li>
     <li><a href="https://learn.microsoft.com/troubleshoot/sharepoint/lists-and-libraries/items-exceeds-list-view-threshold" target="_blank" rel="noopener">List view threshold (5,000 items)</a></li>
   </ul>
 </section>

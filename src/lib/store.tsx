@@ -148,6 +148,11 @@ function applyQueued(state: ServerState, queue: QueuedItem[]): ServerState {
     else if (a.type === "read") userState[a.id] = { ...at(a.id), read: a.read };
     else if (a.type === "star") userState[a.id] = { ...at(a.id), starred: a.starred };
     else if (a.type === "markAllRead") for (const k of Object.keys(userState)) userState[k] = { ...at(k), read: "read" };
+    else if (a.type === "requestSubscription")
+      subscriptions = [
+        ...subscriptions,
+        { ...a.sub, id: `queued-${a.sub.name}`, status: "Pending Approval", mandatory: false, subscribedOn: "—", lastUpdated: "Queued", requestedBy: state.user.name },
+      ];
     else if (a.type === "setSubscription") subscriptions = subscriptions.map((x) => (x.id === a.id ? { ...x, status: a.status } : x));
     else if (a.type === "decideApproval") approvals = approvals.filter((x) => x.id !== a.id);
     else if (a.type === "watchNotes") watch = { ...watch, notes: a.notes };
@@ -186,6 +191,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!res.ok) throw new Error(`Server answered ${res.status}`);
       const state = (await res.json()) as ServerState;
       loginRef.current = state.user.login;
+      // Items queued before the queue recorded its account belong to whoever was signed in then: this account.
+      const q = readLocal<QueuedItem[]>(QUEUE_KEY, []);
+      if (q.some((x) => !x.login)) {
+        const stamped = q.map((x) => (x.login ? x : { ...x, login: state.user.login }));
+        writeLocal(QUEUE_KEY, stamped);
+        setSyncQueue(stamped);
+      }
       // While disconnected, show queued actions on top of the last server copy.
       setServer(offlineRef.current ? applyQueued(state, readLocal<QueuedItem[]>(QUEUE_KEY, [])) : state);
       setLoadError(null);
@@ -260,7 +272,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       users: server?.users ?? [],
       switchUser: async (login) => {
         if (offlineRef.current) return notify("Can't change user during EMCON");
-        if (syncQueue.length) return notify("Sync the offline queue before changing user");
+        const me = server?.user.login;
+        if (syncQueue.some((q) => q.login === me)) return notify("Sync your offline queue before changing user");
         const r = await post("/api/session", { login });
         if (!r.ok) return notify(String(r.data.error ?? "Sign-in failed"));
         await refresh();
@@ -344,7 +357,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       syncNow: () => {
         if (offlineRef.current) return notify("Cannot sync while offline");
         if (syncingRef.current) return;
-        const items = [...syncQueue].reverse(); // oldest first, the order they were taken
+        const me = server?.user.login;
+        // Oldest first, the order they were taken. Another account's items wait for that account.
+        const items = [...syncQueue].reverse().filter((q) => q.login === me);
+        if (!items.length) return notify("Nothing queued for this account; sign in as the account that queued it");
         syncingRef.current = true;
         setSyncing(true);
         void (async () => {
@@ -356,9 +372,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             });
           // The server records each item it applies, so sending the queue again after a failure is safe.
           if (!r?.ok) return notify(String(r?.data.error ?? "Sync failed; the queue is kept"));
-          const results = r.data.results as { qid: string; ok: boolean; error?: string }[];
+          const results = r.data.results as { qid: string; ok: boolean; error?: string; keep?: boolean }[];
           const done = new Set(results.filter((x) => x.ok).map((x) => x.qid));
-          const rejected = results.filter((x) => !x.ok);
+          const rejected = results.filter((x) => !x.ok && !x.keep);
           // Rejected items are dropped too: the server has said why, and
           // retrying them would fail the same way.
           setSyncQueue((q) => {

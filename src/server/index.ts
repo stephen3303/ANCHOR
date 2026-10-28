@@ -38,13 +38,14 @@ export async function startDemoSession(): Promise<User> {
   return u;
 }
 
-export const SESSION_COOKIE_OPTS = { httpOnly: true, sameSite: "strict", path: "/" } as const;
+export const SESSION_COOKIE_OPTS = { httpOnly: true, sameSite: "strict", path: "/", maxAge: 12 * 3600 } as const;
 
 /** A request sent from another site (a page trying to act with the user's session). */
 export function crossSite(req: Request): boolean {
   if (req.headers.get("sec-fetch-site") === "cross-site") return true;
   const origin = req.headers.get("origin");
-  const host = req.headers.get("host");
+  // Behind a reverse proxy that rewrites Host, the browser's host arrives in X-Forwarded-Host.
+  const host = (process.env.ANCHOR_TRUST_PROXY === "1" && req.headers.get("x-forwarded-host")?.split(",")[0].trim()) || req.headers.get("host");
   if (!origin || !host) return false;
   try {
     return new URL(origin).host !== host;

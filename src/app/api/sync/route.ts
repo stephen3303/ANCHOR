@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   const results: SyncResult[] = body.actions.map((item: unknown, n: number) => {
     const { qid, login, action } = (item ?? {}) as { qid?: unknown; login?: unknown; action?: Action };
     if (typeof qid !== "string" || !qid || qid.length > 100) return { qid: `#${n}`, ok: false, error: "Queue item has no id." };
-    if (login !== user.login) return { qid, ok: false, error: `Queued by ${typeof login === "string" ? login : "another account"}; sign in as them to sync it.` };
+    if (login !== user.login) return { qid, ok: false, keep: true, error: `Queued by ${typeof login === "string" ? login : "another account"}; sign in as them to sync it.` };
     const prior = priorSync(db, user.login, qid);
     if (prior) return prior;
     try {
@@ -36,22 +36,27 @@ export async function POST(req: Request) {
         return r;
       });
     } catch (e) {
-      const r = { qid, ok: false, error: e instanceof IngestError ? e.message : "Not a valid queued action." };
-      if (!(e instanceof IngestError)) console.error("sync item failed", e);
-      recordSync(db, user.login, r);
-      return r;
+      if (e instanceof IngestError) {
+        const r = { qid, ok: false, error: e.message };
+        recordSync(db, user.login, r);
+        return r;
+      }
+      // Anything else (a busy database, a bad item) isn't recorded, so the item can be tried again.
+      console.error("sync item failed", e);
+      return { qid, ok: false, keep: true, error: "Couldn't apply this item now; it stays queued." };
     }
   });
 
-  const fresh = results.filter((r) => !r.replay);
+  const fresh = results.filter((r) => !r.replay && !r.keep);
   const failed = fresh.filter((r) => !r.ok).length;
-  const replays = results.length - fresh.length;
+  const kept = results.filter((r) => r.keep).length;
+  const replays = results.filter((r) => r.replay).length;
   appendAudit(
     db,
     actor,
     "Sync",
     `Offline queue (${results.length} items)`,
-    `Replicated ${fresh.length - failed}; ${failed} rejected.${replays ? ` ${replays} already applied by an earlier sync, skipped.` : ""}`,
+    `Replicated ${fresh.length - failed}; ${failed} rejected.${replays ? ` ${replays} already applied by an earlier sync, skipped.` : ""}${kept ? ` ${kept} left queued.` : ""}`,
     { result: failed ? "Warning" : "Success" },
   );
   return json({ results });

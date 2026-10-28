@@ -593,6 +593,8 @@ export interface SyncResult {
   error?: string;
   /** True when this item was applied by an earlier sync and skipped now */
   replay?: boolean;
+  /** Not applied, but not refused either: the client keeps it and sends it again later */
+  keep?: boolean;
 }
 
 export function priorSync(db: DatabaseSync, login: string, qid: string): SyncResult | undefined {

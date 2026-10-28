@@ -24,9 +24,9 @@ const COMMUNITIES: Community[] = [
 
 export default function BriefingBuilder() {
   const router = useRouter();
-  const { briefing: b, setBriefing, userState, log, notify } = useStore();
+  const { briefing: b, setBriefing, userState, log, notify, messages } = useStore();
   const set = (p: Partial<typeof b>) => setBriefing({ ...b, ...p });
-  const preview = selectBriefing(b, (id) => userState[id]?.read === "read");
+  const preview = selectBriefing(messages, b, (id) => userState[id]?.read === "read");
   const toggleComm = (c: Community) => set({ communities: b.communities.includes(c) ? b.communities.filter((x) => x !== c) : [...b.communities, c] });
   const allOn = b.communities.length === COMMUNITIES.length;
 

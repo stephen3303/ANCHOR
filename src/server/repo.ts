@@ -287,10 +287,11 @@ const MESSAGE_SQL = `SELECT m.id, m.reference, m.c2oix_id, m.lifecycle, m.replac
 function toMessage(r: MessageRow, now: Date): Message {
   const p = parseCached(r.raw);
   const e = JSON.parse(r.enrichment) as Enrichment;
+  // Mandatory alert rules (Admin screen): FLASH/IMMEDIATE within 2h, safety traffic within 24h.
   const urgent = p.precedence === "FLASH" || p.precedence === "IMMEDIATE";
-  const ackRequired = !!p.ackDue || (e.ackRequired ?? urgent);
+  const ackRequired = !!p.ackDue || (e.ackRequired ?? (urgent || p.type === "SAFETY MSG"));
   const ackDue =
-    p.ackDue ?? (ackRequired ? new Date(new Date(p.received).getTime() + (p.precedence === "FLASH" ? 4 : 24) * 3_600_000).toISOString() : undefined);
+    p.ackDue ?? (ackRequired ? new Date(new Date(p.received).getTime() + (urgent ? 2 : 24) * 3_600_000).toISOString() : undefined);
   const expired = r.lifecycle === "ACTIVE" && p.expires && new Date(p.expires) < now;
   return {
     id: r.id,

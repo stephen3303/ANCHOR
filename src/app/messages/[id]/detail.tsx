@@ -3,22 +3,30 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { ArrowLeft, Bell, Clock, Copy, Download, FileText, Link2, Mail, Plus, Printer, FilePlus2 } from "lucide-react";
-import { messageById } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import { AckPanel, Attachments, LifecycleNotice, MessageList, MessageTabs, MetadataTable, StarButton } from "@/components/message";
 import { Button, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tag } from "@/components/ui";
 import type { Message } from "@/lib/types";
 
 export function MessageDetail({ id }: { id: string }) {
-  const m = messageById(id)!;
-  const { markRead, markUnread, log, notify, briefing, setBriefing } = useStore();
+  const { markRead, markUnread, log, notify, briefing, setBriefing, messageById } = useStore();
+  const found = messageById(id);
 
   useEffect(() => {
+    if (!found) return;
     markRead(id);
-    log("View", `Message (${m.reference})`, "Message opened in reader.");
+    log("View", `Message (${found.reference})`, "Message opened in reader.");
     // Log once per open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, !!found]);
+
+  if (!found)
+    return (
+      <p className="text-sm text-muted">
+        No message <span className="font-mono">{id}</span> on file. <Link href="/messages" className="text-link underline">Back to Messages</Link>
+      </p>
+    );
+  const m = found;
 
   const addToBriefing = () => {
     const extra = m.communities.filter((c) => !briefing.communities.includes(c));
@@ -100,6 +108,7 @@ export function MessageDetail({ id }: { id: string }) {
 }
 
 function RelatedPanel({ m }: { m: Message }) {
+  const { messageById } = useStore();
   const items = m.related.map(messageById).filter(Boolean) as Message[];
   if (!items.length) return null;
   return (

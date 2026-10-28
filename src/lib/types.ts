@@ -139,6 +139,8 @@ export interface AuditEvent {
   location: string;
   details: string;
   hash?: string;
+  /** Hash of the event before this one in the audit chain */
+  prevHash?: string;
 }
 
 export interface SyncItem {

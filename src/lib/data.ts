@@ -814,9 +814,9 @@ export const TURNOVER_CHECKLIST = [
   "Finalize turnover package",
 ];
 
-export function actionItems(): ActionItem[] {
+export function actionItems(messages: Message[] = MESSAGES): ActionItem[] {
   const live = (m: Message) => m.lifecycle !== "SUPERSEDED" && m.lifecycle !== "CANCELLED" && m.lifecycle !== "EXPIRED";
-  return MESSAGES.filter((m) => m.actionItem && live(m)).map((m, i) => ({
+  return messages.filter((m) => m.actionItem && live(m)).map((m, i) => ({
     id: `ai-${m.id}`,
     importance: m.importance,
     text: m.actionItem!.text,

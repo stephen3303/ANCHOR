@@ -3,16 +3,18 @@
 import Link from "next/link";
 import { useNow } from "@/lib/use-now";
 import { ArrowLeft, Printer } from "lucide-react";
-import { CURRENT_USER, messageById } from "@/lib/data";
 import { fmtDateTime } from "@/lib/format";
-import { useStore } from "@/lib/store";
+import { useStore, useUser } from "@/lib/store";
 import { Button } from "@/components/ui";
 
 /** Official printable / PDF rendition with integrity information on the page. */
 export function PrintView({ id }: { id: string }) {
-  const m = messageById(id)!;
-  const { log } = useStore();
+  const { log, messageById } = useStore();
+  const user = useUser();
   const now = useNow();
+  const found = messageById(id);
+  if (!found) return <p className="text-sm text-muted">No message {id} on file.</p>;
+  const m = found;
   const printedAt = now ? fmtDateTime(now) : "";
   const retired = m.lifecycle !== "ACTIVE" && m.lifecycle !== "AMENDED" && m.lifecycle !== "CORRECTED";
 
@@ -79,7 +81,7 @@ export function PrintView({ id }: { id: string }) {
           <p className="break-all">SHA-256: {m.sha256}</p>
           <p>Verification: hash matches source artifact</p>
           <p suppressHydrationWarning>
-            Rendered for {CURRENT_USER.name}, {CURRENT_USER.unit}, {printedAt}
+            Rendered for {user.name}, {user.unit}, {printedAt}
           </p>
           <p>Printed copies are uncontrolled. Verify the current version in ANCHOR before acting.</p>
           <p className="font-semibold text-amber-700">PROTOTYPE: mock data, not an official record.</p>

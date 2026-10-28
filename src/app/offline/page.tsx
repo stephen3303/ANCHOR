@@ -15,7 +15,6 @@ import {
   WifiOff,
   Wrench,
 } from "lucide-react";
-import { MESSAGES } from "@/lib/data";
 import { fmtDateTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { MiniMessageTable } from "@/components/message";
@@ -24,7 +23,7 @@ import { Button, Panel, PrecedenceBadge, Select, StatusDot, Tabs, TextInput, Tog
 type Tab = "overview" | "cached" | "create" | "queue" | "settings";
 
 export default function OfflinePage() {
-  const { offline, setOffline, syncQueue, syncNow, lastSync, queueLocal, notify } = useStore();
+  const { offline, setOffline, syncQueue, syncNow, lastSync, queueLocal, notify, messages: MESSAGES } = useStore();
   const [tab, setTab] = useState<Tab>("overview");
   const [subject, setSubject] = useState("");
   const [ref, setRef] = useState("");

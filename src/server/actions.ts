@@ -30,7 +30,7 @@ export type Action =
   | { type: "log"; action: string; resource: string; details?: string };
 
 /** Actions a page may record in the audit log for things that happen only in the browser. */
-const LOGGABLE = new Set(["View", "Search", "Export", "Print", "Share Link", "Create Briefing", "Generate Report", "Download", "Create"]);
+const LOGGABLE = new Set(["View", "Search", "Save Search", "Export", "Print", "Share Link", "Create Briefing", "Generate Report", "Download", "Create"]);
 
 const str = (v: unknown, max = 500) => (typeof v === "string" ? v.slice(0, max) : "");
 

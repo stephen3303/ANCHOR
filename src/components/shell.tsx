@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { Suspense, useState, type ReactNode } from "react";
 import {
   Anchor,
   BarChart3,
@@ -11,7 +11,6 @@ import {
   FileText,
   Globe,
   Home,
-  LogOut,
   Mail,
   Menu,
   Network,
@@ -24,7 +23,6 @@ import {
   X,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { CURRENT_USER, MESSAGES } from "@/lib/data";
 import { fmtDate, fmtTime } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 import { cx } from "./ui";
@@ -54,7 +52,7 @@ function Clock() {
 }
 
 function Header({ onMenu }: { onMenu: () => void }) {
-  const { offline } = useStore();
+  const { offline, user, users, switchUser } = useStore();
   const [open, setOpen] = useState(false);
   return (
     <header className="no-print relative z-40 flex h-16 shrink-0 items-center gap-3 bg-gradient-to-r from-navy-950 via-navy-900 to-navy-800 px-3 text-white shadow-md sm:h-[72px] sm:px-4">
@@ -93,26 +91,41 @@ function Header({ onMenu }: { onMenu: () => void }) {
         </div>
         <div className="relative border-l border-white/25 pl-3">
           <button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 rounded-md p-1 hover:bg-white/10" aria-expanded={open}>
-            <span className="flex size-10 items-center justify-center rounded-full border-2 border-gold bg-navy-700 text-sm font-bold">LT</span>
+            <span className="flex size-10 items-center justify-center rounded-full border-2 border-gold bg-navy-700 text-sm font-bold">{user?.rank ?? "··"}</span>
             <span className="hidden text-left leading-tight sm:block">
-              <span className="block text-[15px] font-semibold">{CURRENT_USER.name}</span>
-              <span className="block text-xs text-white/80">{CURRENT_USER.community}</span>
+              <span className="block text-[15px] font-semibold">{user?.name ?? "Signing in…"}</span>
+              <span className="block text-xs text-white/80">{user?.billet}</span>
             </span>
             <ChevronDown className="size-4" />
           </button>
           {open && (
-            <div className="absolute right-0 mt-2 w-60 rounded-md border border-line bg-white py-1 text-sm text-ink shadow-lg" onMouseLeave={() => setOpen(false)}>
+            <div className="absolute right-0 mt-2 w-64 rounded-md border border-line bg-white py-1 text-sm text-ink shadow-lg" onMouseLeave={() => setOpen(false)}>
               <div className="border-b border-line px-3 py-2">
-                <div className="font-semibold">{CURRENT_USER.name}</div>
-                <div className="text-xs text-muted">{CURRENT_USER.unit}</div>
-                <div className="mt-1 text-xs text-green-700">CAC authenticated</div>
+                <div className="font-semibold">{user?.name}</div>
+                <div className="text-xs text-muted">{user?.unit}</div>
+                <div className="mt-1 text-xs text-amber-700">Demo sign-in (CAC/PKI in production)</div>
+              </div>
+              <div className="border-b border-line py-1">
+                <div className="px-3 pb-1 pt-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Sign in as</div>
+                {users.map((u) => (
+                  <button
+                    key={u.login}
+                    type="button"
+                    disabled={u.login === user?.login}
+                    className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left hover:bg-navy-50 disabled:cursor-default disabled:bg-navy-50"
+                    onClick={() => {
+                      setOpen(false);
+                      void switchUser(u.login);
+                    }}
+                  >
+                    <span>{u.name}</span>
+                    <span className="text-xs text-muted">{u.billet}</span>
+                  </button>
+                ))}
               </div>
               <Link href="/profile" className="flex items-center gap-2 px-3 py-2 hover:bg-navy-50" onClick={() => setOpen(false)}>
                 <Settings className="size-4" /> Profile & Settings
               </Link>
-              <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-navy-50" onClick={() => setOpen(false)}>
-                <LogOut className="size-4" /> Sign out (remove CAC)
-              </button>
             </div>
           )}
         </div>
@@ -123,8 +136,8 @@ function Header({ onMenu }: { onMenu: () => void }) {
 
 function Sidebar({ open, onClose }: { open: boolean | null; onClose: () => void }) {
   const path = usePathname();
-  const { userState, syncQueue, approvals } = useStore();
-  const unread = MESSAGES.filter((m) => userState[m.id]?.read !== "read").length;
+  const { userState, syncQueue, approvals, messages } = useStore();
+  const unread = messages.filter((m) => userState[m.id]?.read !== "read").length;
   const badges = { unread, sync: syncQueue.length, approvals: approvals.length };
 
   return (
@@ -180,8 +193,8 @@ function Sidebar({ open, onClose }: { open: boolean | null; onClose: () => void 
 }
 
 function AlertStrip() {
-  const { userState, offline } = useStore();
-  const pending = MESSAGES.filter((m) => m.ackRequired && m.lifecycle !== "SUPERSEDED" && m.lifecycle !== "CANCELLED" && !userState[m.id]?.acknowledgedAt);
+  const { userState, offline, messages } = useStore();
+  const pending = messages.filter((m) => m.ackRequired && m.lifecycle !== "SUPERSEDED" && m.lifecycle !== "CANCELLED" && !userState[m.id]?.acknowledgedAt);
   return (
     <>
       {offline && (
@@ -227,6 +240,22 @@ function Toast() {
   );
 }
 
+/** Screens render once the first load from the ANCHOR server is in. */
+function Loaded({ children }: { children: ReactNode }) {
+  const { loaded, loadError, refresh } = useStore();
+  if (loaded) return <>{children}</>;
+  if (loadError)
+    return (
+      <div role="alert" className="max-w-xl rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-900">
+        <p className="font-semibold">Can&apos;t reach the ANCHOR server ({loadError}).</p>
+        <button type="button" className="mt-2 font-semibold underline" onClick={() => void refresh()}>
+          Try again
+        </button>
+      </div>
+    );
+  return <p className="text-sm text-muted">Loading official records…</p>;
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   // null = automatic: hidden on small screens, shown on large ones.
   const [open, setOpen] = useState<boolean | null>(null);
@@ -236,8 +265,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       <Header onMenu={toggle} />
       <AlertStrip />
       <div className="print-full flex min-h-0 flex-1">
-        <Sidebar open={open} onClose={() => setOpen(false)} />
-        <main className="print-full min-w-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">{children}</main>
+        {/* The sidebar reads the URL, which isn't known when a dynamic route's shell is prerendered. */}
+        <Suspense fallback={<div className="hidden w-60 shrink-0 bg-navy-950 lg:block" />}>
+          <Sidebar open={open} onClose={() => setOpen(false)} />
+        </Suspense>
+        <main className="print-full min-w-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+          <Loaded>{children}</Loaded>
+        </main>
       </div>
       <Footer />
       <Toast />

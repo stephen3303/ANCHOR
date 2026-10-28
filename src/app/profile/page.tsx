@@ -26,9 +26,8 @@ import {
   Volume2,
   List,
 } from "lucide-react";
-import { CURRENT_USER } from "@/lib/data";
 import { fmtDateTime } from "@/lib/format";
-import { useStore } from "@/lib/store";
+import { useStore, useUser } from "@/lib/store";
 import { Button, PageHeader, Panel, Pill, Select, Toggle, th, theadRow } from "@/components/ui";
 
 const NOTIF_TYPES = [
@@ -43,6 +42,7 @@ const NOTIF_TYPES = [
 
 export default function ProfilePage() {
   const { notify, syncNow, offline, lastSync } = useStore();
+  const CURRENT_USER = useUser();
   const [prefs, setPrefs] = useState({ previews: true, sounds: true, desktop: true, compact: false });
   const [view, setView] = useState("Home");
   const [perPage, setPerPage] = useState("25");

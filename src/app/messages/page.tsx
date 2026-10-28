@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { CheckCheck, Download, Filter, Link2, Mail, Maximize2, Paperclip, Printer, Search, Star } from "lucide-react";
-import { MESSAGES } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import type { Lifecycle, Message, MessageType, ReadState } from "@/lib/types";
 import { AckPanel, Attachments, LifecycleNotice, MessageTabs, StarButton } from "@/components/message";
@@ -22,13 +21,13 @@ import {
   theadRow,
 } from "@/components/ui";
 
-const SOURCES = [...new Set(MESSAGES.map((m) => m.source))];
-const TYPES = [...new Set(MESSAGES.map((m) => m.type))];
-const count = <K extends keyof Message>(k: K, v: Message[K]) => MESSAGES.filter((m) => m[k] === v).length;
 const RETIRED: Lifecycle[] = ["SUPERSEDED", "CANCELLED", "EXPIRED"];
 
 export default function MessagesPage() {
-  const { userState, markRead, markAllRead, log, notify } = useStore();
+  const { userState, markRead, markAllRead, log, notify, messages: MESSAGES } = useStore();
+  const SOURCES = [...new Set(MESSAGES.map((m) => m.source))];
+  const TYPES = [...new Set(MESSAGES.map((m) => m.type))];
+  const count = <K extends keyof Message>(k: K, v: Message[K]) => MESSAGES.filter((m) => m[k] === v).length;
   const [q, setQ] = useState("");
   const [sources, setSources] = useState<string[]>([]);
   const [types, setTypes] = useState<MessageType[]>([]);
@@ -37,7 +36,7 @@ export default function MessagesPage() {
   const [ackOnly, setAckOnly] = useState(false);
   const [showRetired, setShowRetired] = useState(true);
   const [range, setRange] = useState("Last 30 days");
-  const [selected, setSelected] = useState<string>(MESSAGES[0].id);
+  const [selected, setSelected] = useState<string>(MESSAGES[0]?.id ?? "");
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [showFilters, setShowFilters] = useState(true);
 
@@ -56,7 +55,7 @@ export default function MessagesPage() {
       if (!showRetired && RETIRED.includes(m.lifecycle)) return false;
       return true;
     });
-  }, [q, sources, types, states, starredOnly, ackOnly, showRetired, userState]);
+  }, [MESSAGES, q, sources, types, states, starredOnly, ackOnly, showRetired, userState]);
 
   const current = MESSAGES.find((m) => m.id === selected) ?? rows[0];
 

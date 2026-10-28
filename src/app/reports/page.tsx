@@ -3,28 +3,31 @@
 import Link from "next/link";
 import { useState } from "react";
 import { AlertTriangle, BarChart3, BellRing, CheckCircle2, Database, Download, HardDrive, Mail } from "lucide-react";
-import { ACK_ROSTER, MESSAGES } from "@/lib/data";
+import { ACK_ROSTER } from "@/lib/data";
+import { USERS } from "@/lib/users";
 import { fmtDateTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { Bar, Button, PageHeader, Panel, Select, StatCard, StatusDot, tableWrap, td, th, theadRow, tbodyRow } from "@/components/ui";
 
-const ackMessages = MESSAGES.filter((m) => m.ackRequired && m.lifecycle !== "SUPERSEDED" && m.lifecycle !== "CANCELLED");
-
-// Deterministic mock: which roster members have acknowledged each message.
-function rosterFor(msgIndex: number, mine?: string) {
+// Roster members with a demo account show their real acknowledgements from the
+// server; the rest of the wardroom is deterministic mock data.
+function rosterFor(msgIndex: number, real: (login: string) => string | undefined) {
   return ACK_ROSTER.map((p, i) => {
-    if (p.name === "LT Taylor") return { ...p, at: mine };
+    const account = USERS.find((u) => u.name === p.name);
+    if (account) return { ...p, at: real(account.login) };
     const acked = (i * 7 + msgIndex * 3) % 5 !== 0;
     return { ...p, at: acked ? `2026-10-${String(22 + ((i + msgIndex) % 3)).padStart(2, "0")}T${String(8 + i).padStart(2, "0")}:15:00Z` : undefined };
   });
 }
 
 export default function ReportsPage() {
-  const { userState, log, notify } = useStore();
-  const [sel, setSel] = useState(ackMessages[0].reference);
-  const idx = ackMessages.findIndex((m) => m.reference === sel);
+  const { log, notify, messages, acknowledgements } = useStore();
+  const ackMessages = messages.filter((m) => m.ackRequired && m.lifecycle !== "SUPERSEDED" && m.lifecycle !== "CANCELLED");
+  const [sel, setSel] = useState(ackMessages[0]?.reference);
+  const idx = Math.max(0, ackMessages.findIndex((m) => m.reference === sel));
   const m = ackMessages[idx];
-  const roster = rosterFor(idx, userState[m.id].acknowledgedAt);
+  if (!m) return <p className="text-sm text-muted">No messages need acknowledgement.</p>;
+  const roster = rosterFor(idx, (login) => acknowledgements.find((a) => a.login === login && a.messageId === m.id)?.at);
   const done = roster.filter((r) => r.at).length;
 
   return (
@@ -85,7 +88,7 @@ export default function ReportsPage() {
           </Panel>
           <Panel title="Acknowledgement Rate by Message">
             {ackMessages.map((x, i) => {
-              const r = rosterFor(i, userState[x.id].acknowledgedAt);
+              const r = rosterFor(i, (login) => acknowledgements.find((k) => k.login === login && k.messageId === x.id)?.at);
               const n = r.filter((p) => p.at).length;
               return (
                 <div key={x.id} className="mb-2 grid grid-cols-[140px_1fr_40px] items-center gap-2 text-sm">

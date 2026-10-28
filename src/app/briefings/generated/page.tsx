@@ -6,16 +6,15 @@ import { AlertCircle, AlertTriangle, BellRing, Download, FileText, Link2, Mail, 
 import { selectBriefing, topicCounts } from "@/lib/briefing";
 import { useStore } from "@/lib/store";
 import { fmtDate } from "@/lib/format";
-import { MESSAGES } from "@/lib/data";
 import { AiSummary } from "@/components/message";
 import { Bar, Button, Donut, ImportanceBadge, LifecycleBadge, Panel, PrecedenceBadge, StatCard, Tabs, Delta, tableWrap, td, th, theadRow, tbodyRow } from "@/components/ui";
 
 type Tab = "summary" | "takeaways" | "actions" | "messages" | "charts";
 
 export default function GeneratedBriefing() {
-  const { briefing: b, userState, log, notify } = useStore();
+  const { briefing: b, userState, log, notify, messages: MESSAGES } = useStore();
   const [tab, setTab] = useState<Tab>("summary");
-  const items = selectBriefing(b, (id) => userState[id]?.read === "read");
+  const items = selectBriefing(MESSAGES, b, (id) => userState[id]?.read === "read");
   const high = items.filter((m) => m.importance === "High");
   const med = items.filter((m) => m.importance === "Medium");
   const low = items.filter((m) => m.importance === "Low");

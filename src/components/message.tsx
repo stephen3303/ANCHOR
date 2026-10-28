@@ -14,13 +14,13 @@ import {
   Sparkles,
   Star,
 } from "lucide-react";
-import { messageById, messageByRef } from "@/lib/data";
 import { fmtDateTime, hoursUntil, shortHash } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import type { Attachment, Message } from "@/lib/types";
 import { Button, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tabs, cx, td, th, tableWrap, theadRow, tbodyRow } from "./ui";
 
 export function RefLink({ to: r }: { to: string }) {
+  const { messageByRef } = useStore();
   const m = messageByRef(r);
   if (!m) return <span>{r}</span>;
   return (
@@ -179,6 +179,7 @@ type Tab = "message" | "metadata" | "related" | "references" | "distribution" | 
 
 export function MessageTabs({ m }: { m: Message }) {
   const [tab, setTab] = useState<Tab>("message");
+  const { messageById, messageByRef } = useStore();
   const related = m.related.map(messageById).filter(Boolean) as Message[];
   const refs = [m.relatesTo, m.replacedBy].filter(Boolean) as string[];
   return (
@@ -244,20 +245,77 @@ export function MetadataTable({ m }: { m: Message }) {
   );
 }
 
+interface ArtifactCheck {
+  raw: string;
+  sizeBytes: number;
+  ingestedAt: string;
+  check: { ok: boolean; recorded: string; computed: string };
+  at: string;
+}
+
+/** Hash check runs on the server against the stored source artifact. */
 export function IntegrityTable({ m }: { m: Message }) {
+  const { offline, refresh } = useStore();
+  const [res, setRes] = useState<ArtifactCheck | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const verify = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/messages/${encodeURIComponent(m.id)}/artifact`, { cache: "no-store" });
+      if (!r.ok) throw new Error(`Server answered ${r.status}`);
+      setRes({ ...((await r.json()) as Omit<ArtifactCheck, "at">), at: new Date().toISOString() });
+      void refresh(); // the check itself is audited
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Check failed");
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div className="space-y-3 text-sm">
-      <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-green-900">
-        <CheckCircle2 className="size-4" /> Stored copy matches the source artifact recorded at C2OIX ingestion.
-      </div>
+      {res ? (
+        res.check.ok ? (
+          <div role="status" className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-green-900">
+            <CheckCircle2 className="size-4" /> Recomputed SHA-256 matches the value recorded at C2OIX ingestion.
+          </div>
+        ) : (
+          <div role="alert" className="flex items-center gap-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-red-900">
+            <AlertTriangle className="size-4" /> Hash mismatch. The stored text no longer matches what was ingested. Do not act on it; report to the ISSM.
+          </div>
+        )
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-navy-50 px-3 py-2">
+          <span>Recompute the hash of the stored source artifact and compare it with the ingestion record.</span>
+          <Button size="sm" variant="primary" icon={BadgeCheck} disabled={busy || offline} onClick={() => void verify()}>
+            {busy ? "Verifying…" : "Verify now"}
+          </Button>
+          {offline && <span className="text-xs text-amber-800">Needs a connection to the ANCHOR server.</span>}
+          {err && <span className="text-xs text-red-800">{err}</span>}
+        </div>
+      )}
       <dl className="grid grid-cols-[minmax(0,10rem)_1fr] gap-x-4 gap-y-1.5">
         <dt className="text-muted">Source</dt><dd>C2OIX (automated ingestion)</dd>
         <dt className="text-muted">C2OIX ID</dt><dd className="font-mono">{m.c2oixId}</dd>
         <dt className="text-muted">SHA-256</dt><dd className="break-all font-mono text-xs">{m.sha256}</dd>
-        <dt className="text-muted">Signature</dt><dd>Originator signature verified where available</dd>
+        <dt className="text-muted">Signature</dt><dd>Originator signature check is planned (not in the prototype)</dd>
         <dt className="text-muted">Storage</dt><dd>Immutable (write once, read many)</dd>
-        <dt className="text-muted">Last verified</dt><dd>24 OCT 2026 1310Z (scheduled integrity check)</dd>
+        <dt className="text-muted">Last verified</dt>
+        <dd>{res ? `${fmtDateTime(res.at)} (just now)` : "Not checked in this session"}</dd>
+        {res && (
+          <>
+            <dt className="text-muted">Recomputed</dt><dd className="break-all font-mono text-xs">{res.check.computed}</dd>
+            <dt className="text-muted">Ingested</dt><dd>{fmtDateTime(res.ingestedAt)} · {res.sizeBytes.toLocaleString("en-US")} bytes</dd>
+          </>
+        )}
       </dl>
+      {res && (
+        <details className="rounded-md border border-line bg-white">
+          <summary className="cursor-pointer px-3 py-2 font-semibold">Source artifact (raw C2OIX text, as received)</summary>
+          <pre className="max-h-96 overflow-auto whitespace-pre-wrap border-t border-line p-3 font-mono text-xs leading-5">{res.raw}</pre>
+        </details>
+      )}
     </div>
   );
 }

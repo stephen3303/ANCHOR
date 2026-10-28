@@ -1,17 +1,38 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { ChainCheck } from "@/server/chain";
+import type { IntegrityCheck } from "@/server/repo";
 import { CheckCircle2, Download, FileCheck2, FileText, Printer, RotateCcw, ShieldAlert, ShieldCheck, Users } from "lucide-react";
-import { AUDIT_BY_ACTION, AUDIT_BY_CLASSIFICATION, MESSAGES } from "@/lib/data";
+import { AUDIT_BY_ACTION, AUDIT_BY_CLASSIFICATION } from "@/lib/data";
 import { fmtDate, fmtTime, shortHash } from "@/lib/format";
 import { useStore } from "@/lib/store";
-import { Bar, Button, Check, ClassBadge, Delta, Donut, PageHeader, Panel, Pill, Select, StatCard, StatusDot, cx, td, th, theadRow } from "@/components/ui";
+import { Bar, Button, Check, ClassBadge, Donut, PageHeader, Panel, Pill, Select, StatCard, StatusDot, cx, td, th, theadRow } from "@/components/ui";
 
 const ACTION_COLORS = ["#2563eb", "#16a34a", "#f59e0b", "#ef4444", "#8b5cf6", "#94a3b8", "#cbd5e1"];
 const CLASS_COLORS = ["bg-green-600", "bg-purple-500", "bg-blue-600", "bg-red-600"];
 
 export default function AuditPage() {
-  const { audit, log, notify } = useStore();
+  const { audit, log, notify, offline, refresh } = useStore();
+  const [check, setCheck] = useState<{ messages: IntegrityCheck[]; chain: ChainCheck } | null>(null);
+  const [checking, setChecking] = useState(false);
+  const runCheck = async () => {
+    setChecking(true);
+    try {
+      const r = await fetch("/api/integrity", { method: "POST" });
+      if (!r.ok) throw new Error(`Server answered ${r.status}`);
+      const c = (await r.json()) as { messages: IntegrityCheck[]; chain: ChainCheck };
+      setCheck(c);
+      const bad = c.messages.filter((m) => !m.ok).length;
+      notify(bad || !c.chain.ok ? "Integrity check FAILED. See results." : `Verified ${c.messages.length} records and ${c.chain.checked} audit events`);
+      await refresh();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Integrity check failed to run");
+    } finally {
+      setChecking(false);
+    }
+  };
+  const violations = check ? check.messages.filter((m) => !m.ok).length + (check.chain.ok ? 0 : 1) : null;
   const [user, setUser] = useState("All Users");
   const [action, setAction] = useState("All Actions");
   const [results, setResults] = useState({ Success: true, Failed: true, Warning: true });
@@ -33,6 +54,7 @@ export default function AuditPage() {
         subtitle="Ensure the confidentiality, integrity, and accountability of all records and system activity."
         actions={
           <>
+            <Button variant="primary" icon={ShieldCheck} disabled={checking || offline} onClick={() => void runCheck()}>{checking ? "Verifying…" : "Run Integrity Check"}</Button>
             <Button icon={FileText} onClick={() => { log("Generate Report", "Audit Report"); notify("Audit report generated"); }}>Generate Audit Report</Button>
             <Button variant="primary" icon={Download} onClick={() => notify("Audit log exported (signed)")}>Export</Button>
             <Button icon={Printer} onClick={() => window.print()}>Print</Button>
@@ -41,10 +63,16 @@ export default function AuditPage() {
       />
 
       <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={FileText} value={(12475 + audit.length).toLocaleString("en-US")} label="Total Audit Events" note={<Delta dir="up" good>8% from last 7 days</Delta>} />
-        <StatCard icon={ShieldAlert} value={0} label="Integrity Violations" tone="red" note="No unauthorized changes" />
-        <StatCard icon={Users} value={37} label="Unique Users" note={<Delta dir="up" good>2 new this week</Delta>} />
-        <StatCard icon={FileCheck2} value="100%" label="Records Validated" tone="green" note="No data tampering detected" />
+        <StatCard icon={FileText} value={audit.length.toLocaleString("en-US")} label="Audit Events" note="Hash-chained, append-only" />
+        <StatCard icon={ShieldAlert} value={violations ?? "—"} label="Integrity Violations" tone="red" note={check ? (violations ? "Investigate now" : "No unauthorized changes") : "Run a check to see"} />
+        <StatCard icon={Users} value={new Set(audit.map((e) => e.user)).size} label="Unique Users" note="In this log" />
+        <StatCard
+          icon={FileCheck2}
+          value={check ? `${Math.round((check.messages.filter((m) => m.ok).length / Math.max(1, check.messages.length)) * 100)}%` : "—"}
+          label="Records Validated"
+          tone="green"
+          note={check ? `${check.messages.length} records · audit chain ${check.chain.ok ? "intact" : "BROKEN"}` : "Run a check to see"}
+        />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[230px_1fr_360px]">
@@ -104,9 +132,15 @@ export default function AuditPage() {
               <dt className="text-muted">Device</dt><dd>{ev.device}</dd>
               <dt className="text-muted">Location</dt><dd>{ev.location}</dd>
               <dt className="text-muted">Details</dt><dd>{ev.details}</dd>
-              {ev.hash && (<><dt className="text-muted">Integrity</dt><dd className="flex items-center gap-1 font-mono text-xs text-green-700"><CheckCircle2 className="size-4" /> SHA-256 {shortHash(ev.hash)} (verified)</dd></>)}
+              {ev.hash && (
+                <>
+                  <dt className="text-muted">Event hash</dt>
+                  <dd className="flex items-center gap-1 font-mono text-xs text-green-700"><CheckCircle2 className="size-4" /> SHA-256 {shortHash(ev.hash)}</dd>
+                  {ev.prevHash && (<><dt className="text-muted">Chained to</dt><dd className="font-mono text-xs">{shortHash(ev.prevHash)}</dd></>)}
+                </>
+              )}
             </dl>
-            <p className="mt-3 text-xs text-muted">Audit entries are append-only. They cannot be edited or deleted by any role.</p>
+            <p className="mt-3 text-xs text-muted">Audit entries are append-only: the database refuses edits and deletes, and each entry&apos;s hash covers the one before it, so any change breaks the chain.</p>
           </Panel>
         )}
       </div>
@@ -132,19 +166,30 @@ export default function AuditPage() {
           ))}
           <p className="text-xs text-muted">Counts across all enclaves; this network displays UNCLASSIFIED only.</p>
         </Panel>
-        <Panel title="Recent Integrity Checks">
-          <table className="w-full">
-            <thead><tr className={theadRow}><th className={th}>Resource</th><th className={th}>Hash</th><th className={th}>Result</th></tr></thead>
-            <tbody>
-              {MESSAGES.slice(0, 5).map((m) => (
-                <tr key={m.id} className="border-b border-line/70">
-                  <td className={td}>{m.reference}</td>
-                  <td className={cx(td, "font-mono text-xs")}>{shortHash(m.sha256)}</td>
-                  <td className={td}><StatusDot tone="green">Pass</StatusDot></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <Panel title="Integrity Check Results">
+          {check ? (
+            <div className="max-h-72 overflow-y-auto">
+              <table className="w-full">
+                <thead><tr className={theadRow}><th className={th}>Resource</th><th className={th}>Hash</th><th className={th}>Result</th></tr></thead>
+                <tbody>
+                  <tr className="border-b border-line/70">
+                    <td className={td}>Audit chain ({check.chain.checked})</td>
+                    <td className={cx(td, "text-xs")}>{check.chain.ok ? "All links" : `Breaks at ${check.chain.brokenAt}`}</td>
+                    <td className={td}>{check.chain.ok ? <StatusDot tone="green">Pass</StatusDot> : <StatusDot tone="red">Fail</StatusDot>}</td>
+                  </tr>
+                  {check.messages.map((m) => (
+                    <tr key={m.id} className="border-b border-line/70">
+                      <td className={td}>{m.reference}</td>
+                      <td className={cx(td, "font-mono text-xs")}>{shortHash(m.computed)}</td>
+                      <td className={td}>{m.ok ? <StatusDot tone="green">Pass</StatusDot> : <StatusDot tone="red">Fail</StatusDot>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-muted">Run an integrity check to recompute every stored message hash and walk the audit chain.</p>
+          )}
         </Panel>
       </div>
     </>

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { AlertCircle, AlertTriangle, CheckCircle2, CheckSquare, Clock, Download, FileText, Pencil, Printer, Users, FilePlus2 } from "lucide-react";
-import { MESSAGES, ONGOING_TOPICS, TURNOVER_CHECKLIST, actionItems } from "@/lib/data";
+import { ONGOING_TOPICS, TURNOVER_CHECKLIST, actionItems } from "@/lib/data";
+import type { Message } from "@/lib/types";
 import { fmtTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { Button, Check, Delta, ImportanceBadge, LifecycleBadge, Panel, StatCard, StatusDot, Tabs, tableWrap, td, th, theadRow, tbodyRow, type DotTone } from "@/components/ui";
@@ -12,13 +13,13 @@ type Tab = "summary" | "actions" | "topics" | "recent" | "notes";
 const statusTone: Record<string, DotTone> = { Open: "red", "In Progress": "amber", "Not Started": "gray", Done: "green", Active: "green", Monitoring: "amber" };
 
 export default function WatchTurnover() {
-  const { userState, watchNotes, setWatchNotes, checklist, toggleChecklist, log, notify } = useStore();
+  const { userState, watchNotes, setWatchNotes, checklist, toggleChecklist, log, notify, messages: MESSAGES } = useStore();
   const [tab, setTab] = useState<Tab>("summary");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const high = MESSAGES.filter((m) => m.importance === "High" && !["SUPERSEDED", "CANCELLED", "EXPIRED"].includes(m.lifecycle));
-  const actions = actionItems();
-  const pendingAck = MESSAGES.filter((m) => m.ackRequired && !userState[m.id].acknowledgedAt && m.lifecycle !== "SUPERSEDED");
+  const actions = actionItems(MESSAGES);
+  const pendingAck = MESSAGES.filter((m) => m.ackRequired && !userState[m.id]?.acknowledgedAt && m.lifecycle !== "SUPERSEDED");
   const done = TURNOVER_CHECKLIST.filter((c) => checklist[c]).length;
   const ready = done === TURNOVER_CHECKLIST.length;
 
@@ -132,7 +133,7 @@ export default function WatchTurnover() {
   );
 }
 
-function HighPriority({ items }: { items: typeof MESSAGES }) {
+function HighPriority({ items }: { items: Message[] }) {
   const { userState } = useStore();
   return (
     <Panel title="2. High-Priority Messages" icon={AlertCircle} action={<Link href="/messages" className="text-sm text-link">View All ({items.length})</Link>}>

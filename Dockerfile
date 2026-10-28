@@ -14,11 +14,14 @@ RUN npm run build
 
 FROM node:22-alpine AS run
 WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0 \
+    ANCHOR_DB=/app/data/anchor.db NODE_OPTIONS=--disable-warning=ExperimentalWarning
 RUN addgroup -S anchor && adduser -S anchor -G anchor
 COPY --from=build --chown=anchor:anchor /app/.next/standalone ./
 COPY --from=build --chown=anchor:anchor /app/.next/static ./.next/static
 COPY --from=build --chown=anchor:anchor /app/public ./public
+RUN mkdir -p /app/data && chown anchor:anchor /app/data
 USER anchor
+VOLUME /app/data
 EXPOSE 3000
 CMD ["node", "server.js"]

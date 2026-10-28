@@ -5,4 +5,9 @@ services:
     container_name: anchor-prototype
     ports:
       - "3000:3000"
+    volumes:
+      - anchor-data:/app/data
     restart: unless-stopped
+
+volumes:
+  anchor-data:

@@ -142,7 +142,7 @@ function applyQueued(state: ServerState, queue: QueuedItem[]): ServerState {
   const userState = { ...state.userState };
   let { subscriptions, approvals, watch } = state;
   const at = (id: string) => userState[id] ?? { read: "new" as const, starred: false };
-  for (const { action: a, login } of [...queue].reverse()) {
+  for (const { action: a, login, id: qid } of [...queue].reverse()) {
     if (login !== state.user.login) continue;
     if (a.type === "ack") userState[a.id] = { ...at(a.id), acknowledgedAt: a.at, read: "read" };
     else if (a.type === "read") userState[a.id] = { ...at(a.id), read: a.read };
@@ -151,7 +151,7 @@ function applyQueued(state: ServerState, queue: QueuedItem[]): ServerState {
     else if (a.type === "requestSubscription")
       subscriptions = [
         ...subscriptions,
-        { ...a.sub, id: `queued-${a.sub.name}`, status: "Pending Approval", mandatory: false, subscribedOn: "—", lastUpdated: "Queued", requestedBy: state.user.name },
+        { ...a.sub, id: qid, status: "Pending Approval", mandatory: false, subscribedOn: "—", lastUpdated: "Queued", requestedBy: state.user.name },
       ];
     else if (a.type === "setSubscription") subscriptions = subscriptions.map((x) => (x.id === a.id ? { ...x, status: a.status } : x));
     else if (a.type === "decideApproval") approvals = approvals.filter((x) => x.id !== a.id);
@@ -375,6 +375,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const results = r.data.results as { qid: string; ok: boolean; error?: string; keep?: boolean }[];
           const done = new Set(results.filter((x) => x.ok).map((x) => x.qid));
           const rejected = results.filter((x) => !x.ok && !x.keep);
+          const kept = results.filter((x) => x.keep).length;
           // Rejected items are dropped too: the server has said why, and
           // retrying them would fail the same way.
           setSyncQueue((q) => {
@@ -386,10 +387,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setLastSync(now);
           writeLocal(LASTSYNC_KEY, now.toISOString());
           await refresh();
+          const still = kept ? ` ${kept} still queued; try again shortly.` : "";
           notify(
             rejected.length
-              ? `Synced ${done.size}; ${rejected.length} rejected: ${rejected[0].error}`
-              : `Synced ${done.size} item${done.size === 1 ? "" : "s"}. Hashes verified.`,
+              ? `Synced ${done.size}; ${rejected.length} rejected: ${rejected[0].error}${still}`
+              : `Synced ${done.size} item${done.size === 1 ? "" : "s"}.${still || " Hashes verified."}`,
           );
         })();
       },

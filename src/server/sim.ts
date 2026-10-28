@@ -178,10 +178,12 @@ export function simDrop(db: DatabaseSync, actor: Actor, count: number): DropResu
  * Break or restore one link. Restoring the circuit brings in everything waiting at
  * C2OIX; restoring a workstation link catches that workstation up.
  */
-export function simSetLink(db: DatabaseSync, actor: Actor & { name: string }, key: LinkKey, up: boolean): { caughtUp: number } {
+export function simSetLink(db: DatabaseSync, actor: Actor & { name: string }, key: LinkKey, up: boolean): { caughtUp: number; unchanged?: boolean } {
   if (!LINKS.includes(key)) throw new SimError("Unknown link.");
   ensureSim(db);
   return tx(db, () => {
+    // A press made from a stale screen that changes nothing is neither applied nor logged.
+    if (isUp(db, key) === up) return { caughtUp: 0, unchanged: true };
     const at = nowIso();
     db.prepare("UPDATE sim_link SET up = ?, changed_at = ?, changed_by = ? WHERE key = ?").run(up ? 1 : 0, at, actor.name, key);
     let caughtUp = 0;

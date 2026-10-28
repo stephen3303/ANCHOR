@@ -75,3 +75,21 @@ test("drops are bounded, the queue runs dry cleanly, and every action is audited
   assert.equal(listAudit(db, 1000).length, before + 4);
   assert.equal(verifyAudit(db).ok, true);
 });
+
+test("the demo script's sequence ends with every workstation caught up; a repeated press changes nothing", () => {
+  const db = fresh();
+  const before = listAudit(db, 1000).length;
+  simDrop(db, op, 1);
+  simSetLink(db, op, "circuit", false);
+  simDrop(db, op, 3);
+  assert.equal(traffic(db).atC2oix, 9);
+  simSetLink(db, op, "ws2", false);
+  assert.deepEqual(simSetLink(db, op, "ws2", false), { caughtUp: 0, unchanged: true });
+  simSetLink(db, op, "circuit", true);
+  let t = traffic(db);
+  assert.deepEqual([t.atC2oix, t.ingested.length, t.stations.ws1.count, t.stations.ws2.count, t.stations.ws2.owed], [6, 4, 4, 1, 3]);
+  simSetLink(db, op, "ws2", true);
+  t = traffic(db);
+  assert.equal(t.stations.ws2.last?.reference, "NVA-2614-0455");
+  assert.equal(listAudit(db, 1000).length, before + 6, "the repeated press wrote no audit entry");
+});

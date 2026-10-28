@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Monitor, RotateCcw, Send, Server, Waypoints } from "lucide-react";
 import { fmtDateTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
@@ -127,13 +127,17 @@ export default function TopologyPage() {
   const { notify, refresh } = useStore();
   const [sim, setSim] = useState<Sim | null>(null);
   const [working, setWorking] = useState("");
+  // Bumped by every change made here, so a poll that started before it can't put old counts back.
+  const version = useRef(0);
 
   useEffect(() => {
     let alive = true;
-    const read = () =>
-      readSim().then((s) => {
-        if (alive && s) setSim(s);
+    const read = () => {
+      const started = version.current;
+      return readSim().then((s) => {
+        if (alive && s && started === version.current) setSim(s);
       });
+    };
     read();
     const t = setInterval(() => document.visibilityState === "visible" && read(), POLL_MS);
     return () => {
@@ -142,12 +146,14 @@ export default function TopologyPage() {
     };
   }, []);
 
-  const send = async (key: string, body: object, done: (result: Record<string, number | string>) => string) => {
+  const send = async (key: string, body: object, done: (result: Record<string, number | string | boolean>) => string) => {
     setWorking(key);
+    version.current += 1;
     try {
       const r = await fetch("/api/topology", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? `Server answered ${r.status}`);
+      version.current += 1;
       setSim(data as Sim);
       notify(done(data.result ?? {}));
       await refresh();
@@ -175,7 +181,7 @@ export default function TopologyPage() {
     );
   const toggle = (l: Link) =>
     send(l.key, { op: "link", key: l.key, up: !l.up }, (r) =>
-      l.up ? `${l.label} broken` : `${l.label} restored${Number(r.caughtUp) ? `: ${plural(Number(r.caughtUp))} came through` : ""}`,
+      r.unchanged ? `${l.label} was already ${l.up ? "down" : "up"}` : l.up ? `${l.label} broken` : `${l.label} restored${Number(r.caughtUp) ? `: ${plural(Number(r.caughtUp))} came through` : ""}`,
     );
 
   const tiles = [

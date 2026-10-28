@@ -77,6 +77,16 @@ CREATE TABLE IF NOT EXISTS watch (
   notes     TEXT NOT NULL,
   checklist TEXT NOT NULL
 );
+
+-- EMCON queue items already applied, so a retried sync can't apply one twice.
+CREATE TABLE IF NOT EXISTS sync_applied (
+  login      TEXT NOT NULL,
+  qid        TEXT NOT NULL,
+  applied_at TEXT NOT NULL,
+  ok         INTEGER NOT NULL,
+  error      TEXT,
+  PRIMARY KEY (login, qid)
+);
 `;
 
 export function dbPath(): string {
@@ -87,20 +97,27 @@ export function dbPath(): string {
 export function openDb(file: string): DatabaseSync {
   if (file !== ":memory:") mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
-  db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
+  db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
   db.exec(SCHEMA);
   return db;
 }
 
-/** Run fn in a transaction; roll back if it throws. */
+const depth = new WeakMap<DatabaseSync, number>();
+
+/** Run fn in a transaction; roll back if it throws. Nested calls use savepoints. */
 export function tx<T>(db: DatabaseSync, fn: () => T): T {
-  db.exec("BEGIN IMMEDIATE");
+  const d = depth.get(db) ?? 0;
+  const sp = `sp${d}`;
+  db.exec(d ? `SAVEPOINT ${sp}` : "BEGIN IMMEDIATE");
+  depth.set(db, d + 1);
   try {
     const out = fn();
-    db.exec("COMMIT");
+    db.exec(d ? `RELEASE ${sp}` : "COMMIT");
     return out;
   } catch (e) {
-    db.exec("ROLLBACK");
+    db.exec(d ? `ROLLBACK TO ${sp}; RELEASE ${sp}` : "ROLLBACK");
     throw e;
+  } finally {
+    depth.set(db, d);
   }
 }

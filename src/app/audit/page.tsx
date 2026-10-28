@@ -13,7 +13,7 @@ const ACTION_COLORS = ["#2563eb", "#16a34a", "#f59e0b", "#ef4444", "#8b5cf6", "#
 const CLASS_COLORS = ["bg-green-600", "bg-purple-500", "bg-blue-600", "bg-red-600"];
 
 export default function AuditPage() {
-  const { audit, log, notify, offline, refresh } = useStore();
+  const { audit, auditStats, log, notify, offline, refresh } = useStore();
   const [check, setCheck] = useState<{ messages: IntegrityCheck[]; chain: ChainCheck } | null>(null);
   const [checking, setChecking] = useState(false);
   const runCheck = async () => {
@@ -63,9 +63,9 @@ export default function AuditPage() {
       />
 
       <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={FileText} value={audit.length.toLocaleString("en-US")} label="Audit Events" note="Hash-chained, append-only" />
+        <StatCard icon={FileText} value={auditStats.events.toLocaleString("en-US")} label="Audit Events" note="Hash-chained, append-only" />
         <StatCard icon={ShieldAlert} value={violations ?? "—"} label="Integrity Violations" tone="red" note={check ? (violations ? "Investigate now" : "No unauthorized changes") : "Run a check to see"} />
-        <StatCard icon={Users} value={new Set(audit.map((e) => e.user)).size} label="Unique Users" note="In this log" />
+        <StatCard icon={Users} value={auditStats.users} label="Unique Users" note="In this log" />
         <StatCard
           icon={FileCheck2}
           value={check ? `${Math.round((check.messages.filter((m) => m.ok).length / Math.max(1, check.messages.length)) * 100)}%` : "—"}
@@ -90,7 +90,7 @@ export default function AuditPage() {
           <Button icon={RotateCcw} className="w-full" onClick={() => { setUser("All Users"); setAction("All Actions"); setResults({ Success: true, Failed: true, Warning: true }); }}>Reset Filters</Button>
         </Panel>
 
-        <Panel title={`Audit Log Events (${rows.length})`} bodyClassName="p-0">
+        <Panel title={`Audit Log Events (${rows.length}${audit.length < auditStats.events ? ` of the newest ${audit.length}` : ""})`} bodyClassName="p-0">
           <div className="max-h-[440px] overflow-auto">
             <table className="w-full min-w-[720px]">
               <thead className="sticky top-0">
@@ -140,7 +140,11 @@ export default function AuditPage() {
                 </>
               )}
             </dl>
-            <p className="mt-3 text-xs text-muted">Audit entries are append-only: the database refuses edits and deletes, and each entry&apos;s hash covers the one before it, so any change breaks the chain.</p>
+            <p className="mt-3 text-xs text-muted">
+              Audit entries are append-only: the database refuses edits and deletes, and each entry&apos;s hash covers the one before it, so changing a
+              past entry breaks the chain. Someone who can bypass the database and rewrite every later hash, or drop the newest entries, isn&apos;t caught by
+              the chain alone: record the chain head below somewhere outside ANCHOR and compare it on the next check.
+            </p>
           </Panel>
         )}
       </div>
@@ -174,7 +178,7 @@ export default function AuditPage() {
                 <tbody>
                   <tr className="border-b border-line/70">
                     <td className={td}>Audit chain ({check.chain.checked})</td>
-                    <td className={cx(td, "text-xs")}>{check.chain.ok ? "All links" : `Breaks at ${check.chain.brokenAt}`}</td>
+                    <td className={cx(td, "font-mono text-xs")} title={check.chain.head}>{check.chain.ok ? `Head ${shortHash(check.chain.head ?? "")}` : `Breaks at ${check.chain.brokenAt}`}</td>
                     <td className={td}>{check.chain.ok ? <StatusDot tone="green">Pass</StatusDot> : <StatusDot tone="red">Fail</StatusDot>}</td>
                   </tr>
                   {check.messages.map((m) => (

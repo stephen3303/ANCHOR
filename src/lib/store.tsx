@@ -39,8 +39,8 @@ export const DEFAULT_BRIEFING: BriefingConfig = {
 export type ApprovalRequest = Subscription & { requester: string; requestedOn: string };
 type NewSubscription = Omit<Subscription, "id" | "status" | "subscribedOn" | "lastUpdated" | "requestedBy" | "mandatory">;
 
-/** A queued offline action and how to show it in the sync queue. */
-export type QueuedItem = SyncItem & { action: Action };
+/** A queued offline action, the account that took it, and how to show it in the sync queue. */
+export type QueuedItem = SyncItem & { action: Action; login: string };
 
 interface ServerState {
   user: User;
@@ -50,6 +50,7 @@ interface ServerState {
   subscriptions: Subscription[];
   approvals: ApprovalRequest[];
   audit: AuditEvent[];
+  auditStats: { events: number; users: number };
   watch: { notes: string[]; checklist: Record<string, boolean> };
   acknowledgements: { login: string; messageId: string; at: string }[];
 }
@@ -86,10 +87,13 @@ interface Store {
   setOffline: (v: boolean) => void;
   syncQueue: QueuedItem[];
   syncNow: () => void;
+  syncing: boolean;
   queueLocal: (type: SyncItem["type"], description: string) => void;
   lastSync: Date;
 
   audit: AuditEvent[];
+  /** Totals over the whole audit log; `audit` holds only the newest events */
+  auditStats: ServerState["auditStats"];
   log: (action: string, resource: string, details?: string) => void;
 
   watchNotes: string[];
@@ -133,17 +137,23 @@ const nextId = (p: string) => `${p}-${Date.now()}-${seq++}`;
 const fmtCreated = (d: Date) =>
   `${String(d.getUTCDate()).padStart(2, "0")} ${["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"][d.getUTCMonth()]} ${String(d.getUTCHours()).padStart(2, "0")}${String(d.getUTCMinutes()).padStart(2, "0")}Z`;
 
-/** Overlay queued offline actions on a server state (oldest first). */
+/** Overlay this account's queued offline actions on a server state (oldest first). */
 function applyQueued(state: ServerState, queue: QueuedItem[]): ServerState {
   const userState = { ...state.userState };
+  let { subscriptions, approvals, watch } = state;
   const at = (id: string) => userState[id] ?? { read: "new" as const, starred: false };
-  for (const { action: a } of [...queue].reverse()) {
+  for (const { action: a, login } of [...queue].reverse()) {
+    if (login !== state.user.login) continue;
     if (a.type === "ack") userState[a.id] = { ...at(a.id), acknowledgedAt: a.at, read: "read" };
     else if (a.type === "read") userState[a.id] = { ...at(a.id), read: a.read };
     else if (a.type === "star") userState[a.id] = { ...at(a.id), starred: a.starred };
     else if (a.type === "markAllRead") for (const k of Object.keys(userState)) userState[k] = { ...at(k), read: "read" };
+    else if (a.type === "setSubscription") subscriptions = subscriptions.map((x) => (x.id === a.id ? { ...x, status: a.status } : x));
+    else if (a.type === "decideApproval") approvals = approvals.filter((x) => x.id !== a.id);
+    else if (a.type === "watchNotes") watch = { ...watch, notes: a.notes };
+    else if (a.type === "checklist") watch = { ...watch, checklist: a.checklist };
   }
-  return { ...state, userState };
+  return { ...state, userState, subscriptions, approvals, watch };
 }
 
 async function post(url: string, body: unknown): Promise<{ ok: boolean; data: Record<string, unknown> }> {
@@ -161,6 +171,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [briefing, setBriefing] = useState(DEFAULT_BRIEFING);
   const [toast, setToast] = useState<string | null>(null);
   const offlineRef = useRef(false);
+  const loginRef = useRef<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const syncingRef = useRef(false);
 
   const notify = useCallback((msg: string) => {
     setToast(msg);
@@ -172,6 +185,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const res = await fetch("/api/state", { cache: "no-store" });
       if (!res.ok) throw new Error(`Server answered ${res.status}`);
       const state = (await res.json()) as ServerState;
+      loginRef.current = state.user.login;
       // While disconnected, show queued actions on top of the last server copy.
       setServer(offlineRef.current ? applyQueued(state, readLocal<QueuedItem[]>(QUEUE_KEY, [])) : state);
       setLoadError(null);
@@ -199,7 +213,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const enqueue = useCallback((type: SyncItem["type"], description: string, action: Action) => {
     setSyncQueue((q) => {
-      const next = [{ id: nextId("sync"), type, description, created: fmtCreated(new Date()), status: "Pending" as const, action }, ...q];
+      const login = loginRef.current ?? "";
+      const next = [{ id: nextId("sync"), type, description, created: fmtCreated(new Date()), status: "Pending" as const, action, login }, ...q];
       writeLocal(QUEUE_KEY, next);
       return next;
     });
@@ -245,6 +260,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       users: server?.users ?? [],
       switchUser: async (login) => {
         if (offlineRef.current) return notify("Can't change user during EMCON");
+        if (syncQueue.length) return notify("Sync the offline queue before changing user");
         const r = await post("/api/session", { login });
         if (!r.ok) return notify(String(r.data.error ?? "Sign-in failed"));
         await refresh();
@@ -292,7 +308,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!s || s.mandatory || (s.status !== "Active" && s.status !== "Paused")) return;
         const status = s.status === "Active" ? "Paused" : "Active";
         patchLocal((st) => ({ ...st, subscriptions: st.subscriptions.map((x) => (x.id === id ? { ...x, status } : x)) }));
-        void send({ type: "toggleSubscription", id }, { type: "Subscription", description: `${s.name}: ${status}` });
+        void send({ type: "setSubscription", id, status }, { type: "Subscription", description: `${s.name}: ${status}` });
       },
       requestSubscription: (sub) => {
         void send({ type: "requestSubscription", sub }, { type: "Subscription", description: `Request: ${sub.name}` }).then(
@@ -327,9 +343,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       syncQueue,
       syncNow: () => {
         if (offlineRef.current) return notify("Cannot sync while offline");
+        if (syncingRef.current) return;
         const items = [...syncQueue].reverse(); // oldest first, the order they were taken
+        syncingRef.current = true;
+        setSyncing(true);
         void (async () => {
-          const r = await post("/api/sync", { actions: items.map((q) => ({ qid: q.id, action: q.action })) }).catch(() => null);
+          const r = await post("/api/sync", { actions: items.map((q) => ({ qid: q.id, login: q.login, action: q.action })) })
+            .catch(() => null)
+            .finally(() => {
+              syncingRef.current = false;
+              setSyncing(false);
+            });
+          // The server records each item it applies, so sending the queue again after a failure is safe.
           if (!r?.ok) return notify(String(r?.data.error ?? "Sync failed; the queue is kept"));
           const results = r.data.results as { qid: string; ok: boolean; error?: string }[];
           const done = new Set(results.filter((x) => x.ok).map((x) => x.qid));
@@ -357,7 +382,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       lastSync,
 
+      syncing,
       audit: server?.audit ?? [],
+      auditStats: server?.auditStats ?? { events: 0, users: 0 },
       log: (action, resource, details = "") => {
         const type: SyncItem["type"] = action === "Create Briefing" ? "Briefing" : action === "Generate Report" ? "Report" : "Annotation";
         void send({ type: "log", action, resource, details }, { type, description: `${action}: ${resource}` });
@@ -381,7 +408,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toast,
       notify,
     };
-  }, [server, loadError, refresh, notify, patchLocal, patchState, send, offline, syncQueue, lastSync, briefing, toast]);
+  }, [server, loadError, refresh, notify, patchLocal, patchState, send, offline, syncQueue, syncing, lastSync, briefing, toast]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

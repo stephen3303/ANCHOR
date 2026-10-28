@@ -36,7 +36,12 @@ const loginFor = (name: string) => USERS.find((u) => u.name === name)?.login ?? 
 
 export function seedIfEmpty(db: DatabaseSync): boolean {
   if ((db.prepare("SELECT COUNT(*) AS n FROM artifacts").get() as { n: number }).n > 0) return false;
+  // One transaction, so a crash part way leaves an empty database that seeds again.
+  tx(db, () => seed(db));
+  return true;
+}
 
+function seed(db: DatabaseSync) {
   // Historic audit trail first, oldest first, so the chain starts there.
   for (const e of [...AUDIT_EVENTS].reverse())
     appendAudit(db, { login: e.user, ip: e.sourceIp, device: e.device, location: e.location }, e.action, e.resource, e.details, {
@@ -77,5 +82,4 @@ export function seedIfEmpty(db: DatabaseSync): boolean {
       JSON.stringify(Object.fromEntries(TURNOVER_CHECKLIST.map((c, i) => [c, i < TURNOVER_CHECKLIST.length - 1]))),
     );
   });
-  return true;
 }

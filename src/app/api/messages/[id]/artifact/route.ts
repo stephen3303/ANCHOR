@@ -1,10 +1,11 @@
-import { actorFor, currentUser, fail, getDb, json } from "@/server/index";
+import { actorFor, fail, getDb, json, requireUser } from "@/server/index";
 import { appendAudit, getArtifact, getMessage, verifyMessages } from "@/server/repo";
 
 /** The stored source artifact for one message, with a fresh hash check. */
-export async function GET(_req: Request, ctx: RouteContext<"/api/messages/[id]/artifact">) {
+export async function GET(req: Request, ctx: RouteContext<"/api/messages/[id]/artifact">) {
+  const user = await requireUser(req);
+  if (user instanceof Response) return user;
   const { id } = await ctx.params;
-  const user = await currentUser();
   const db = getDb();
   const a = getArtifact(db, id);
   if (!a) return fail("No such message.", 404);

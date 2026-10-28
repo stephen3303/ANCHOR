@@ -23,7 +23,7 @@ import { Button, Panel, PrecedenceBadge, Select, StatusDot, Tabs, TextInput, Tog
 type Tab = "overview" | "cached" | "create" | "queue" | "settings";
 
 export default function OfflinePage() {
-  const { offline, setOffline, syncQueue, syncNow, lastSync, queueLocal, notify, messages: MESSAGES } = useStore();
+  const { offline, setOffline, syncQueue, syncNow, syncing, lastSync, queueLocal, notify, messages: MESSAGES } = useStore();
   const [tab, setTab] = useState<Tab>("overview");
   const [subject, setSubject] = useState("");
   const [ref, setRef] = useState("");
@@ -85,7 +85,7 @@ export default function OfflinePage() {
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <Button variant="warning" onClick={() => setTab("queue")}>View Sync Queue</Button>
-            <Button variant="primary" disabled={offline || !syncQueue.length} onClick={syncNow}>Sync Now</Button>
+            <Button variant="primary" disabled={offline || syncing || !syncQueue.length} onClick={syncNow}>{syncing ? "Syncing…" : "Sync Now"}</Button>
           </div>
         </div>
       </div>

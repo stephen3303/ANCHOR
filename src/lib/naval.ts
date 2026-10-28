@@ -168,6 +168,9 @@ export function renderNavalMessage(m: RenderInput): string {
 }
 
 /** Parse raw naval text. Throws NavalParseError with a reason a user can act on. */
+/** Message serials compare without regard to case or spacing ("Alnav  076/26" is ALNAV 076/26). */
+export const normRef = (s: string) => s.trim().replace(/\s+/g, " ").toUpperCase();
+
 export function parseNavalMessage(raw: string): ParsedMessage {
   const lines = raw.replace(/\r\n?/g, "\n").split("\n").map((l) => l.trimEnd());
   while (lines.length && !lines[0].trim()) lines.shift();
@@ -198,9 +201,10 @@ export function parseNavalMessage(raw: string): ParsedMessage {
   if (classification !== "UNCLASSIFIED" && classification !== "CUI")
     fail(`This prototype only accepts UNCLAS or CUI traffic, not ${classification}.`);
 
-  const reference = lines[i++]?.trim() ?? "";
-  if (!/^[A-Z][A-Z .]* [\d.-]+(\/\d{2})?$/i.test(reference))
-    fail(`Line after the classification must be the message serial, e.g. "NAVADMIN 236/26", not "${reference}".`);
+  const serial = lines[i++]?.trim() ?? "";
+  if (!/^[A-Z][A-Z .]* [\d.-]+(\/\d{2})?$/i.test(serial))
+    fail(`Line after the classification must be the message serial, e.g. "NAVADMIN 236/26", not "${serial}".`);
+  const reference = normRef(serial);
 
   let subject = "";
   let msgidOrig = "";
@@ -227,7 +231,7 @@ export function parseNavalMessage(raw: string): ParsedMessage {
   if (d) {
     const target = refs.find((r) => r.letter === d[2].toUpperCase());
     if (!target) fail(`NARR names REF ${d[2]} but there is no REF/${d[2]}/ line.`);
-    directive = { kind: d[1].toUpperCase() as Directive, target: target!.ref };
+    directive = { kind: d[1].toUpperCase() as Directive, target: normRef(target!.ref) };
   }
 
   // Remarks: "N. Heading. text" paragraphs, optionally followed by "A. item" lines.

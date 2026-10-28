@@ -97,10 +97,15 @@ test("tampering that bypasses the triggers is caught by the hash checks", () => 
 
 test("acknowledgement: first one stands, offline time is kept, not-required is refused", () => {
   const db = fresh();
-  const at = new Date(Date.now() - 3_600_000).toISOString();
-  const got = applyAction(db, ramirez, actor(ramirez), { type: "ack", id: "comsublant-080-26", at }, true);
+  // Seeded traffic was stored just now, so a time an hour back predates it and is replaced by the server's.
+  const before = Date.now();
+  const early = applyAction(db, hale, actor(hale), { type: "ack", id: "comsublant-080-26", at: new Date(before - 3_600_000).toISOString() }, true) as string;
+  assert.ok(new Date(early).getTime() >= before);
+  const { message } = ingestRaw(db, SAMPLES[0].raw);
+  const at = new Date().toISOString();
+  const got = applyAction(db, ramirez, actor(ramirez), { type: "ack", id: message.id, at }, true);
   assert.equal(got, at);
-  const again = applyAction(db, ramirez, actor(ramirez), { type: "ack", id: "comsublant-080-26" });
+  const again = applyAction(db, ramirez, actor(ramirez), { type: "ack", id: message.id });
   assert.equal(again, at);
   const future = applyAction(db, hale, actor(hale), { type: "ack", id: "comsublant-080-26", at: "2099-01-01T00:00:00Z" }, true) as string;
   assert.ok(new Date(future).getTime() <= Date.now());

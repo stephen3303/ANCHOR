@@ -58,6 +58,17 @@ export function appendAudit(
   details: string,
   opts: { result?: AuditEvent["result"]; classification?: Classification; timestamp?: string } = {},
 ): AuditEvent {
+  return tx(db, () => appendAuditRow(db, actor, action, resource, details, opts));
+}
+
+function appendAuditRow(
+  db: DatabaseSync,
+  actor: Actor,
+  action: string,
+  resource: string,
+  details: string,
+  opts: { result?: AuditEvent["result"]; classification?: Classification; timestamp?: string },
+): AuditEvent {
   const last = db.prepare("SELECT hash FROM audit ORDER BY seq DESC LIMIT 1").get() as { hash: string } | undefined;
   const prev = last?.hash ?? GENESIS;
   const e = {
@@ -118,6 +129,12 @@ export function listAudit(db: DatabaseSync, limit = 500): AuditEvent[] {
   return (db.prepare("SELECT * FROM audit ORDER BY seq DESC LIMIT ?").all(limit) as unknown as AuditRow[]).map(auditFromRow);
 }
 
+/** Totals across the whole log, not just the page of events sent to the screen. */
+export function auditStats(db: DatabaseSync): { events: number; users: number } {
+  const r = db.prepare("SELECT COUNT(*) AS events, COUNT(DISTINCT user) AS users FROM audit").get() as { events: number; users: number };
+  return { events: r.events, users: r.users };
+}
+
 export function verifyAudit(db: DatabaseSync): ChainCheck {
   return verifyChain((db.prepare("SELECT * FROM audit ORDER BY seq ASC").all() as unknown as AuditRow[]).map(auditFromRow));
 }
@@ -169,7 +186,8 @@ export function ingestRaw(
   raw: string,
   opts: { id?: string; c2oixId?: string; enrichment?: Enrichment; actor?: Actor; audit?: boolean } = {},
 ): IngestResult {
-  const text = raw.replace(/\r\n?/g, "\n");
+  // Hash and store exactly what arrived; only the parser normalises line endings.
+  const text = raw;
   const hash = sha256(text);
   const actor = opts.actor ?? SYSTEM;
 
@@ -189,7 +207,13 @@ export function ingestRaw(
     throw e;
   }
 
-  const clash = db.prepare("SELECT id FROM messages WHERE reference = ?").get(p.reference) as { id: string } | undefined;
+  if (p.directive?.target === p.reference) throw new IngestError(`${p.reference} names itself in its ${p.directive.kind} line.`);
+
+  const clash = db.prepare("SELECT m.id, a.raw FROM messages m JOIN artifacts a ON a.c2oix_id = m.c2oix_id WHERE m.reference = ?").get(p.reference) as
+    | { id: string; raw: string }
+    | undefined;
+  // The same message retransmitted with other line endings is still the same message.
+  if (clash && sameText(clash.raw, text)) return { message: getMessage(db, clash.id)!, duplicate: true, changed: [] };
   if (clash)
     throw new IngestError(
       `${p.reference} is already on file with different text. A change to an official message arrives as a new message that CORRECTS or AMENDS it.`,
@@ -236,11 +260,14 @@ export function ingestRaw(
   return { message: getMessage(db, id)!, duplicate: false, changed };
 }
 
+const sameText = (a: string, b: string) => a.replace(/\r\n?/g, "\n").trimEnd() === b.replace(/\r\n?/g, "\n").trimEnd();
+
 const changedVerb = (p: ParsedMessage) => (p.directive?.kind === "CANCELS" ? "cancelled" : "superseded");
 
 function pendingDirectivesFor(db: DatabaseSync, reference: string): { reference: string; lifecycle: Lifecycle }[] {
   const out: { reference: string; lifecycle: Lifecycle }[] = [];
-  const rows = db.prepare("SELECT a.raw FROM messages m JOIN artifacts a ON a.c2oix_id = m.c2oix_id").all() as { raw: string }[];
+  // Oldest first, so when several messages name this one the latest applies last.
+  const rows = db.prepare("SELECT a.raw FROM messages m JOIN artifacts a ON a.c2oix_id = m.c2oix_id ORDER BY m.received, m.rowid").all() as { raw: string }[];
   for (const r of rows) {
     const p = parseCached(r.raw);
     if (p.directive?.target !== reference) continue;
@@ -463,7 +490,13 @@ export function requestSubscription(
 ): Subscription {
   if (!s.name?.trim()) throw new IngestError("A subscription needs a name.");
   const sub: ApprovalRequest = {
-    ...s,
+    name: s.name,
+    category: s.category,
+    description: s.description,
+    criteria: s.criteria,
+    frequency: s.frequency,
+    channels: s.channels,
+    justification: s.justification,
     id: `sub-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
     status: "Pending Approval",
     mandatory: false,
@@ -478,6 +511,22 @@ export function requestSubscription(
     appendAudit(db, actor, "Request Subscription", s.name, "Routed to unit Subscription Approver.");
   });
   return sub;
+}
+
+/** Set a subscription Active or Paused. Absolute, so replaying it twice changes nothing. */
+export function setSubscription(db: DatabaseSync, actor: Actor, id: string, status: "Active" | "Paused"): Subscription {
+  const row = db.prepare("SELECT owner, data FROM subscriptions WHERE id = ?").get(id) as { owner: string; data: string } | undefined;
+  if (!row || row.owner !== actor.login) throw new IngestError("That subscription isn't yours.");
+  const s = JSON.parse(row.data) as Subscription;
+  if (s.mandatory) throw new IngestError(`${s.name} is assigned by command and can't be paused.`);
+  if (s.status !== "Active" && s.status !== "Paused") throw new IngestError(`${s.name} is ${s.status.toLowerCase()} and can't be paused or resumed.`);
+  if (s.status === status) return s;
+  const next: Subscription = { ...s, status, lastUpdated: today() };
+  tx(db, () => {
+    saveSub(db, actor.login, next);
+    appendAudit(db, actor, "Update Subscription", s.name, `Subscription ${status.toLowerCase()}.`);
+  });
+  return next;
 }
 
 export function toggleSubscription(db: DatabaseSync, actor: Actor, id: string): Subscription {
@@ -529,8 +578,38 @@ export function saveWatch(db: DatabaseSync, actor: Actor, unit: string, w: { not
       unit, JSON.stringify(next.notes), JSON.stringify(next.checklist),
     );
     if (w.notes) appendAudit(db, actor, "Update Watch Notes", "Watch Turnover", "Watch notes saved.");
+    if (w.checklist) appendAudit(db, actor, "Update Watch Checklist", "Watch Turnover", "Turnover checklist saved.");
   });
   return next;
 }
 
 export type { ActionItem };
+
+// ---------------------------------------------------------------- EMCON sync bookkeeping
+
+export interface SyncResult {
+  qid: string;
+  ok: boolean;
+  error?: string;
+  /** True when this item was applied by an earlier sync and skipped now */
+  replay?: boolean;
+}
+
+export function priorSync(db: DatabaseSync, login: string, qid: string): SyncResult | undefined {
+  const r = db.prepare("SELECT ok, error FROM sync_applied WHERE login = ? AND qid = ?").get(login, qid) as { ok: number; error: string | null } | undefined;
+  return r ? { qid, ok: !!r.ok, ...(r.error ? { error: r.error } : {}), replay: true } : undefined;
+}
+
+export function recordSync(db: DatabaseSync, login: string, r: SyncResult) {
+  db.prepare("INSERT OR IGNORE INTO sync_applied (login, qid, applied_at, ok, error) VALUES (?, ?, ?, ?, ?)").run(
+    login, r.qid, new Date().toISOString(), r.ok ? 1 : 0, r.error ?? null,
+  );
+}
+
+/** When the message's source text was stored; no acknowledgement can predate it. */
+export function ingestedAt(db: DatabaseSync, id: string): string | undefined {
+  const r = db.prepare("SELECT a.ingested_at FROM messages m JOIN artifacts a ON a.c2oix_id = m.c2oix_id WHERE m.id = ?").get(id) as
+    | { ingested_at: string }
+    | undefined;
+  return r?.ingested_at;
+}

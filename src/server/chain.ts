@@ -35,6 +35,11 @@ export interface ChainCheck {
   checked: number;
   /** id of the first event whose hash doesn't match, when not ok */
   brokenAt?: string;
+  /**
+   * Hash of the newest event. Write it down outside ANCHOR: a later check whose
+   * chain no longer passes through it means events were removed or rewritten.
+   */
+  head?: string;
 }
 
 /** Walk events oldest first and recompute every link. */
@@ -44,5 +49,5 @@ export function verifyChain(events: (ChainFields & { prevHash: string; hash: str
     if (e.prevHash !== prev || eventHash(prev, e) !== e.hash) return { ok: false, checked: events.length, brokenAt: e.id };
     prev = e.hash;
   }
-  return { ok: true, checked: events.length };
+  return { ok: true, checked: events.length, head: prev };
 }

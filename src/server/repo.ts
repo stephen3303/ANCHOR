@@ -22,6 +22,7 @@ import type {
   MessageUserState,
   Subscription,
 } from "../lib/types";
+import { canReadFullAudit, type User } from "../lib/users.ts";
 
 /** ANCHOR's own metadata about a message. Never part of the official text. */
 export interface Enrichment {
@@ -140,6 +141,21 @@ export function auditStats(db: DatabaseSync, login?: string): { events: number; 
       : db.prepare("SELECT COUNT(*) AS events, COUNT(DISTINCT user) AS users FROM audit WHERE user = ?").get(login)
   ) as { events: number; users: number };
   return { events: r.events, users: r.users };
+}
+
+/** What one account may read of the audit log: all of it for a System Admin, otherwise only its own entries. */
+export function auditFor(db: DatabaseSync, user: User, limit = 300): { audit: AuditEvent[]; auditStats: { events: number; users: number }; auditScope: "all" | "own" } {
+  const login = canReadFullAudit(user) ? undefined : user.login;
+  return { audit: listAudit(db, limit, login), auditStats: auditStats(db, login), auditScope: login === undefined ? "all" : "own" };
+}
+
+/**
+ * The chain check as one account may see it. Anyone can learn whether the chain is intact; the
+ * total event count, the head hash and the id of a broken entry describe the whole log, so only
+ * a System Admin gets them. Everyone else gets the count of their own entries.
+ */
+export function chainCheckFor(db: DatabaseSync, user: User, chain: ChainCheck): ChainCheck {
+  return canReadFullAudit(user) ? chain : { ok: chain.ok, checked: auditStats(db, user.login).events };
 }
 
 export function verifyAudit(db: DatabaseSync): ChainCheck {

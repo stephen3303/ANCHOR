@@ -14,8 +14,9 @@ const ACTION_COLORS = ["#2563eb", "#16a34a", "#f59e0b", "#ef4444", "#8b5cf6", "#
 const CLASS_COLORS = ["bg-green-600", "bg-purple-500", "bg-blue-600", "bg-red-600"];
 
 export default function AuditPage() {
-  const { audit, auditStats, auditScope, log, notify, offline, refresh } = useStore();
-  const own = auditScope === "own";
+  const { audit, auditStats, auditScope, loaded, log, notify, offline, refresh } = useStore();
+  // Until the first load the scope is unknown; the server, not this flag, decides what is sent.
+  const own = loaded && auditScope === "own";
   const [check, setCheck] = useState<{ messages: IntegrityCheck[]; chain: ChainCheck } | null>(null);
   const [checking, setChecking] = useState(false);
   const runCheck = async () => {
@@ -26,7 +27,7 @@ export default function AuditPage() {
       const c = (await r.json()) as { messages: IntegrityCheck[]; chain: ChainCheck };
       setCheck(c);
       const bad = c.messages.filter((m) => !m.ok).length;
-      notify(bad || !c.chain.ok ? "Integrity check FAILED. See results." : `Verified ${c.messages.length} records and ${c.chain.checked} audit events`);
+      notify(bad || !c.chain.ok ? "Integrity check FAILED. See results." : own ? `Verified ${c.messages.length} records; audit chain intact` : `Verified ${c.messages.length} records and ${c.chain.checked} audit events`);
       await refresh();
     } catch (e) {
       notify(e instanceof Error ? e.message : "Integrity check failed to run");
@@ -189,8 +190,8 @@ export default function AuditPage() {
                 <thead><tr className={theadRow}><th className={th}>Resource</th><th className={th}>Hash</th><th className={th}>Result</th></tr></thead>
                 <tbody>
                   <tr className="border-b border-line/70">
-                    <td className={td}>Audit chain ({check.chain.checked})</td>
-                    <td className={cx(td, "font-mono text-xs")} title={check.chain.head}>{check.chain.ok ? `Head ${shortHash(check.chain.head ?? "")}` : `Breaks at ${check.chain.brokenAt}`}</td>
+                    <td className={td}>{own ? "Audit chain" : `Audit chain (${check.chain.checked})`}</td>
+                    <td className={cx(td, "font-mono text-xs")} title={check.chain.head}>{own ? "—" : check.chain.ok ? `Head ${shortHash(check.chain.head ?? "")}` : `Breaks at ${check.chain.brokenAt}`}</td>
                     <td className={td}>{check.chain.ok ? <StatusDot tone="green">Pass</StatusDot> : <StatusDot tone="red">Fail</StatusDot>}</td>
                   </tr>
                   {check.messages.map((m) => (

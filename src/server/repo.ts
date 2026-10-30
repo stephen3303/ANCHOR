@@ -124,14 +124,21 @@ const auditFromRow = (r: AuditRow) => ({
   hash: r.hash,
 });
 
-/** Newest first, for display. */
-export function listAudit(db: DatabaseSync, limit = 500): AuditEvent[] {
-  return (db.prepare("SELECT * FROM audit ORDER BY seq DESC LIMIT ?").all(limit) as unknown as AuditRow[]).map(auditFromRow);
+/** Newest first, for display. With `login`, only the entries that account's own actions wrote. */
+export function listAudit(db: DatabaseSync, limit = 500, login?: string): AuditEvent[] {
+  const rows = login === undefined
+    ? db.prepare("SELECT * FROM audit ORDER BY seq DESC LIMIT ?").all(limit)
+    : db.prepare("SELECT * FROM audit WHERE user = ? ORDER BY seq DESC LIMIT ?").all(login, limit);
+  return (rows as unknown as AuditRow[]).map(auditFromRow);
 }
 
-/** Totals across the whole log, not just the page of events sent to the screen. */
-export function auditStats(db: DatabaseSync): { events: number; users: number } {
-  const r = db.prepare("SELECT COUNT(*) AS events, COUNT(DISTINCT user) AS users FROM audit").get() as { events: number; users: number };
+/** Totals across the whole log (or one account's entries), not just the page of events sent to the screen. */
+export function auditStats(db: DatabaseSync, login?: string): { events: number; users: number } {
+  const r = (
+    login === undefined
+      ? db.prepare("SELECT COUNT(*) AS events, COUNT(DISTINCT user) AS users FROM audit").get()
+      : db.prepare("SELECT COUNT(*) AS events, COUNT(DISTINCT user) AS users FROM audit WHERE user = ?").get(login)
+  ) as { events: number; users: number };
   return { events: r.events, users: r.users };
 }
 

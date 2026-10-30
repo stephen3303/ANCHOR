@@ -51,6 +51,8 @@ interface ServerState {
   approvals: ApprovalRequest[];
   audit: AuditEvent[];
   auditStats: { events: number; users: number };
+  /** "own" when this account may read only the entries its own actions wrote */
+  auditScope: "all" | "own";
   watch: { notes: string[]; checklist: Record<string, boolean> };
   acknowledgements: { login: string; messageId: string; at: string }[];
 }
@@ -94,6 +96,7 @@ interface Store {
   audit: AuditEvent[];
   /** Totals over the whole audit log; `audit` holds only the newest events */
   auditStats: ServerState["auditStats"];
+  auditScope: ServerState["auditScope"];
   log: (action: string, resource: string, details?: string) => void;
 
   watchNotes: string[];
@@ -403,6 +406,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       syncing,
       audit: server?.audit ?? [],
       auditStats: server?.auditStats ?? { events: 0, users: 0 },
+      auditScope: server?.auditScope ?? "own",
       log: (action, resource, details = "") => {
         const type: SyncItem["type"] = action === "Create Briefing" ? "Briefing" : action === "Generate Report" ? "Report" : "Annotation";
         void send({ type: "log", action, resource, details }, { type, description: `${action}: ${resource}` });

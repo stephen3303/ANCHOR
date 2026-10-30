@@ -86,3 +86,7 @@ export const DEFAULT_LOGIN = "LTaylor";
 export const userByLogin = (login: string | undefined) => USERS.find((u) => u.login === login);
 
 export const hasRole = (u: User, role: string) => u.roles.some((r) => r.name === role && r.granted);
+
+/** Who may read the whole audit log. Everyone else sees only the entries their own actions wrote. */
+export const AUDIT_READER_ROLE = "System Admin";
+export const canReadFullAudit = (u: User) => hasRole(u, AUDIT_READER_ROLE);

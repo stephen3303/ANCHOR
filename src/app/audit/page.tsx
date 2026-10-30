@@ -7,13 +7,15 @@ import { CheckCircle2, Download, FileCheck2, FileText, Printer, RotateCcw, Shiel
 import { AUDIT_BY_ACTION, AUDIT_BY_CLASSIFICATION } from "@/lib/data";
 import { fmtDate, fmtTime, shortHash } from "@/lib/format";
 import { useStore } from "@/lib/store";
+import { AUDIT_READER_ROLE } from "@/lib/users";
 import { Bar, Button, Check, ClassBadge, Donut, PageHeader, Panel, Pill, Select, StatCard, StatusDot, cx, td, th, theadRow } from "@/components/ui";
 
 const ACTION_COLORS = ["#2563eb", "#16a34a", "#f59e0b", "#ef4444", "#8b5cf6", "#94a3b8", "#cbd5e1"];
 const CLASS_COLORS = ["bg-green-600", "bg-purple-500", "bg-blue-600", "bg-red-600"];
 
 export default function AuditPage() {
-  const { audit, auditStats, log, notify, offline, refresh } = useStore();
+  const { audit, auditStats, auditScope, log, notify, offline, refresh } = useStore();
+  const own = auditScope === "own";
   const [check, setCheck] = useState<{ messages: IntegrityCheck[]; chain: ChainCheck } | null>(null);
   const [checking, setChecking] = useState(false);
   const runCheck = async () => {
@@ -62,10 +64,16 @@ export default function AuditPage() {
         }
       />
 
+      {own && (
+        <p className="mb-4 rounded-md border border-line bg-navy-50 px-4 py-3 text-sm">
+          You&apos;re seeing only the audit entries your own actions wrote. The full log is limited to the {AUDIT_READER_ROLE} role.
+        </p>
+      )}
+
       <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={FileText} value={auditStats.events.toLocaleString("en-US")} label="Audit Events" note="Hash-chained, append-only" />
+        <StatCard icon={FileText} value={auditStats.events.toLocaleString("en-US")} label={own ? "Your Audit Events" : "Audit Events"} note="Hash-chained, append-only" />
         <StatCard icon={ShieldAlert} value={violations ?? "—"} label="Integrity Violations" tone="red" note={check ? (violations ? "Investigate now" : "No unauthorized changes") : "Run a check to see"} />
-        <StatCard icon={Users} value={auditStats.users} label="Unique Users" note="In this log" />
+        <StatCard icon={Users} value={auditStats.users} label="Unique Users" note={own ? "Your entries only" : "In this log"} />
         <StatCard
           icon={FileCheck2}
           value={check ? `${Math.round((check.messages.filter((m) => m.ok).length / Math.max(1, check.messages.length)) * 100)}%` : "—"}
@@ -149,7 +157,9 @@ export default function AuditPage() {
         )}
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-3">
+      <div className={cx("mt-4 grid gap-4", !own && "xl:grid-cols-3")}>
+        {!own && (
+        <>
         <Panel title="Audit Events by Action Type">
           <div className="flex items-center gap-5">
             <Donut center="12.5K" sub="Events" segments={AUDIT_BY_ACTION.map((a, i) => ({ value: a.pct, color: ACTION_COLORS[i] }))} />
@@ -170,6 +180,8 @@ export default function AuditPage() {
           ))}
           <p className="text-xs text-muted">Counts across all enclaves; this network displays UNCLASSIFIED only.</p>
         </Panel>
+        </>
+        )}
         <Panel title="Integrity Check Results">
           {check ? (
             <div className="max-h-72 overflow-y-auto">

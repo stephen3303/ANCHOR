@@ -32,6 +32,7 @@ export function eventHash(prev: string, e: ChainFields): string {
 
 export interface ChainCheck {
   ok: boolean;
+  /** Events verified; for an account limited to its own entries (see chainCheckFor), the count of those entries */
   checked: number;
   /** id of the first event whose hash doesn't match, when not ok */
   brokenAt?: string;

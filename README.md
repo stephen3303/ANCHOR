@@ -68,7 +68,7 @@ The UI follows the mockups. Where they differ from the ANCHOR requirements packa
 - **Integrity.** Each message shows its C2OIX ID and SHA-256 from ingestion, and the print rendition carries the same block.
 - **AI summaries** are dashed, purple, labeled "Not authoritative", and never mixed into the official text.
 - **Disconnected / EMCON.** Actions taken offline are queued and replicate on sync, with bandwidth-aware priority.
-- **Audit.** Every action in the prototype is written to the audit log.
+- **Audit.** Every action in the prototype is written to the audit log. Only System Admins read the whole log; every other account sees the entries its own actions wrote, and its integrity check says only whether the chain is intact.
 - **No Reply / Forward.** The mockups show them, but releasing traffic stays with Designated Release Authorities, so the prototype offers Share Link instead.
 
 ## How it works

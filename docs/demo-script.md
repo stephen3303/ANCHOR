@@ -1,5 +1,15 @@
 # ANCHOR demo script
 
+## Before the run
+
+1. Check that Remote Control and the review VMs are reachable before going out of touch.
+2. Run from the prototype branch, not main: `git fetch origin`, then `git checkout claude/project-thread-591m7m` and `git pull`.
+3. Start Docker Desktop, then start from a fresh database: `docker compose down -v`, then `docker compose up --build`.
+4. Open http://localhost:3000. The first visit signs you in as LT Taylor, the System Admin.
+5. Know the one access rule you may be asked about: only System Admins (LT Taylor) see the whole audit log. ITC Ramirez and CDR Hale see only the entries their own actions wrote, and their integrity check says only whether the chain is intact. Everyone still sees acknowledgements, for the reports.
+
+## The run
+
 About ten minutes. Start from a fresh database (`docker compose down -v`, then `docker compose up --build`) and open http://localhost:3000. Everything here is fictional demo data.
 
 1. **Home, as LT Taylor.** The red strip lists mandatory acknowledgements. Acknowledge COMSUBLANT 078/26 from the Home card. The strip count drops.
@@ -16,7 +26,7 @@ About ten minutes. Start from a fresh database (`docker compose down -v`, then `
    4. **Circuit back.** Click "C2OIX circuit: down · restore". The three waiting messages arrive at once: C2OIX 6, ANCHOR 4, WS-01 and WS-03 at 4. WS-02 stays at 1 and reads "3 messages waiting at ANCHOR".
    5. **Workstation back.** Click "WS-02 link: down · restore". WS-02 catches up to 4, last received NVA-2614-0455.
    6. **Proof.** Audit & Integrity lists every drop and link change with who did it.
-9. **Audit & Integrity.** Run Integrity Check: every record passes and the audit chain is intact. Pick any event to see its hash and the hash it chains to.
+9. **Audit & Integrity.** Run Integrity Check: every record passes and the audit chain is intact. Pick any event to see its hash and the hash it chains to. Then switch user to ITC Ramirez and open Audit & Integrity again: the page says the full log is limited to System Admins and lists only ITC Ramirez's own entries, starting with the sign-in just made. Switch back to LT Taylor.
 10. **Persistence.** Restart the container (`docker compose restart`). Everything you did is still there.
 
 ## The same sequence in the Base44 app

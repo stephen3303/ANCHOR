@@ -6,6 +6,7 @@ import { AlertCircle, AlertTriangle, CheckCircle2, CheckSquare, Clock, Download,
 import { MESSAGES, ONGOING_TOPICS, TURNOVER_CHECKLIST, actionItems, needsOwnAck } from "@/lib/data";
 import { fmtTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
+import { WatchPrep } from "@/components/watch-prep";
 import { Button, Check, Delta, ImportanceBadge, LifecycleBadge, Panel, StatCard, StatusDot, Tabs, tableWrap, td, th, theadRow, tbodyRow, type DotTone } from "@/components/ui";
 
 type Tab = "summary" | "actions" | "topics" | "recent" | "notes";
@@ -49,6 +50,8 @@ export default function WatchTurnover() {
         </div>
       </div>
 
+      <WatchPrep />
+
       <div className="mb-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <StatCard icon={FileText} value={MESSAGES.filter((m) => m.received >= "2026-10-23T19:00:00Z").length} label="New This Watch" note={<Delta dir="down" good>25% from last watch</Delta>} />
         <StatCard icon={AlertTriangle} value={high.length} label="High Priority" tone="red" note={<Delta dir="up">1 from last watch</Delta>} />
@@ -86,7 +89,7 @@ export default function WatchTurnover() {
                 <h2 className="mb-1 flex items-center gap-2 text-lg font-bold"><FileText className="size-5" /> 1. Situation Overview</h2>
                 <p className="mb-2 text-[15px]">Key information for the incoming watch. Review high-priority messages, open actions, and ongoing topics.</p>
                 <ul className="list-disc space-y-0.5 rounded-md bg-navy-50 py-3 pl-10 pr-3 text-[15px]">
-                  <li>Normal operations. No critical issues require immediate escalation.</li>
+                  <li>Confirm operational status and escalation needs with the outgoing watch; review deadlines and carryover above.</li>
                   <li>{high.length} high-priority messages require attention.</li>
                   <li>{pendingAck.length} mandatory acknowledgements are still open for this watch.</li>
                   <li>{actions.length} action items remain open from previous watches.</li>

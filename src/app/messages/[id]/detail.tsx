@@ -9,7 +9,7 @@ import { AckPanel, Attachments, LifecycleNotice, MessageList, MessageTabs, Metad
 import { Button, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tag } from "@/components/ui";
 import type { Message } from "@/lib/types";
 
-export function MessageDetail({ id }: { id: string }) {
+export function MessageDetail({ id, onBack }: { id: string; onBack?: () => void }) {
   const m = messageById(id)!;
   const { markRead, markUnread, log, notify, briefing, setBriefing } = useStore();
 
@@ -37,9 +37,15 @@ export function MessageDetail({ id }: { id: string }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Link href="/messages" className="flex items-center gap-1.5 font-medium text-link hover:underline">
-          <ArrowLeft className="size-4" /> Back to Messages
-        </Link>
+        {onBack ? (
+          <button type="button" autoFocus onClick={onBack} className="flex items-center gap-1.5 font-medium text-link hover:underline">
+            <ArrowLeft className="size-4" /> Back to Messages
+          </button>
+        ) : (
+          <Link href="/messages" className="flex items-center gap-1.5 font-medium text-link hover:underline">
+            <ArrowLeft className="size-4" /> Back to Messages
+          </Link>
+        )}
         <div className="ml-auto flex flex-wrap gap-2">
           <Button icon={Bell} href="/subscriptions">Subscribe</Button>
           <Button variant="primary" icon={FilePlus2} onClick={addToBriefing}>Add to Briefing</Button>

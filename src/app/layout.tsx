@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { StoreProvider } from "@/lib/store";
+import { RoutingProvider } from "@/lib/routing-store";
 import { AppShell } from "@/components/shell";
 
 export const metadata: Metadata = {
@@ -13,7 +14,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full">
         <StoreProvider>
-          <AppShell>{children}</AppShell>
+          <RoutingProvider>
+            <AppShell>{children}</AppShell>
+          </RoutingProvider>
         </StoreProvider>
       </body>
     </html>

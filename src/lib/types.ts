@@ -179,3 +179,101 @@ export interface ActionItem {
   suspense: string;
   status: "Open" | "In Progress" | "Not Started" | "Done";
 }
+
+/* ---------- routing and release ---------- */
+
+/** A person on the command roster. Routing steps and release authority are held by people, not logins. */
+export interface Person {
+  id: string;
+  rank: string;
+  name: string;
+  position: string;
+  code: string;
+  status: "present" | "leave" | "detached";
+}
+
+export type StepAction = "review" | "release";
+
+export interface WorkflowStep {
+  title: string;
+  personId: string;
+  action: StepAction;
+}
+
+/** An admin-defined chain a draft follows, matched by message type and originator. */
+export interface RoutingWorkflow {
+  id: string;
+  name: string;
+  description: string;
+  active: boolean;
+  matchTypes: MessageType[];
+  matchOriginators: string[];
+  steps: WorkflowStep[];
+}
+
+export interface ReleaseAuthority {
+  id: string;
+  personId: string;
+  /** The position the roster record held when designated. */
+  designation: string;
+  isCommandingOfficer: boolean;
+  /** Message types this designation covers; empty means all. */
+  scope: MessageType[];
+}
+
+export interface CommandSettings {
+  textCase: "upper" | "mixed";
+  sequencePrefix: string;
+  sequenceDigits: number;
+  nextSequence: number;
+}
+
+export type DraftStatus = "drafting" | "in_routing" | "returned" | "released" | "withdrawn";
+export type StepStatus = "pending" | "current" | "endorsed" | "returned" | "released";
+
+export interface RouteStep extends WorkflowStep {
+  order: number;
+  status: StepStatus;
+  actedAt?: string;
+  comment?: string;
+}
+
+export interface Draft {
+  id: string;
+  subject: string;
+  type: MessageType;
+  originator: string;
+  precedence: Precedence;
+  classification: Classification;
+  to: string[];
+  info: string[];
+  paragraphs: string[];
+  drafterId: string;
+  status: DraftStatus;
+  workflowId?: string;
+  route: RouteStep[];
+  created: string;
+  updated: string;
+  /** Assigned only at release, in release order. */
+  dtg?: string;
+  msn?: string;
+  localSequence?: string;
+  releasedAt?: string;
+  releasedBy?: string;
+  releaseDesignation?: string;
+  /** The transmitted text, frozen at release. */
+  renderedText?: string;
+}
+
+export type RoutingEventType = "created" | "submitted" | "advanced" | "returned" | "revised" | "released" | "withdrawn";
+
+/** Append-only route log entry. */
+export interface RoutingEvent {
+  id: string;
+  draftId: string;
+  type: RoutingEventType;
+  at: string;
+  actorId: string;
+  stepTitle?: string;
+  comment: string;
+}

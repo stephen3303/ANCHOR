@@ -26,7 +26,7 @@ import {
   Volume2,
   List,
 } from "lucide-react";
-import { CURRENT_USER } from "@/lib/data";
+import { useCurrentUser } from "@/lib/current-user";
 import { fmtDateTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { Button, PageHeader, Panel, Pill, Select, Toggle, th, theadRow } from "@/components/ui";
@@ -42,6 +42,7 @@ const NOTIF_TYPES = [
 ];
 
 export default function ProfilePage() {
+  const CURRENT_USER = useCurrentUser();
   const { notify, syncNow, offline, lastSync } = useStore();
   const [prefs, setPrefs] = useState({ previews: true, sounds: true, desktop: true, compact: false });
   const [view, setView] = useState("Home");
@@ -61,9 +62,9 @@ export default function ProfilePage() {
       <PageHeader icon={Settings} title="Profile & Settings" subtitle="Manage your account, preferences, and system configuration." />
 
       <div className="grid gap-4 xl:grid-cols-3">
-        <Panel title="User Profile" icon={User} action={<Button size="sm" icon={Pencil} onClick={() => notify("Profile data comes from your CAC and command personnel record")}>Edit Profile</Button>}>
+        <Panel title="User Profile" icon={User} action={<Button size="sm" icon={Pencil} onClick={() => notify("Demo profile data is stored in PostgreSQL; edit the user record for this hackathon")}>Edit Profile</Button>}>
           <div className="mb-4 flex items-center gap-4">
-            <span className="flex size-24 items-center justify-center rounded-full border-4 border-gold bg-navy-800 text-3xl font-bold text-white">LT</span>
+            <span className="flex size-24 items-center justify-center rounded-full border-4 border-gold bg-navy-800 text-3xl font-bold text-white">{CURRENT_USER.rank || CURRENT_USER.name.slice(0, 2)}</span>
             <div>
               <div className="text-xl font-bold">{CURRENT_USER.name}</div>
               <div className="text-link">{CURRENT_USER.community}</div>
@@ -74,6 +75,7 @@ export default function ProfilePage() {
           <dl className="grid grid-cols-[90px_1fr] gap-y-2 border-t border-line pt-3 text-sm">
             <dt className="text-muted">Rank</dt><dd>{CURRENT_USER.rank}</dd>
             <dt className="text-muted">Command</dt><dd>{CURRENT_USER.command}</dd>
+            <dt className="text-muted">Message sender</dt><dd>{CURRENT_USER.commandName}</dd>
             <dt className="text-muted">Unit</dt><dd>{CURRENT_USER.unit}</dd>
             <dt className="text-muted">Email (NIPR)</dt><dd>{CURRENT_USER.email}</dd>
             <dt className="text-muted">Phone (DSN)</dt><dd>{CURRENT_USER.dsn}</dd>
@@ -102,7 +104,7 @@ export default function ProfilePage() {
             <Select label="Default View" value={view} onChange={setView} options={["Home", "Messages", "Briefings", "Watch Turnover"]} />
             <Select label="Items per Page" value={perPage} onChange={setPerPage} options={["25", "50", "100"]} />
             <Select label="Date Format" value="DD MMM YYYY" options={["DD MMM YYYY", "YYYY-MM-DD"]} />
-            <Select label="Time Format" value="Zulu (1830Z)" options={["Zulu (1830Z)", "Local 24 hour (1830L)"]} />
+            <Select label="Time Format" value="Zulu (1830Z)" options={["Zulu (1830Z)"]} />
             {([
               ["previews", "Show Message Previews", Mail],
               ["sounds", "Play Notification Sounds", Volume2],
@@ -185,17 +187,17 @@ export default function ProfilePage() {
           <p className="mb-3 text-sm text-muted">Manage your authentication and session settings.</p>
           <div className="space-y-4 text-sm">
             <div className="flex items-center justify-between">
-              <span className="font-semibold">CAC/PKI Authentication</span>
-              <span className="flex items-center gap-1 text-green-700"><CheckCircle2 className="size-4" /> Enabled</span>
+              <span className="font-semibold">Passwordless Demo Session</span>
+              <span className="text-amber-700">Hackathon only — no identity verification</span>
             </div>
-            <Select label="Session Timeout" value="15 minutes idle" options={["15 minutes idle", "30 minutes idle"]} />
+            <Select label="Session Lifetime" value="8 hours" options={["8 hours"]} />
             <div className="flex items-center justify-between">
-              <div><div className="font-semibold">Require Re-Authentication</div><div className="text-xs text-muted">For sensitive actions (export, admin)</div></div>
-              <Toggle label="Require re-authentication" checked disabled />
+              <div><div className="font-semibold">Require Re-Authentication</div><div className="text-xs text-muted">Not implemented in this passwordless demo</div></div>
+              <Toggle label="Require re-authentication" checked={false} disabled />
             </div>
             <div className="flex items-center justify-between"><span className="font-semibold">Device Management</span><Button size="sm" icon={Monitor} onClick={() => notify("2 devices: ANCHOR-OPS-01, ANCHOR-WS-03")}>View Devices</Button></div>
             <div className="flex items-center justify-between"><span className="font-semibold">Login History</span><Button size="sm" icon={History} href="/audit">View Activity</Button></div>
-            <div className="flex items-center gap-1 text-xs text-muted"><Clock className="size-3" /> Signed in with CAC at 24 OCT 2026 1515Z</div>
+            <div className="flex items-center gap-1 text-xs text-muted"><Clock className="size-3" /> Signed in as {CURRENT_USER.login}. Sign out to switch accounts.</div>
           </div>
         </Panel>
       </div>

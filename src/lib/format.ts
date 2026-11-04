@@ -2,6 +2,9 @@ const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
+/** Explicit military date/time for new manual datetime inputs. */
+export const ZULU_DATETIME_PATTERN = "^(0[1-9]|[12][0-9]|3[01]) (JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC) [0-9]{4} ([01][0-9]|2[0-3])[0-5][0-9]Z$";
+
 /** "24 OCT 2026" in UTC, the date format used across naval traffic. */
 export function fmtDate(iso: string | Date): string {
   const d = typeof iso === "string" ? new Date(iso) : iso;

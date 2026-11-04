@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useNow } from "@/lib/use-now";
 import { ArrowLeft, Printer } from "lucide-react";
-import { CURRENT_USER, messageById } from "@/lib/data";
+import { messageById } from "@/lib/data";
+import { useCurrentUser } from "@/lib/current-user";
 import { fmtDateTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { Button } from "@/components/ui";
 
 /** Official printable / PDF rendition with integrity information on the page. */
 export function PrintView({ id }: { id: string }) {
+  const CURRENT_USER = useCurrentUser();
   const m = messageById(id)!;
   const { log } = useStore();
   const now = useNow();

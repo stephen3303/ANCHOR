@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { AlertTriangle, BellRing, CheckCircle2, ClipboardList, FileText, Home, Mail, ShieldCheck, WifiOff } from "lucide-react";
-import { CURRENT_USER, MESSAGES } from "@/lib/data";
+import { MESSAGES } from "@/lib/data";
+import { useCurrentUser } from "@/lib/current-user";
 import { fmtDateTime, hoursUntil } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { MiniMessageTable } from "@/components/message";
 import { Button, LifecycleBadge, PageHeader, Panel, PrecedenceBadge, StatCard, tableWrap, td, th, theadRow, tbodyRow } from "@/components/ui";
 
 export default function HomePage() {
+  const CURRENT_USER = useCurrentUser();
   const { userState, acknowledge, subscriptions, syncQueue, offline, approvals } = useStore();
   const needAck = MESSAGES.filter((m) => m.ackRequired && m.lifecycle !== "SUPERSEDED" && m.lifecycle !== "CANCELLED");
   const pending = needAck.filter((m) => !userState[m.id].acknowledgedAt);

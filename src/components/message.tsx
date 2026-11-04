@@ -6,8 +6,10 @@ import {
   AlertTriangle,
   BadgeCheck,
   CheckCircle2,
+  Copy,
   Download,
   ExternalLink,
+  FileCode2,
   FileSpreadsheet,
   FileText,
   FileType2,
@@ -203,7 +205,29 @@ export function OfficialText({ m }: { m: Message }) {
   );
 }
 
-type Tab = "message" | "metadata" | "related" | "references" | "distribution" | "integrity";
+/** The text exactly as received: no reflow, no casing changes, no parsing. */
+export function RawText({ m }: { m: Message }) {
+  const { notify } = useStore();
+  const copy = () => {
+    navigator.clipboard?.writeText(m.rawText);
+    notify("Copied raw message text");
+  };
+  return (
+    <article className="rounded-md border border-line bg-white">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line bg-navy-50 px-4 py-2 text-xs text-muted">
+        <span className="flex items-center gap-1 font-semibold text-ink">
+          <FileCode2 className="size-4" aria-hidden /> Raw text as received
+        </span>
+        <span>C2OIX {m.c2oixId}</span>
+        <span>Unformatted, exactly as ingested</span>
+        <Button size="sm" icon={Copy} className="ml-auto" onClick={copy}>Copy</Button>
+      </div>
+      <pre className="overflow-x-auto whitespace-pre p-4 font-mono text-[13px] leading-5 text-ink" aria-label="Raw message text">{m.rawText}</pre>
+    </article>
+  );
+}
+
+type Tab = "message" | "raw" | "metadata" | "related" | "references" | "distribution" | "integrity";
 
 export function MessageTabs({ m }: { m: Message }) {
   const [tab, setTab] = useState<Tab>("message");
@@ -216,6 +240,7 @@ export function MessageTabs({ m }: { m: Message }) {
         onChange={setTab}
         tabs={[
           { id: "message", label: "Message" },
+          { id: "raw", label: "Raw Text" },
           { id: "metadata", label: "Metadata" },
           { id: "related", label: `Related Messages (${related.length})` },
           { id: "references", label: `References (${refs.length})` },
@@ -229,6 +254,7 @@ export function MessageTabs({ m }: { m: Message }) {
           <OfficialText m={m} />
         </>
       )}
+      {tab === "raw" && <RawText m={m} />}
       {tab === "metadata" && <MetadataTable m={m} />}
       {tab === "related" && <MessageList items={related} />}
       {tab === "references" && (refs.length ? <MessageList items={refs.map(messageByRef).filter(Boolean) as Message[]} /> : <p className="text-sm text-muted">No references.</p>)}

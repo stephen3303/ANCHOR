@@ -17,6 +17,7 @@ import {
   Menu,
   Network,
   Search,
+  Server,
   Settings,
   ShieldCheck,
   UserCog,
@@ -42,6 +43,7 @@ const NAV = [
   { href: "/offline", label: "Offline Mode", icon: WifiOff, badge: "sync" as const },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/audit", label: "Audit & Integrity", icon: ShieldCheck },
+  { href: "/simulators", label: "Server Simulators", icon: Server },
   { href: "/admin", label: "Admin", icon: UserCog, badge: "approvals" as const },
   { href: "/profile", label: "Profile & Settings", icon: Settings },
 ];

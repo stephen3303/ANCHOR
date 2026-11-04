@@ -1,6 +1,49 @@
 # Database schema
 
-Run `docker compose up -d --wait postgres`, then `npm run db:migrate`.
+## First-time setup (once per new database)
+
+From the repository root, with Node 22+, npm, and Docker Desktop/the Docker daemon
+running, copy `.env.example` to `.env` if it does not already exist. Then run:
+
+```sh
+npm ci
+docker compose up -d --wait postgres
+npm run db:migrate
+npm run db:seed:commands
+npm run db:seed:users
+```
+
+The bundled **`database/seeds/PLADS.txt`** supplies all command names; there is
+no dependency on a local Downloads folder. Migrations create the tables; the
+seed commands import the directory and initial demo user. These are distinct
+operations. See the [root README](../README.md#run-it) to launch the app.
+
+## Routine database startup (every restart, if not already running)
+
+Start Docker Desktop/the Docker daemon first, then run:
+
+```sh
+docker compose up -d --wait postgres
+```
+
+**That is the only database command needed after an ordinary reboot/stop.**
+Do not rerun migrations or seeds for routine startup. Existing records live in
+PostgreSQL's `/var/lib/postgresql/data`, backed by the existing `postgres_data`
+named Docker volume—not in the plaintext seed folder. Data survives computer and
+container restarts and `docker compose down`. The restart policy may start the
+container automatically when Docker starts; `up` is safe to run regardless.
+
+Use `docker compose stop` to stop containers without losing data.
+**`docker compose down -v` deletes the database volume.** Only use it for a
+purposeful reset, then repeat migration/seeding from first-time setup.
+
+## Schema/data updates (only when changed)
+
+- New SQL migration files: start the database and run `npm run db:migrate`.
+- Updated `database/seeds/PLADS.txt`: run `npm run db:seed:commands`. Existing IDs
+  are retained and missing names are added; this does not delete removed names.
+- Missing initial user: run `npm run db:seed:users`. Existing accounts are preserved.
+
 The migration runner uses the container's configured credentials, serializes
 concurrent runs with a transaction-scoped advisory lock, and applies all pending
 SQL in a transaction. `schema_migrations` records filenames and SHA-256 checksums.

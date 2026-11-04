@@ -14,9 +14,11 @@ export function requireDemoLoginEnabled() {
 }
 
 export async function currentSessionUser(): Promise<AppUser | null> {
-  if (process.env.ENABLE_DEMO_LOGIN !== "true") return null;
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!token || !/^[0-9a-f]{64}$/.test(token)) return null;
+  return sessionUserFromToken((await cookies()).get(SESSION_COOKIE)?.value);
+}
+
+export async function sessionUserFromToken(token: string | undefined): Promise<AppUser | null> {
+  if (process.env.ENABLE_DEMO_LOGIN !== "true" || !token || !/^[0-9a-f]{64}$/.test(token)) return null;
   const { rows: [row] } = await database().query(`
     SELECT u.id, u.login, u.name, u.profile, u.command_id AS "commandId", c.name AS "commandName"
     FROM user_sessions s JOIN users u ON u.id = s.user_id JOIN commands c ON c.id = u.command_id

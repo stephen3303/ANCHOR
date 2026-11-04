@@ -21,7 +21,8 @@ import { messageById, messageByRef, resolveAckStatus, sentByOwnCommand } from "@
 import { fmtDateTime, hoursUntil, shortHash } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import type { Attachment, Message } from "@/lib/types";
-import { Button, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tabs, cx, td, th, tableWrap, theadRow, tbodyRow } from "./ui";
+import { Button, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tabs, cx, tableWrap, tbodyRow } from "./ui";
+import { MessageCellsRow, MessageHeaderRow, messageColumns, type MessageCells } from "./message-columns";
 
 /** When provided, message links open in the existing reader instead of navigating. */
 export const MessageReaderNavigation = createContext<((id: string) => void) | null>(null);
@@ -333,32 +334,28 @@ export function MessageList({ items }: { items: Message[] }) {
   );
 }
 
-/** Compact recent-message table used on several dashboards. */
-export function MiniMessageTable({ items, cols = ["subject", "reference", "date"] }: { items: Message[]; cols?: ("subject" | "reference" | "date" | "class" | "prec")[] }) {
-  const { userState } = useStore();
-  const labels = { subject: "Subject", reference: "Reference", date: "Received", class: "Classification", prec: "Precedence" };
+/** Compact recent-message table used on several dashboards. Columns follow the shared message column order. */
+export function MiniMessageTable({ items, cols = ["subject", "reference", "dtg"] }: { items: Message[]; cols?: ("subject" | "reference" | "dtg" | "classification" | "precedence")[] }) {
+  const cells: MessageCells<Message> = {
+    subject: (m) => <Link href={`/messages/${m.id}`} className="text-link hover:underline">{m.subject}</Link>,
+    reference: (m) => m.reference,
+    dtg: (m) => m.dtg,
+    precedence: (m) => <PrecedenceBadge p={m.precedence} />,
+    classification: (m) => <ClassBadge c={m.classification} />,
+  };
+  const columns = messageColumns<Message>({
+    ...Object.fromEntries(cols.map((c) => [c, cells[c]])),
+  });
   return (
     <div className={tableWrap}>
       <table className="w-full">
         <thead>
-          <tr className={theadRow}>
-            <th className={th} />
-            {cols.map((c) => <th key={c} className={th}>{labels[c]}</th>)}
-          </tr>
+          <MessageHeaderRow cols={columns} />
         </thead>
         <tbody>
           {items.map((m) => (
             <tr key={m.id} className={tbodyRow}>
-              <td className={cx(td, "w-8")}>{userState[m.id]?.starred ? <Star className="size-4 fill-gold text-gold" /> : <FileText className="size-4 text-muted" />}</td>
-              {cols.map((c) => (
-                <td key={c} className={td}>
-                  {c === "subject" && <Link href={`/messages/${m.id}`} className="text-link hover:underline">{m.subject}</Link>}
-                  {c === "reference" && m.reference}
-                  {c === "date" && m.dtg}
-                  {c === "class" && <ClassBadge c={m.classification} />}
-                  {c === "prec" && <PrecedenceBadge p={m.precedence} />}
-                </td>
-              ))}
+              <MessageCellsRow cols={columns} row={m} />
             </tr>
           ))}
         </tbody>

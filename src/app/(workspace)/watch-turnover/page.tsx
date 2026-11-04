@@ -7,6 +7,7 @@ import { MESSAGES, ONGOING_TOPICS, TURNOVER_CHECKLIST, actionItems, needsOwnAck 
 import { fmtTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { WatchPrep } from "@/components/watch-prep";
+import { MessageCellsRow, MessageHeaderRow, messageColumns } from "@/components/message-columns";
 import { Button, Check, ImportanceBadge, LifecycleBadge, Panel, StatusDot, Tabs, tableWrap, td, th, theadRow, tbodyRow, type DotTone } from "@/components/ui";
 
 type Tab = "summary" | "actions" | "topics" | "recent" | "notes";
@@ -128,28 +129,32 @@ export default function WatchTurnover() {
 
 function HighPriority({ items }: { items: typeof MESSAGES }) {
   const { userState } = useStore();
+  const cols = messageColumns<(typeof MESSAGES)[number]>({
+    subject: (m) => <Link href={`/messages/${m.id}`} className="hover:underline">{m.subject}</Link>,
+    reference: (m) => m.reference,
+    received: (m) => `${m.dtg.slice(0, 2)} OCT ${fmtTime(m.received)}`,
+    priority: (m) => <ImportanceBadge i={m.importance} />,
+    summary: (m) => `${m.aiSummary?.split(".")[0] ?? m.sections[0].body[0].split(".")[0]}.`,
+    status: (m) => {
+      const st = userState[m.id];
+      return needsOwnAck(m)
+        ? st.acknowledgedAt ? <StatusDot tone="green">Acknowledged</StatusDot> : <StatusDot tone="red">Ack pending</StatusDot>
+        : st.read === "read" ? <StatusDot tone="green">Read</StatusDot> : <StatusDot tone="red">Unread</StatusDot>;
+    },
+  });
   return (
     <Panel title="2. High-Priority Messages" icon={AlertCircle} action={<Link href="/messages" className="text-sm text-link">View All ({items.length})</Link>}>
       <div className={tableWrap}>
         <table className="w-full min-w-[700px]">
-          <thead><tr className={theadRow}><th className={th}>Priority</th><th className={th}>Subject</th><th className={th}>Source</th><th className={th}>Received</th><th className={th}>Summary</th><th className={th}>Status</th></tr></thead>
+          <thead>
+            <MessageHeaderRow cols={cols} />
+          </thead>
           <tbody>
-            {items.map((m) => {
-              const st = userState[m.id];
-              const acked = !!st.acknowledgedAt;
-              return (
-                <tr key={m.id} className={tbodyRow}>
-                  <td className={td}><ImportanceBadge i={m.importance} /></td>
-                  <td className={td}><Link href={`/messages/${m.id}`} className="hover:underline">{m.subject}</Link></td>
-                  <td className={td}>{m.reference}</td>
-                  <td className={td}>{m.dtg.slice(0, 2)} OCT {fmtTime(m.received)}</td>
-                  <td className={td}>{m.aiSummary?.split(".")[0] ?? m.sections[0].body[0].split(".")[0]}.</td>
-                  <td className={td}>
-                    {needsOwnAck(m) ? (acked ? <StatusDot tone="green">Acknowledged</StatusDot> : <StatusDot tone="red">Ack pending</StatusDot>) : st.read === "read" ? <StatusDot tone="green">Read</StatusDot> : <StatusDot tone="red">Unread</StatusDot>}
-                  </td>
-                </tr>
-              );
-            })}
+            {items.map((m) => (
+              <tr key={m.id} className={tbodyRow}>
+                <MessageCellsRow cols={cols} row={m} />
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

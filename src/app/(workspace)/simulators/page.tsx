@@ -1,7 +1,8 @@
 "use client";
 
 import { Power, Radio, RefreshCw, Send, Server, Trash2, Zap } from "lucide-react";
-import { Button, EmptyState, PageHeader, Panel, Pill, PrecedenceBadge, StatusDot, Toggle, cx, tableWrap, td, th, theadRow, tbodyRow } from "@/components/ui";
+import { Button, EmptyState, PageHeader, Panel, Pill, PrecedenceBadge, StatusDot, Toggle, cx, tableWrap, tbodyRow } from "@/components/ui";
+import { MessageCellsRow, MessageHeaderRow, messageColumns } from "@/components/message-columns";
 import { fmtDateTime } from "@/lib/format";
 import { NODES, STATIONS, fullyDelivered } from "@/lib/sim";
 import { useSim } from "@/lib/sim-store";
@@ -36,6 +37,43 @@ export default function SimulatorsPage() {
   const { external, local, repo, transmissions, circuitUp, lastPulse } = sim;
   const count = (s: string) => repo.filter((m) => m.status === s).length;
   const held = transmissions.filter((t) => t.status === "held").length;
+
+  const repoCols = messageColumns<(typeof repo)[number]>({
+    seq: { className: "font-mono text-xs", cell: (m) => m.seq },
+    subject: (m) => m.subject,
+    reference: { className: "font-mono text-xs font-semibold", cell: (m) => m.reference },
+    from: (m) => m.originator,
+    precedence: (m) => <PrecedenceBadge p={m.precedence} />,
+    workstations: (m) =>
+      m.status !== "ingested" ? (
+        <span className="text-muted">-</span>
+      ) : fullyDelivered(m) ? (
+        <span className="text-green-700">All three</span>
+      ) : (
+        <span className="text-amber-800">
+          Owed to {STATIONS.filter((s) => !m.deliveries[s]).map((s) => NODES[s].code).join(", ")}
+        </span>
+      ),
+    status: (m) => (
+      <>
+        <StatusDot tone={m.status === "ingested" ? "green" : m.status === "deferred" ? "amber" : "gray"}>
+          {m.status === "ingested" ? "Ingested" : m.status === "deferred" ? "Deferred at C2OIX" : "Queued"}
+        </StatusDot>
+        {m.lastError && m.status === "deferred" && <div className="text-xs text-muted">{m.lastError}</div>}
+      </>
+    ),
+  });
+
+  const releaseCols = messageColumns<(typeof transmissions)[number]>({
+    subject: (t) => t.subject,
+    reference: { className: "font-mono text-xs font-semibold", cell: (t) => t.reference },
+    released: { className: "whitespace-nowrap", cell: (t) => (t.releasedAt ? fmtDateTime(t.releasedAt) : "-") },
+    precedence: (t) => <PrecedenceBadge p={t.precedence} />,
+    receipt: { className: "font-mono text-xs", cell: (t) => t.receipt ?? "-" },
+    status: (t) => (
+      <Pill className={t.status === "held" ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800"}>{t.status === "held" ? "Held for transmit" : "Transmitted"}</Pill>
+    ),
+  });
 
   return (
     <>
@@ -106,41 +144,12 @@ export default function SimulatorsPage() {
           <div className={cx(tableWrap, "rounded-none border-0")}>
             <table className="w-full min-w-[860px]">
               <thead>
-                <tr className={theadRow}>
-                  <th className={th}>#</th>
-                  <th className={th}>Reference</th>
-                  <th className={th}>Precedence</th>
-                  <th className={th}>Subject</th>
-                  <th className={th}>Originator</th>
-                  <th className={th}>Status</th>
-                  <th className={th}>Workstations</th>
-                </tr>
+                <MessageHeaderRow cols={repoCols} />
               </thead>
               <tbody>
                 {repo.map((m) => (
                   <tr key={m.seq} className={tbodyRow}>
-                    <td className={cx(td, "font-mono text-xs")}>{m.seq}</td>
-                    <td className={cx(td, "font-mono text-xs font-semibold")}>{m.reference}</td>
-                    <td className={td}><PrecedenceBadge p={m.precedence} /></td>
-                    <td className={td}>{m.subject}</td>
-                    <td className={td}>{m.originator}</td>
-                    <td className={td}>
-                      <StatusDot tone={m.status === "ingested" ? "green" : m.status === "deferred" ? "amber" : "gray"}>
-                        {m.status === "ingested" ? "Ingested" : m.status === "deferred" ? "Deferred at C2OIX" : "Queued"}
-                      </StatusDot>
-                      {m.lastError && m.status === "deferred" && <div className="text-xs text-muted">{m.lastError}</div>}
-                    </td>
-                    <td className={td}>
-                      {m.status !== "ingested" ? (
-                        <span className="text-muted">-</span>
-                      ) : fullyDelivered(m) ? (
-                        <span className="text-green-700">All three</span>
-                      ) : (
-                        <span className="text-amber-800">
-                          Owed to {STATIONS.filter((s) => !m.deliveries[s]).map((s) => NODES[s].code).join(", ")}
-                        </span>
-                      )}
-                    </td>
+                    <MessageCellsRow cols={repoCols} row={m} />
                   </tr>
                 ))}
               </tbody>
@@ -156,26 +165,12 @@ export default function SimulatorsPage() {
           <div className={cx(tableWrap, "rounded-none border-0")}>
             <table className="w-full min-w-[760px]">
               <thead>
-                <tr className={theadRow}>
-                  <th className={th}>Reference</th>
-                  <th className={th}>Precedence</th>
-                  <th className={th}>Subject</th>
-                  <th className={th}>Released</th>
-                  <th className={th}>Status</th>
-                  <th className={th}>C2OIX receipt</th>
-                </tr>
+                <MessageHeaderRow cols={releaseCols} />
               </thead>
               <tbody>
                 {transmissions.map((t) => (
                   <tr key={t.id} className={tbodyRow}>
-                    <td className={cx(td, "font-mono text-xs font-semibold")}>{t.reference}</td>
-                    <td className={td}><PrecedenceBadge p={t.precedence} /></td>
-                    <td className={td}>{t.subject}</td>
-                    <td className={cx(td, "whitespace-nowrap")}>{t.releasedAt ? fmtDateTime(t.releasedAt) : "-"}</td>
-                    <td className={td}>
-                      <Pill className={t.status === "held" ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800"}>{t.status === "held" ? "Held for transmit" : "Transmitted"}</Pill>
-                    </td>
-                    <td className={cx(td, "font-mono text-xs")}>{t.receipt ?? "-"}</td>
+                    <MessageCellsRow cols={releaseCols} row={t} />
                   </tr>
                 ))}
               </tbody>

@@ -7,6 +7,7 @@ import { CURRENT_USER, MESSAGES, resolveAckStatus, sentByOwnCommand } from "@/li
 import { fmtDateTime, MOCK_NOW } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import type { Message } from "@/lib/types";
+import { MessageCellsRow, MessageHeaderRow, messageColumns } from "@/components/message-columns";
 import { Bar, Button, cx, PageHeader, Panel, StatCard, StatusDot, tableWrap, td, th, theadRow, tbodyRow, type DotTone } from "@/components/ui";
 
 // Messages this command originated that addressees must acknowledge.
@@ -35,6 +36,18 @@ export default function ReportsPage() {
   const ackedAll = rows.reduce((n, r) => n + r.acked, 0);
   const totalAll = rows.reduce((n, r) => n + r.total, 0);
 
+  const sentCols = messageColumns<(typeof rows)[number]>({
+    subject: (r) => r.m.subject,
+    reference: { className: "font-semibold", cell: (r) => r.m.reference },
+    addressees: (r) => {
+      const [first, ...rest] = r.m.addressees;
+      return <>{first?.name}{rest.length > 0 && <span className="block text-xs text-muted">+{rest.length} more</span>}</>;
+    },
+    due: (r) => r.m.ackDue && fmtDateTime(r.m.ackDue),
+    acknowledged: (r) => `${r.acked} of ${r.total}`,
+    status: (r) => <StatusDot tone={statusTone[r.status]}>{r.status}</StatusDot>,
+  });
+
   return (
     <>
       <PageHeader
@@ -57,33 +70,18 @@ export default function ReportsPage() {
             <div className={tableWrap}>
               <table className="w-full min-w-[720px]">
                 <thead>
-                  <tr className={theadRow}>
-                    <th className={th}>Reference</th>
-                    <th className={th}>Subject</th>
-                    <th className={th}>Addressees</th>
-                    <th className={th}>Due</th>
-                    <th className={th}>Commands Acknowledged</th>
-                    <th className={th}>Status</th>
-                  </tr>
+                  <MessageHeaderRow cols={sentCols} />
                 </thead>
                 <tbody>
-                  {rows.map((r) => {
-                    const [first, ...rest] = r.m.addressees;
-                    return (
-                      <tr
-                        key={r.m.id}
-                        onClick={() => setSelected(r.m.id)}
-                        className={cx("cursor-pointer border-b border-line/70", current.m.id === r.m.id ? "bg-navy-100/70" : "hover:bg-navy-50")}
-                      >
-                        <td className={`${td} font-semibold`}>{r.m.reference}</td>
-                        <td className={td}>{r.m.subject}</td>
-                        <td className={td}>{first?.name}{rest.length > 0 && <span className="block text-xs text-muted">+{rest.length} more</span>}</td>
-                        <td className={td}>{r.m.ackDue && fmtDateTime(r.m.ackDue)}</td>
-                        <td className={td}>{r.acked} of {r.total}</td>
-                        <td className={td}><StatusDot tone={statusTone[r.status]}>{r.status}</StatusDot></td>
-                      </tr>
-                    );
-                  })}
+                  {rows.map((r) => (
+                    <tr
+                      key={r.m.id}
+                      onClick={() => setSelected(r.m.id)}
+                      className={cx("cursor-pointer border-b border-line/70", current.m.id === r.m.id ? "bg-navy-100/70" : "hover:bg-navy-50")}
+                    >
+                      <MessageCellsRow cols={sentCols} row={r} />
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

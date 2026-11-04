@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { AlertCircle, AlertTriangle, CheckCircle2, CheckSquare, Clock, Download, FileText, Pencil, Printer, Users, FilePlus2 } from "lucide-react";
-import { MESSAGES, ONGOING_TOPICS, TURNOVER_CHECKLIST, actionItems } from "@/lib/data";
+import { MESSAGES, ONGOING_TOPICS, TURNOVER_CHECKLIST, actionItems, needsOwnAck } from "@/lib/data";
 import { fmtTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { Button, Check, Delta, ImportanceBadge, LifecycleBadge, Panel, StatCard, StatusDot, Tabs, tableWrap, td, th, theadRow, tbodyRow, type DotTone } from "@/components/ui";
@@ -18,7 +18,7 @@ export default function WatchTurnover() {
   const [draft, setDraft] = useState("");
   const high = MESSAGES.filter((m) => m.importance === "High" && !["SUPERSEDED", "CANCELLED", "EXPIRED"].includes(m.lifecycle));
   const actions = actionItems();
-  const pendingAck = MESSAGES.filter((m) => m.ackRequired && !userState[m.id].acknowledgedAt && m.lifecycle !== "SUPERSEDED");
+  const pendingAck = MESSAGES.filter((m) => needsOwnAck(m) && !userState[m.id].acknowledgedAt);
   const done = TURNOVER_CHECKLIST.filter((c) => checklist[c]).length;
   const ready = done === TURNOVER_CHECKLIST.length;
 
@@ -151,7 +151,7 @@ function HighPriority({ items }: { items: typeof MESSAGES }) {
                   <td className={td}>{m.dtg.slice(0, 2)} OCT {fmtTime(m.received)}</td>
                   <td className={td}>{m.aiSummary?.split(".")[0] ?? m.sections[0].body[0].split(".")[0]}.</td>
                   <td className={td}>
-                    {m.ackRequired ? (acked ? <StatusDot tone="green">Acknowledged</StatusDot> : <StatusDot tone="red">Ack pending</StatusDot>) : st.read === "read" ? <StatusDot tone="green">Read</StatusDot> : <StatusDot tone="red">Unread</StatusDot>}
+                    {needsOwnAck(m) ? (acked ? <StatusDot tone="green">Acknowledged</StatusDot> : <StatusDot tone="red">Ack pending</StatusDot>) : st.read === "read" ? <StatusDot tone="green">Read</StatusDot> : <StatusDot tone="red">Unread</StatusDot>}
                   </td>
                 </tr>
               );

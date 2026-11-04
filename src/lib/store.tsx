@@ -148,7 +148,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toggleStar: (id) => patch(id, { starred: !userState[id]?.starred }),
       acknowledge: (id) => {
         const m = MESSAGES.find((x) => x.id === id);
-        patch(id, { acknowledgedAt: (offline ? MOCK_NOW : new Date()).toISOString(), read: "read" });
+        // Use the mock clock so the time lines up with acknowledgements from other commands.
+        patch(id, { acknowledgedAt: MOCK_NOW.toISOString(), read: "read" });
         log("Acknowledge", `Message (${m?.reference})`, offline ? "Acknowledged offline; queued for sync." : "Receipt acknowledged.");
         if (offline) queue("Acknowledgement", `Ack: ${m?.reference}`);
         notify(`Acknowledged ${m?.reference}${offline ? " (queued for sync)" : ""}`);

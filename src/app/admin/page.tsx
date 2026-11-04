@@ -15,7 +15,7 @@ const ALERT_RULES = [
 
 const ACCESS = [
   { group: "COMSUBLANT", basis: "Organizational affiliation", members: 412, scope: "All COMSUBLANT traffic" },
-  { group: "Pilot Unit Wardroom", basis: "Role", members: 14, scope: "Unit traffic, officer-only" },
+  { group: "COMSUBLANT N6", basis: "Role", members: 14, scope: "Directorate traffic, officer-only" },
   { group: "Comms Division", basis: "Role", members: 9, scope: "Unit traffic, comms admin" },
   { group: "SUBRON Staff", basis: "Group", members: 38, scope: "Squadron traffic" },
 ];

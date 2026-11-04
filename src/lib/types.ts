@@ -88,9 +88,30 @@ export interface Message {
   sizeKb: number;
   retention: string;
   distribution: string[];
+  /** Structured addressees (TO/INFO). Groups expand to member commands for acknowledgement tracking. */
+  addressees: Addressee[];
   related: string[];
   /** AI-generated summary, always shown apart from the official text */
   aiSummary?: string;
+}
+
+/** An address group in the command-level pub/sub system, e.g. ALSUBS. */
+export interface AddressGroup {
+  id: string;
+  name: string;
+  members: string[];
+}
+
+export interface Addressee {
+  name: string;
+  role: "TO" | "INFO";
+  kind: "command" | "group";
+}
+
+/** One acknowledgement received by the originator from an addressee command. */
+export interface AckReceipt {
+  command: string;
+  at: string;
 }
 
 export interface MessageUserState {

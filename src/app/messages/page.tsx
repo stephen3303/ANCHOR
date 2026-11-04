@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCheck, Download, Filter, Mail, Paperclip, Search, Star } from "lucide-react";
-import { MESSAGES } from "@/lib/data";
+import { MESSAGES, needsOwnAck } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import type { Lifecycle, Message, MessageType, ReadState } from "@/lib/types";
 import { MessageReaderNavigation, StarButton } from "@/components/message";
@@ -52,7 +52,7 @@ export default function MessagesPage() {
       if (types.length && !types.includes(m.type)) return false;
       if (states.length && !states.includes(st.read)) return false;
       if (starredOnly && !st.starred) return false;
-      if (ackOnly && !(m.ackRequired && !st.acknowledgedAt)) return false;
+      if (ackOnly && !(needsOwnAck(m) && !st.acknowledgedAt)) return false;
       if (!showRetired && RETIRED.includes(m.lifecycle)) return false;
       return true;
     });
@@ -178,7 +178,7 @@ export default function MessagesPage() {
                         <span className="flex items-center gap-2">
                           <button type="button" onClick={(e) => { e.stopPropagation(); open(m.id); }} className={cx("text-left hover:underline", retired && "line-through decoration-slate-400")}>{m.subject}</button>
                           <LifecycleBadge l={m.lifecycle} />
-                          {m.ackRequired && !st.acknowledgedAt && <span className="rounded bg-red-600 px-1.5 text-[10px] font-bold text-white">ACK</span>}
+                          {needsOwnAck(m) && !st.acknowledgedAt && <span className="rounded bg-red-600 px-1.5 text-[10px] font-bold text-white">ACK</span>}
                         </span>
                       </td>
                       <td className={cx(td, "whitespace-nowrap")}>{m.reference}</td>

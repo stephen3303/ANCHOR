@@ -6,7 +6,6 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import {
   APPROVAL_QUEUE,
   AUDIT_EVENTS,
-  CURRENT_USER,
   INITIAL_USER_STATE,
   MESSAGES,
   SUBSCRIPTIONS,
@@ -16,6 +15,7 @@ import {
 } from "./data";
 import { MOCK_NOW } from "./format";
 import { appendEvent, chainLog, type ChainedAuditEvent } from "./audit";
+import { useCurrentUser } from "./current-user";
 import type { Community, MessageUserState, Subscription, SyncItem } from "./types";
 
 export interface BriefingConfig {
@@ -92,6 +92,7 @@ let seq = 0;
 const nextId = (p: string) => `${p}-${Date.now()}-${seq++}`;
 
 export function StoreProvider({ children }: { children: ReactNode }) {
+  const CURRENT_USER = useCurrentUser();
   const [userState, setUserState] = useState(INITIAL_USER_STATE);
   const [subscriptions, setSubscriptions] = useState(SUBSCRIPTIONS);
   const [approvals, setApprovals] = useState(APPROVAL_QUEUE);
@@ -131,7 +132,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }),
       );
     },
-    [offline],
+    [offline, CURRENT_USER],
   );
 
   const queue = useCallback((type: SyncItem["type"], description: string) => {
@@ -247,7 +248,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toast,
       notify,
     }),
-    [userState, subscriptions, approvals, offline, syncQueue, lastSync, audit, original, watchNotes, checklist, briefing, toast, log, notify, queue],
+    [CURRENT_USER, userState, subscriptions, approvals, offline, syncQueue, lastSync, audit, original, watchNotes, checklist, briefing, toast, log, notify, queue],
   );
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;

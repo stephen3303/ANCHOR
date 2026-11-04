@@ -4,6 +4,7 @@ import { StoreProvider } from "@/lib/store";
 import { RoutingProvider } from "@/lib/routing-store";
 import { SimProvider } from "@/lib/sim-store";
 import { AppShell } from "@/components/shell";
+import { UserProvider } from "@/lib/current-user";
 
 export const metadata: Metadata = {
   title: "ANCHOR",
@@ -14,13 +15,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full">
-        <StoreProvider>
-          <RoutingProvider>
-            <SimProvider>
-              <AppShell>{children}</AppShell>
-            </SimProvider>
-          </RoutingProvider>
-        </StoreProvider>
+        <UserProvider>
+          <StoreProvider>
+            <RoutingProvider>
+              <SimProvider>
+                <AppShell>{children}</AppShell>
+              </SimProvider>
+            </RoutingProvider>
+          </StoreProvider>
+        </UserProvider>
       </body>
     </html>
   );

@@ -6,22 +6,31 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:seed:commands": "node scripts/seed-commands.mjs",
+    "db:migrate": "node scripts/migrate-db.mjs",
+    "db:seed:users": "tsx scripts/seed-users.ts",
+    "test:templates": "tsx --test src/lib/message-templates.test.ts",
+    "test:templates:api": "node scripts/test-template-api.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.61.0",
     "next": "16.4.3",
+    "pg": "^8.23.1",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

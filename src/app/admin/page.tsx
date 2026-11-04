@@ -1,7 +1,7 @@
 "use client";
 
 import { BellRing, Check as CheckIcon, GitBranch, Lock, ShieldCheck, UserCog, Users, X } from "lucide-react";
-import { CURRENT_USER } from "@/lib/data";
+import { useCurrentUser } from "@/lib/current-user";
 import { useStore } from "@/lib/store";
 import { Button, EmptyState, PageHeader, Panel, Pill, PrecedenceBadge, tableWrap, td, th, theadRow, tbodyRow } from "@/components/ui";
 
@@ -21,6 +21,7 @@ const ACCESS = [
 ];
 
 export default function AdminPage() {
+  const CURRENT_USER = useCurrentUser();
   const { approvals, decideApproval } = useStore();
   return (
     <>

@@ -10,6 +10,7 @@ import {
   ChevronDown,
   FilePenLine,
   FileText,
+  FilePlus2,
   Globe,
   Home,
   LogOut,
@@ -28,7 +29,8 @@ import {
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { useRouting } from "@/lib/routing-store";
-import { CURRENT_USER, MESSAGES, needsOwnAck } from "@/lib/data";
+import { MESSAGES, needsOwnAck } from "@/lib/data";
+import { useUserSession } from "@/lib/current-user";
 import { fmtDate, fmtTime } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 import { cx } from "./ui";
@@ -36,6 +38,7 @@ import { cx } from "./ui";
 const NAV = [
   { href: "/", label: "Home", icon: Home },
   { href: "/messages", label: "Messages", icon: Mail, badge: "unread" as const },
+  { href: "/templates", label: "Message Templates", icon: FilePlus2 },
   { href: "/subscriptions", label: "Subscriptions", icon: Network },
   { href: "/search", label: "Search", icon: Search },
   { href: "/briefings", label: "Briefings", icon: FileText },
@@ -61,6 +64,7 @@ function Clock() {
 }
 
 function Header({ onMenu }: { onMenu: () => void }) {
+  const { user: CURRENT_USER, signOut } = useUserSession();
   const { offline } = useStore();
   const [open, setOpen] = useState(false);
   return (
@@ -100,7 +104,7 @@ function Header({ onMenu }: { onMenu: () => void }) {
         </div>
         <div className="relative border-l border-white/25 pl-3">
           <button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 rounded-md p-1 hover:bg-white/10" aria-expanded={open}>
-            <span className="flex size-10 items-center justify-center rounded-full border-2 border-gold bg-navy-700 text-sm font-bold">LT</span>
+            <span className="flex size-10 items-center justify-center rounded-full border-2 border-gold bg-navy-700 text-sm font-bold">{CURRENT_USER.rank || CURRENT_USER.name.slice(0, 2)}</span>
             <span className="hidden text-left leading-tight sm:block">
               <span className="block text-[15px] font-semibold">{CURRENT_USER.name}</span>
               <span className="block text-xs text-white/80">{CURRENT_USER.community}</span>
@@ -112,13 +116,13 @@ function Header({ onMenu }: { onMenu: () => void }) {
               <div className="border-b border-line px-3 py-2">
                 <div className="font-semibold">{CURRENT_USER.name}</div>
                 <div className="text-xs text-muted">{CURRENT_USER.unit}</div>
-                <div className="mt-1 text-xs text-green-700">CAC authenticated</div>
+                <div className="mt-1 text-xs text-amber-700">Demo account · {CURRENT_USER.commandName}</div>
               </div>
               <Link href="/profile" className="flex items-center gap-2 px-3 py-2 hover:bg-navy-50" onClick={() => setOpen(false)}>
                 <Settings className="size-4" /> Profile & Settings
               </Link>
-              <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-navy-50" onClick={() => setOpen(false)}>
-                <LogOut className="size-4" /> Sign out (remove CAC)
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-navy-50" onClick={() => { setOpen(false); void signOut(); }}>
+                <LogOut className="size-4" /> Sign out / switch account
               </button>
             </div>
           )}

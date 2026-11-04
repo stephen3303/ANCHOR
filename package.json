@@ -11,7 +11,8 @@
     "db:migrate": "node scripts/migrate-db.mjs",
     "db:seed:users": "tsx scripts/seed-users.ts",
     "test:templates": "tsx --test src/lib/message-templates.test.ts",
-    "test:templates:api": "node scripts/test-template-api.mjs"
+    "test:templates:api": "node scripts/test-template-api.mjs",
+    "test:navigation": "playwright test"
   },
   "dependencies": {
     "lucide-react": "^1.61.0",
@@ -22,6 +23,7 @@
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/pg": "^8.23.1",

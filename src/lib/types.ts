@@ -78,6 +78,12 @@ export interface Message {
   communities: Community[];
   attachments: Attachment[];
   sections: MessageSection[];
+  /**
+   * The message text exactly as it arrived from C2OIX, before ANCHOR parsed it
+   * into sections. Shown verbatim (monospace, whitespace preserved) so readers
+   * can check the formatted view against the original.
+   */
+  rawText: string;
   /** Designated traffic that recipients must acknowledge */
   ackRequired: boolean;
   ackDue?: string;

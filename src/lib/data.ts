@@ -69,8 +69,69 @@ function sections(
   return s;
 }
 
-type Seed = Omit<Message, "sha256" | "c2oixId" | "distribution" | "retention" | "addressees"> &
-  Partial<Pick<Message, "distribution" | "retention" | "addressees">>;
+type Seed = Omit<Message, "sha256" | "c2oixId" | "distribution" | "retention" | "addressees" | "rawText"> &
+  Partial<Pick<Message, "distribution" | "retention" | "addressees" | "rawText">>;
+
+const PROSIGN: Record<Message["precedence"], string> = { FLASH: "Z", IMMEDIATE: "O", PRIORITY: "P", ROUTINE: "R" };
+const CLASS_LINE: Record<Message["classification"], string> = {
+  UNCLASSIFIED: "UNCLAS",
+  CUI: "UNCLAS//CUI",
+  CONFIDENTIAL: "C O N F I D E N T I A L",
+  SECRET: "S E C R E T",
+};
+
+/** Wraps to the 69-character line length used by record message traffic. */
+function wrap(text: string, width = 69, indent = ""): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (line && line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = indent + word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/**
+ * Builds the mock message as it would arrive off the wire: a plain-text record
+ * message with prosigns, uppercase sets and fixed-width lines. Seeds can supply
+ * their own rawText instead. Real ingest would store the received bytes here.
+ */
+function rawMessage(s: Seed, serial: number): string {
+  const up = (t: string) => t.toUpperCase();
+  const out: string[] = [
+    `${PROSIGN[s.precedence]} ${s.dtg}`,
+    `FM ${up(s.originator)}`,
+    `TO ${up(s.to)}`,
+    `INFO ${up(s.info)}`,
+    "BT",
+    CLASS_LINE[s.classification],
+    ...wrap(`SUBJ/${up(s.subject)}//`),
+    `MSGID/GENADMIN/${up(s.originator)}/${up(s.reference)}//`,
+  ];
+  if (s.relatesTo) out.push(`REF/A/MSG/${up(s.relatesTo)}//`);
+  const poc = s.sections.find((x) => x.heading === "Point of Contact");
+  if (poc) out.push(...wrap(`POC/${up(poc.body.join(" "))}//`));
+  s.sections
+    .filter((x) => x !== poc)
+    .forEach((x, i) => {
+      const para = `${i + 1}.`;
+      const lead = i === 0 ? `RMKS/${para}` : para;
+      if (x.body.length === 1) {
+        out.push(...wrap(`${lead} ${up(x.heading)}. ${up(x.body[0])}`, 69, "  "));
+      } else {
+        out.push(`${lead} ${up(x.heading)}.`);
+        x.body.forEach((b, j) => out.push(...wrap(`${String.fromCharCode(65 + j)}. ${up(b)}`, 67, "   ").map((l) => `  ${l}`)));
+      }
+    });
+  out[out.length - 1] += "//";
+  out.push("BT", `#${String(serial).padStart(4, "0")}`, "NNNN");
+  return out.join("\n");
+}
 
 const seeds: Seed[] = [
   {
@@ -565,6 +626,7 @@ export const MESSAGES: Message[] = seeds
     retention: s.lifecycle === "EXPIRED" ? "Permanent (expired)" : "Permanent",
     addressees: [],
     ...s,
+    rawText: s.rawText ?? rawMessage(s, 1001 + i),
     c2oixId: `C2OIX-26-${String(48210 + i * 37).padStart(6, "0")}`,
     sha256: mockSha(s.id + s.dtg),
   }))

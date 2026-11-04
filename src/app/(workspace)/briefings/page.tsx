@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, FolderOpen, RotateCcw, Save, Sparkles, Star, CheckSquare, Square } from "lucide-react";
+import { FileText, FolderOpen, RotateCcw, Save, Sparkles, CheckSquare, Square } from "lucide-react";
 import { selectBriefing } from "@/lib/briefing";
 import { DEFAULT_BRIEFING, useStore } from "@/lib/store";
 import type { Community } from "@/lib/types";
@@ -117,7 +117,7 @@ export default function BriefingBuilder() {
           <ul className="divide-y divide-line">
             {preview.map((m) => (
               <li key={m.id} className="flex gap-3 px-4 py-3">
-                {userState[m.id].starred ? <Star className="mt-0.5 size-5 shrink-0 fill-gold text-gold" /> : <FileText className="mt-0.5 size-5 shrink-0 text-ink" />}
+                <FileText className="mt-0.5 size-5 shrink-0 text-ink" />
                 <div className="min-w-0 flex-1">
                   <Link href={`/messages/${m.id}`} className="font-semibold text-link hover:underline">{m.subject}</Link> <LifecycleBadge l={m.lifecycle} />
                   <div className="text-[13px]">{m.reference} | {m.source} | {m.dtg}</div>

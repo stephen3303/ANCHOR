@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { ArrowLeft, Bell, Clock, Copy, Download, FileText, Link2, Mail, Plus, Printer, FilePlus2 } from "lucide-react";
 import { messageById } from "@/lib/data";
 import { useStore } from "@/lib/store";
-import { AckPanel, Attachments, LifecycleNotice, MessageList, MessageTabs, MetadataTable, StarButton } from "@/components/message";
+import { AckPanel, Attachments, LifecycleNotice, MessageList, MessageTabs, MetadataTable } from "@/components/message";
 import { Button, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tag } from "@/components/ui";
 import type { Message } from "@/lib/types";
 
@@ -57,7 +57,6 @@ export function MessageDetail({ id, onBack }: { id: string; onBack?: () => void 
       <div className="grid gap-4 xl:grid-cols-[1fr_400px]">
         <div className="min-w-0 space-y-3">
           <div className="flex items-start gap-3">
-            <StarButton id={m.id} />
             <FileText className="size-9 shrink-0 text-ink" strokeWidth={1.5} aria-hidden />
             <div className="min-w-0">
               <h1 className="text-2xl font-bold sm:text-[28px]">{m.subject}</h1>

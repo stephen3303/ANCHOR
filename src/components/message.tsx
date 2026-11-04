@@ -15,7 +15,6 @@ import {
   FileType2,
   Send,
   Sparkles,
-  Star,
 } from "lucide-react";
 import { messageById, messageByRef, resolveAckStatus, sentByOwnCommand } from "@/lib/data";
 import { fmtDateTime, hoursUntil, shortHash } from "@/lib/format";
@@ -45,16 +44,6 @@ export function RefLink({ to: r }: { to: string }) {
     <MessageLink id={m.id} className="font-semibold text-link hover:underline">
       {r}
     </MessageLink>
-  );
-}
-
-export function StarButton({ id }: { id: string }) {
-  const { userState, toggleStar } = useStore();
-  const on = userState[id]?.starred;
-  return (
-    <button type="button" onClick={(e) => { e.stopPropagation(); toggleStar(id); }} aria-label={on ? "Unstar" : "Star"} aria-pressed={on}>
-      <Star className={cx("size-5", on ? "fill-gold text-gold" : "text-slate-400")} />
-    </button>
   );
 }
 

@@ -30,7 +30,6 @@ export default function MessagesPage() {
   const [sources, setSources] = useState<string[]>([]);
   const [types, setTypes] = useState<MessageType[]>([]);
   const [states, setStates] = useState<ReadState[]>([]);
-  const [starredOnly, setStarredOnly] = useState(false);
   const [ackOnly, setAckOnly] = useState(false);
   const [showRetired, setShowRetired] = useState(true);
   const [range, setRange] = useState("Last 30 days");
@@ -49,12 +48,11 @@ export default function MessagesPage() {
       if (sources.length && !sources.includes(m.source)) return false;
       if (types.length && !types.includes(m.type)) return false;
       if (states.length && !states.includes(st.read)) return false;
-      if (starredOnly && !st.starred) return false;
       if (ackOnly && !(needsOwnAck(m) && !st.acknowledgedAt)) return false;
       if (!showRetired && RETIRED.includes(m.lifecycle)) return false;
       return true;
     });
-  }, [q, sources, types, states, starredOnly, ackOnly, showRetired, userState]);
+  }, [q, sources, types, states, ackOnly, showRetired, userState]);
 
   // Keep the list mounted and its scroll containers untouched beneath the reader.
   // A same-document history entry also makes browser Back/Forward work.
@@ -131,7 +129,6 @@ export default function MessagesPage() {
     setSources([]);
     setTypes([]);
     setStates([]);
-    setStarredOnly(false);
     setAckOnly(false);
     setShowRetired(true);
   };
@@ -210,7 +207,6 @@ export default function MessagesPage() {
                 {(["new", "unread", "read"] as ReadState[]).map((s) => (
                   <Check key={s} label={s[0].toUpperCase() + s.slice(1)} count={MESSAGES.filter((m) => userState[m.id].read === s).length} checked={states.includes(s)} onChange={() => toggle(states, s, setStates)} />
                 ))}
-                <Check label="Starred" checked={starredOnly} onChange={setStarredOnly} />
                 <Check label="Needs acknowledgement" checked={ackOnly} onChange={setAckOnly} />
                 <Check label="Show superseded, cancelled & expired" checked={showRetired} onChange={setShowRetired} />
               </fieldset>

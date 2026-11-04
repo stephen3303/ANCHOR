@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCheck, Download, Filter, Mail, Paperclip, Search, Star } from "lucide-react";
+import { CheckCheck, Download, Filter, Mail, Paperclip, Search } from "lucide-react";
 import { MESSAGES, needsOwnAck } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import type { Lifecycle, Message, MessageType, ReadState } from "@/lib/types";
-import { MessageReaderNavigation, StarButton } from "@/components/message";
+import { MessageReaderNavigation } from "@/components/message";
+import { MessageCellsRow, MessageHeaderRow, messageColumns } from "@/components/message-columns";
 import { MessageDetail } from "./[id]/detail";
 import {
   Button,
@@ -16,9 +17,6 @@ import {
   ReadStatus,
   Select,
   cx,
-  td,
-  th,
-  theadRow,
 } from "@/components/ui";
 
 const SOURCES = [...new Set(MESSAGES.map((m) => m.source))];
@@ -87,6 +85,48 @@ export default function MessagesPage() {
   };
   const close = () => window.history.back();
 
+  const toggleChecked = (id: string) =>
+    setChecked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  const cols = messageColumns<Message>({
+    select: {
+      header: (
+        <input
+          type="checkbox"
+          aria-label="Select all"
+          className="size-4 accent-navy-600"
+          checked={checked.size > 0 && checked.size === rows.length}
+          onChange={(e) => setChecked(e.target.checked ? new Set(rows.map((r) => r.id)) : new Set())}
+        />
+      ),
+      headerClassName: "w-8",
+      stopRowClick: true,
+      cell: (m) => (
+        <input type="checkbox" aria-label={`Select ${m.subject}`} className="size-4 accent-navy-600" checked={checked.has(m.id)} onChange={() => toggleChecked(m.id)} />
+      ),
+    },
+    attachments: {
+      header: <Paperclip className="size-4" aria-label="Attachments" />,
+      headerClassName: "w-8",
+      cell: (m) => m.attachments.length > 0 && <Paperclip className="size-4 text-muted" aria-label="Has attachments" />,
+    },
+    subject: {
+      className: (m) => userState[m.id].read !== "read" && "font-semibold",
+      cell: (m) => (
+        <span className="flex items-center gap-2">
+          <button type="button" onClick={(e) => { e.stopPropagation(); open(m.id); }} className={cx("text-left hover:underline", RETIRED.includes(m.lifecycle) && "line-through decoration-slate-400")}>{m.subject}</button>
+          <LifecycleBadge l={m.lifecycle} />
+          {needsOwnAck(m) && !userState[m.id].acknowledgedAt && <span className="rounded bg-red-600 px-1.5 text-[10px] font-bold text-white">ACK</span>}
+        </span>
+      ),
+    },
+    reference: { className: "whitespace-nowrap", cell: (m) => m.reference },
+    from: { className: "whitespace-nowrap", cell: (m) => m.originator },
+    dtg: { className: "whitespace-nowrap", cell: (m) => m.dtg },
+    precedence: (m) => <PrecedenceBadge p={m.precedence} />,
+    status: (m) => <ReadStatus r={userState[m.id].read} />,
+  });
+
   const clearAll = () => {
     setSources([]);
     setTypes([]);
@@ -130,68 +170,24 @@ export default function MessagesPage() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[960px]">
               <thead>
-                <tr className={theadRow}>
-                  <th className={cx(th, "w-8")}>
-                    <input
-                      type="checkbox"
-                      aria-label="Select all"
-                      className="size-4 accent-navy-600"
-                      checked={checked.size > 0 && checked.size === rows.length}
-                      onChange={(e) => setChecked(e.target.checked ? new Set(rows.map((r) => r.id)) : new Set())}
-                    />
-                  </th>
-                  <th className={cx(th, "w-8")}><Star className="size-4" aria-label="Starred" /></th>
-                  <th className={cx(th, "w-8")}><Paperclip className="size-4" aria-label="Attachments" /></th>
-                  <th className={th}>Subject</th>
-                  <th className={th}>Reference</th>
-                  <th className={th}>From</th>
-                  <th className={th}>Date-Time Group</th>
-                  <th className={th}>Precedence</th>
-                  <th className={th}>Status</th>
-                </tr>
+                <MessageHeaderRow cols={cols} />
               </thead>
               <tbody>
-                {rows.map((m) => {
-                  const st = userState[m.id];
-                  const retired = RETIRED.includes(m.lifecycle);
-                  return (
-                    <tr
-                      key={m.id}
-                      onClick={() => open(m.id)}
-                      className={cx(
-                        "cursor-pointer border-b border-line/70 last:border-0 hover:bg-navy-50",
-                        retired && "text-muted",
-                      )}
-                    >
-                      <td className={td} onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${m.subject}`}
-                          className="size-4 accent-navy-600"
-                          checked={checked.has(m.id)}
-                          onChange={() => setChecked((s) => { const n = new Set(s); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n; })}
-                        />
-                      </td>
-                      <td className={td}><StarButton id={m.id} /></td>
-                      <td className={td}>{m.attachments.length > 0 && <Paperclip className="size-4 text-muted" aria-label="Has attachments" />}</td>
-                      <td className={cx(td, st.read !== "read" && "font-semibold")}>
-                        <span className="flex items-center gap-2">
-                          <button type="button" onClick={(e) => { e.stopPropagation(); open(m.id); }} className={cx("text-left hover:underline", retired && "line-through decoration-slate-400")}>{m.subject}</button>
-                          <LifecycleBadge l={m.lifecycle} />
-                          {needsOwnAck(m) && !st.acknowledgedAt && <span className="rounded bg-red-600 px-1.5 text-[10px] font-bold text-white">ACK</span>}
-                        </span>
-                      </td>
-                      <td className={cx(td, "whitespace-nowrap")}>{m.reference}</td>
-                      <td className={cx(td, "whitespace-nowrap")}>{m.originator}</td>
-                      <td className={cx(td, "whitespace-nowrap")}>{m.dtg}</td>
-                      <td className={td}><PrecedenceBadge p={m.precedence} /></td>
-                      <td className={td}><ReadStatus r={st.read} /></td>
-                    </tr>
-                  );
-                })}
+                {rows.map((m) => (
+                  <tr
+                    key={m.id}
+                    onClick={() => open(m.id)}
+                    className={cx(
+                      "cursor-pointer border-b border-line/70 last:border-0 hover:bg-navy-50",
+                      RETIRED.includes(m.lifecycle) && "text-muted",
+                    )}
+                  >
+                    <MessageCellsRow cols={cols} row={m} />
+                  </tr>
+                ))}
                 {!rows.length && (
                   <tr>
-                    <td colSpan={9} className="py-10 text-center text-sm text-muted">No messages match these filters.</td>
+                    <td colSpan={cols.length} className="py-10 text-center text-sm text-muted">No messages match these filters.</td>
                   </tr>
                 )}
               </tbody>

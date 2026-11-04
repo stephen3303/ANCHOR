@@ -134,7 +134,7 @@ export default function OfflinePage() {
           </Panel>
           <QueueTable />
           <Panel title="Recent Messages (Cached)" icon={Mail} className="xl:col-span-2">
-            <MiniMessageTable items={MESSAGES.slice(0, 5)} cols={["subject", "reference", "date", "class"]} />
+            <MiniMessageTable items={MESSAGES.slice(0, 5)} cols={["subject", "reference", "dtg", "classification"]} />
           </Panel>
           <Panel title="Offline Tools" icon={Wrench}>
             <div className="grid gap-2">
@@ -149,7 +149,7 @@ export default function OfflinePage() {
 
       {tab === "cached" && (
         <Panel title="Cached Messages">
-          <MiniMessageTable items={MESSAGES} cols={["subject", "reference", "prec", "date", "class"]} />
+          <MiniMessageTable items={MESSAGES} cols={["subject", "reference", "dtg", "precedence", "classification"]} />
         </Panel>
       )}
 

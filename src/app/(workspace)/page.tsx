@@ -7,7 +7,9 @@ import { useCurrentUser } from "@/lib/current-user";
 import { fmtDateTime, hoursUntil } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { MiniMessageTable } from "@/components/message";
-import { Button, LifecycleBadge, PageHeader, Panel, PrecedenceBadge, StatCard, tableWrap, td, th, theadRow, tbodyRow } from "@/components/ui";
+import { MessageCellsRow, MessageHeaderRow, messageColumns } from "@/components/message-columns";
+import type { Message } from "@/lib/types";
+import { Button, LifecycleBadge, PageHeader, Panel, PrecedenceBadge, StatCard, tableWrap, tbodyRow } from "@/components/ui";
 
 export default function HomePage() {
   const CURRENT_USER = useCurrentUser();
@@ -16,6 +18,35 @@ export default function HomePage() {
   const pending = needAck.filter((m) => !userState[m.id].acknowledgedAt);
   const unread = MESSAGES.filter((m) => userState[m.id].read !== "read").length;
   const changed = MESSAGES.filter((m) => m.lifecycle !== "ACTIVE").slice(0, 5);
+
+  const ackCols = messageColumns<Message>({
+    subject: (m) => (
+      <>
+        <Link href={`/messages/${m.id}`} className="text-link hover:underline">{m.subject}</Link> <LifecycleBadge l={m.lifecycle} />
+      </>
+    ),
+    reference: (m) => m.reference,
+    precedence: (m) => <PrecedenceBadge p={m.precedence} />,
+    due: (m) => {
+      const h = m.ackDue ? hoursUntil(m.ackDue) : 99;
+      return (
+        <>
+          {m.ackDue ? fmtDateTime(m.ackDue) : "—"}
+          {!userState[m.id].acknowledgedAt && h <= 24 && (
+            <span className="ml-2 inline-flex items-center gap-1 text-xs font-semibold text-red-700">
+              <AlertTriangle className="size-3" /> escalates in {Math.max(h, 0)}h
+            </span>
+          )}
+        </>
+      );
+    },
+    status: (m) =>
+      userState[m.id].acknowledgedAt ? (
+        <span className="inline-flex items-center gap-1 text-green-700"><CheckCircle2 className="size-4" /> Acknowledged</span>
+      ) : (
+        <Button size="sm" variant="danger" onClick={() => acknowledge(m.id)}>Acknowledge</Button>
+      ),
+  });
 
   return (
     <>
@@ -35,43 +66,14 @@ export default function HomePage() {
               <div className={tableWrap}>
                 <table className="w-full min-w-[640px]">
                   <thead>
-                    <tr className={theadRow}>
-                      <th className={th}>Precedence</th>
-                      <th className={th}>Subject</th>
-                      <th className={th}>Reference</th>
-                      <th className={th}>Due</th>
-                      <th className={th}>Status</th>
-                    </tr>
+                    <MessageHeaderRow cols={ackCols} />
                   </thead>
                   <tbody>
-                    {needAck.map((m) => {
-                      const at = userState[m.id].acknowledgedAt;
-                      const h = m.ackDue ? hoursUntil(m.ackDue) : 99;
-                      return (
-                        <tr key={m.id} className={tbodyRow}>
-                          <td className={td}><PrecedenceBadge p={m.precedence} /></td>
-                          <td className={td}>
-                            <Link href={`/messages/${m.id}`} className="text-link hover:underline">{m.subject}</Link> <LifecycleBadge l={m.lifecycle} />
-                          </td>
-                          <td className={td}>{m.reference}</td>
-                          <td className={td}>
-                            {m.ackDue ? fmtDateTime(m.ackDue) : "—"}
-                            {!at && h <= 24 && (
-                              <span className="ml-2 inline-flex items-center gap-1 text-xs font-semibold text-red-700">
-                                <AlertTriangle className="size-3" /> escalates in {Math.max(h, 0)}h
-                              </span>
-                            )}
-                          </td>
-                          <td className={td}>
-                            {at ? (
-                              <span className="inline-flex items-center gap-1 text-green-700"><CheckCircle2 className="size-4" /> Acknowledged</span>
-                            ) : (
-                              <Button size="sm" variant="danger" onClick={() => acknowledge(m.id)}>Acknowledge</Button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {needAck.map((m) => (
+                      <tr key={m.id} className={tbodyRow}>
+                        <MessageCellsRow cols={ackCols} row={m} />
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -79,7 +81,7 @@ export default function HomePage() {
           </div>
 
           <Panel title="Latest Traffic" icon={Mail} action={<Link href="/messages" className="text-sm text-link">View All</Link>}>
-            <MiniMessageTable items={MESSAGES.slice(0, 6)} cols={["subject", "reference", "prec", "date"]} />
+            <MiniMessageTable items={MESSAGES.slice(0, 6)} cols={["subject", "reference", "dtg", "precedence"]} />
           </Panel>
         </div>
 

@@ -223,7 +223,10 @@ function Footer() {
       <span>ANCHOR</span>
       <span className="text-white/40">|</span>
       <span className="truncate text-amber-300">PROTOTYPE · MOCK DATA ONLY · NOT AN OFFICIAL RECORD</span>
-      <span className="ml-auto hidden items-center gap-3 border-l-2 border-gold pl-3 md:flex">
+      <span className="ml-auto shrink-0 text-white/60" title="App version and build commit">
+        v{process.env.NEXT_PUBLIC_APP_VERSION} · {process.env.NEXT_PUBLIC_GIT_COMMIT}
+      </span>
+      <span className="hidden items-center gap-3 border-l-2 border-gold pl-3 md:flex">
         SECURE <span className="text-white/40">|</span> RELIABLE <span className="text-white/40">|</span> MISSION READY
       </span>
     </footer>

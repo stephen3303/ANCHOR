@@ -4,5 +4,38 @@ services:
     image: anchor-prototype
     container_name: anchor-prototype
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB:-anchor}
+      PGUSER: ${POSTGRES_USER:-anchor}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-anchor-local-dev}
+      ENABLE_TEMPLATE_AUTHORING: ${ENABLE_TEMPLATE_AUTHORING:-false}
+      ENABLE_DEMO_LOGIN: ${ENABLE_DEMO_LOGIN:-false}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-anchor}
+      POSTGRES_USER: ${POSTGRES_USER:-anchor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-anchor-local-dev}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

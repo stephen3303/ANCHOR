@@ -1,6 +1,10 @@
 node_modules
 .next
 .git
+# Let the build read the current commit for the footer version tag.
+!.git/HEAD
+!.git/refs
+!.git/packed-refs
 npm-debug.log*
 Dockerfile
 docker-compose.yml

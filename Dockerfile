@@ -9,7 +9,9 @@ FROM node:22-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ENV NEXT_TELEMETRY_DISABLED=1
+# Optional override for the footer commit tag; by default it is read from .git.
+ARG GIT_COMMIT=
+ENV NEXT_TELEMETRY_DISABLED=1 GIT_COMMIT=$GIT_COMMIT
 RUN npm run build
 
 FROM node:22-alpine AS run

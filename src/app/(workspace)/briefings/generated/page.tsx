@@ -8,6 +8,7 @@ import { useStore } from "@/lib/store";
 import { fmtDate } from "@/lib/format";
 import { AiSummary } from "@/components/message";
 import { Bar, Button, Donut, ImportanceBadge, LifecycleBadge, Panel, PrecedenceBadge, StatCard, Tabs, Delta, tableWrap, td, th, theadRow, tbodyRow } from "@/components/ui";
+import { matchesTopics, topicName } from "@/lib/topics";
 
 type Tab = "summary" | "takeaways" | "actions" | "messages" | "charts";
 
@@ -20,10 +21,10 @@ export default function GeneratedBriefing() {
   const low = items.filter((m) => m.importance === "Low");
   const actions = items.filter((m) => m.actionItem);
   const topics = topicCounts(items);
-  const statusChanges = messages.filter((m) => m.lifecycle !== "ACTIVE" && b.communities.some((c) => m.communities.includes(c)));
+  const statusChanges = messages.filter((m) => m.lifecycle !== "ACTIVE" && matchesTopics(m.topics, b.topics));
   const pct = (n: number) => (items.length ? Math.round((n / items.length) * 100) : 0);
 
-  const summary = `This briefing covers ${items.length} messages from the ${b.range.toLowerCase()} relevant to ${b.communities.slice(0, 3).join(", ")}${b.communities.length > 3 ? " and other topics" : ""}. ${high.length} are high priority and ${actions.length} carry action items. ${statusChanges.length ? `${statusChanges.length} messages changed status (superseded, corrected, amended or cancelled), so confirm you are working from the current version.` : ""}`;
+  const summary = `This briefing covers ${items.length} messages from the ${b.range.toLowerCase()} relevant to ${b.topics.slice(0, 3).map(topicName).join(", ")}${b.topics.length > 3 ? " and other topics" : ""}. ${high.length} are high priority and ${actions.length} carry action items. ${statusChanges.length ? `${statusChanges.length} messages changed status (superseded, corrected, amended or cancelled), so confirm you are working from the current version.` : ""}`;
 
   return (
     <>
@@ -35,7 +36,7 @@ export default function GeneratedBriefing() {
             <div className="text-xl font-bold">{b.name}</div>
             <div className="text-lg font-semibold">{b.format}</div>
             <div className="text-[15px] text-muted">
-              Generated: {fmtDate(new Date("2026-10-24T19:00:00Z"))} 1900Z | {items.length} Messages | {b.communities.slice(0, 3).join(", ")}
+              Generated: {fmtDate(new Date("2026-10-24T19:00:00Z"))} 1900Z | {items.length} Messages | {b.topics.slice(0, 3).map(topicName).join(", ")}
             </div>
           </div>
         </div>

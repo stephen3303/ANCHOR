@@ -151,7 +151,7 @@ const seeds: Seed[] = [
     importance: "High",
     lifecycle: "ACTIVE",
     relatesTo: "COMSUBLANT 061/26",
-    communities: ["Submarine Warfare", "Readiness"],
+    topics: ["submarine.deployments", "readiness.reporting"],
     attachments: [
       { name: "COMSUBLANT_078_26.pdf", size: "1.2 MB", kind: "pdf" },
       { name: "Readiness_Template.xlsx", size: "450 KB", kind: "xlsx" },
@@ -192,7 +192,7 @@ const seeds: Seed[] = [
     importance: "High",
     lifecycle: "CORRECTED",
     relatesTo: "NAVADMIN 235/26",
-    communities: ["Cybersecurity", "Policy", "Readiness"],
+    topics: ["cyber.controls", "policy.admin", "readiness.inspections"],
     attachments: [{ name: "NAVADMIN_236_26.pdf", size: "820 KB", kind: "pdf" }],
     sections: sections(
       "To issue updated cybersecurity controls and monitoring requirements for operational networks. This corrected copy fixes the implementation date in paragraph 3 of NAVADMIN 235/26.",
@@ -225,7 +225,7 @@ const seeds: Seed[] = [
     importance: "Medium",
     lifecycle: "SUPERSEDED",
     replacedBy: "NAVADMIN 236/26",
-    communities: ["Cybersecurity", "Policy"],
+    topics: ["cyber.controls", "policy.admin"],
     attachments: [],
     sections: sections(
       "To issue updated cybersecurity controls for operational networks.",
@@ -252,7 +252,7 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "High",
     lifecycle: "ACTIVE",
-    communities: ["Submarine Warfare", "Safety"],
+    topics: ["safety.stand-downs", "safety.orm", "submarine"],
     attachments: [{ name: "Safety_Standdown_Agenda.docx", size: "210 KB", kind: "docx" }],
     sections: sections(
       "To direct a one-day safety stand-down for all COMSUBLANT units.",
@@ -287,7 +287,7 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Medium",
     lifecycle: "ACTIVE",
-    communities: ["Personnel", "Readiness"],
+    topics: ["readiness.force-health", "personnel.family"],
     attachments: [
       { name: "NAVADMIN_234_26.pdf", size: "1.2 MB", kind: "pdf" },
       { name: "Health_Protection_Annex.docx", size: "450 KB", kind: "docx" },
@@ -319,7 +319,7 @@ const seeds: Seed[] = [
     importance: "Medium",
     lifecycle: "SUPERSEDED",
     replacedBy: "COMSUBLANT 078/26",
-    communities: ["Submarine Warfare", "Readiness"],
+    topics: ["submarine.deployments", "readiness.reporting"],
     attachments: [],
     sections: sections(
       "To provide interim readiness reporting guidance pending a standardized template.",
@@ -346,7 +346,7 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Medium",
     lifecycle: "ACTIVE",
-    communities: ["Personnel", "Policy"],
+    topics: ["personnel.assignments", "policy.admin"],
     attachments: [],
     sections: sections(
       "To announce changes to assignment timelines and detailer guidance.",
@@ -375,7 +375,7 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Medium",
     lifecycle: "ACTIVE",
-    communities: ["Training & Education", "Submarine Warfare"],
+    topics: ["training.pipeline", "training.schools"],
     attachments: [{ name: "Pipeline_Schedule.xlsx", size: "310 KB", kind: "xlsx" }],
     sections: sections(
       "To publish revised training schedules for submarine and cybersecurity courses.",
@@ -403,7 +403,7 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Medium",
     lifecycle: "ACTIVE",
-    communities: ["Submarine Warfare", "Training & Education"],
+    topics: ["training.watch-quals", "submarine.tactics"],
     attachments: [{ name: "Qualification_Standards.pdf", size: "2.1 MB", kind: "pdf" }],
     sections: sections(
       "To establish standard qualification requirements for submarine watch teams.",
@@ -430,7 +430,7 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Low",
     lifecycle: "ACTIVE",
-    communities: ["Maintenance"],
+    topics: ["maintenance.availabilities", "maintenance.reporting"],
     attachments: [],
     sections: sections(
       "To update maintenance availability reporting procedures.",
@@ -458,7 +458,7 @@ const seeds: Seed[] = [
     importance: "High",
     lifecycle: "AMENDED",
     relatesTo: "COMSUBLANT 070/26",
-    communities: ["Submarine Warfare", "Safety"],
+    topics: ["submarine.port-visits", "logistics.port-services"],
     attachments: [],
     sections: sections(
       "To amend force protection measures for the upcoming port visit.",
@@ -492,7 +492,7 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "High",
     lifecycle: "ACTIVE",
-    communities: ["Submarine Warfare", "Safety"],
+    topics: ["operations.incidents", "safety.mishaps"],
     attachments: [],
     sections: [
       { heading: "Situation", body: ["At 231842Z OCT 26, while surfaced in the Virginia Capes operating area, one crew member went over the side during topside line handling."] },
@@ -520,7 +520,7 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Low",
     lifecycle: "ACTIVE",
-    communities: ["Submarine Warfare", "Readiness"],
+    topics: ["operations.status", "logistics.fuel-provisions"],
     attachments: [],
     sections: [
       { heading: "Equipment Status", body: ["All mission-essential equipment fully mission capable. No outstanding CASREPs."] },
@@ -547,7 +547,7 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Medium",
     lifecycle: "ACTIVE",
-    communities: ["Maintenance", "Readiness"],
+    topics: ["maintenance.casualties", "logistics.parts", "readiness.reporting"],
     attachments: [],
     sections: [
       { heading: "Casualty", body: ["Number 2 low pressure air compressor tripped on high discharge temperature and will not restart.", "Category 3: degrades a primary mission. Number 1 compressor carries the load with no redundancy."] },
@@ -576,7 +576,7 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Low",
     lifecycle: "ACTIVE",
-    communities: ["Submarine Warfare"],
+    topics: ["operations.movement", "submarine.deployments"],
     attachments: [],
     sections: [
       { heading: "Departure", body: ["Estimated time of departure Norfolk 221200Z OCT 26."] },
@@ -602,7 +602,7 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Low",
     lifecycle: "ACTIVE",
-    communities: ["Submarine Warfare", "Maintenance"],
+    topics: ["logistics.fuel-provisions", "logistics.port-services", "submarine.port-visits"],
     attachments: [],
     sections: [
       { heading: "Arrival", body: ["Estimated time of arrival Port Canaveral 240800Z OCT 26, departure 270800Z OCT 26."] },
@@ -628,7 +628,7 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Low",
     lifecycle: "ACTIVE",
-    communities: ["Submarine Warfare", "Readiness"],
+    topics: ["operations.exercises", "submarine.tactics"],
     attachments: [],
     sections: sections(
       "To announce the initial planning conference for the next undersea warfare exercise series.",
@@ -657,7 +657,7 @@ const seeds: Seed[] = [
     importance: "Low",
     lifecycle: "ACTIVE",
     relatesTo: "ALNAV 071/26",
-    communities: ["Personnel", "Policy"],
+    topics: ["personnel.leave"],
     attachments: [],
     sections: sections(
       "To publish holiday leave policy and cancel ALNAV 071/26.",
@@ -685,7 +685,7 @@ const seeds: Seed[] = [
     importance: "Low",
     lifecycle: "CANCELLED",
     replacedBy: "ALNAV 079/26",
-    communities: ["Personnel", "Policy"],
+    topics: ["personnel.leave"],
     attachments: [],
     sections: sections(
       "To publish holiday leave policy.",
@@ -712,7 +712,7 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Low",
     lifecycle: "EXPIRED",
-    communities: ["Policy", "Maintenance"],
+    topics: ["policy.environmental"],
     attachments: [],
     sections: sections(
       "To request environmental compliance data from all activities.",
@@ -739,7 +739,7 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Low",
     lifecycle: "ACTIVE",
-    communities: ["Policy"],
+    topics: ["policy.records"],
     attachments: [],
     sections: sections(
       "To remind commands of official records retention responsibilities.",
@@ -788,7 +788,6 @@ export const SUBSCRIPTIONS: Subscription[] = [
   {
     id: "sub-comsublant-cmd",
     name: "COMSUBLANT Command Traffic",
-    category: "Submarine Warfare",
     description: "All traffic from COMSUBLANT to assigned units. Assigned by command.",
     criteria: { messageTypes: ["GENADMIN"], originators: ["COMSUBLANT"] },
     frequency: "Real-time",
@@ -803,7 +802,6 @@ export const SUBSCRIPTIONS: Subscription[] = [
   {
     id: "sub-flash-immediate",
     name: "FLASH and IMMEDIATE Precedence",
-    category: "Readiness",
     description: "Any FLASH or IMMEDIATE traffic addressed to the unit. Mandatory by precedence rule.",
     criteria: { messageTypes: [], precedence: ["FLASH", "IMMEDIATE"] },
     frequency: "Real-time",
@@ -818,9 +816,8 @@ export const SUBSCRIPTIONS: Subscription[] = [
   {
     id: "sub-deploy-readiness",
     name: "Deployment Readiness",
-    category: "Readiness",
     description: "Deployment timelines, readiness reporting, checklists and validation procedures.",
-    criteria: { messageTypes: ["GENADMIN", "OPNAVINST"], keywords: ["readiness", "deployment"] },
+    criteria: { messageTypes: [], topics: ["submarine.deployments", "readiness.reporting"] },
     frequency: "Real-time",
     status: "Active",
     mandatory: false,
@@ -834,9 +831,8 @@ export const SUBSCRIPTIONS: Subscription[] = [
   {
     id: "sub-cyber",
     name: "Cybersecurity Controls",
-    category: "Cybersecurity",
     description: "Cyber policy, alerts, and implementation guidance.",
-    criteria: { messageTypes: ["NAVADMIN", "OPNAVINST"], keywords: ["cybersecurity"] },
+    criteria: { messageTypes: [], topics: ["cyber"] },
     frequency: "Daily Digest",
     status: "Active",
     mandatory: false,
@@ -849,9 +845,8 @@ export const SUBSCRIPTIONS: Subscription[] = [
   {
     id: "sub-personnel",
     name: "Personnel Policy Updates",
-    category: "Personnel",
     description: "Personnel policies, assignments and leave.",
-    criteria: { messageTypes: ["NAVADMIN", "ALNAV"] },
+    criteria: { messageTypes: [], topics: ["personnel"] },
     frequency: "Daily Digest",
     status: "Active",
     mandatory: false,
@@ -864,9 +859,8 @@ export const SUBSCRIPTIONS: Subscription[] = [
   {
     id: "sub-training",
     name: "Training Pipeline",
-    category: "Training & Education",
     description: "Training pipeline schedules and qualification standards.",
-    criteria: { messageTypes: ["NAVADMIN", "COMSUBFOR INST"] },
+    criteria: { messageTypes: [], topics: ["training.pipeline", "training.watch-quals"] },
     frequency: "Weekly",
     status: "Active",
     mandatory: false,
@@ -879,9 +873,8 @@ export const SUBSCRIPTIONS: Subscription[] = [
   {
     id: "sub-maintenance",
     name: "Maintenance Policy",
-    category: "Maintenance",
     description: "Maintenance policy and availability reporting.",
-    criteria: { messageTypes: ["NAVSEAINST"] },
+    criteria: { messageTypes: [], topics: ["maintenance"] },
     frequency: "Weekly",
     status: "Paused",
     mandatory: false,
@@ -894,9 +887,8 @@ export const SUBSCRIPTIONS: Subscription[] = [
   {
     id: "sub-usw-exercise",
     name: "Undersea Warfare Exercises",
-    category: "Submarine Warfare",
     description: "Exercise planning conferences and CONPLANs.",
-    criteria: { messageTypes: ["GENADMIN"], originators: ["USFF"] },
+    criteria: { messageTypes: [], topics: ["operations.exercises"] },
     frequency: "Daily Digest",
     status: "Pending Approval",
     mandatory: false,
@@ -937,17 +929,6 @@ export const APPROVAL_QUEUE: (Subscription & { requester: string; requestedOn: s
     status: "Pending Approval",
     justification: "Ship's office admin.",
   },
-];
-
-export const SUBSCRIPTION_CATEGORIES: { name: string; count: number }[] = [
-  { name: "Submarine Warfare", count: 24 },
-  { name: "Cybersecurity", count: 18 },
-  { name: "Readiness", count: 12 },
-  { name: "Personnel", count: 9 },
-  { name: "Training & Education", count: 6 },
-  { name: "Maintenance", count: 8 },
-  { name: "Safety", count: 6 },
-  { name: "Policy", count: 4 },
 ];
 
 export const AUDIT_EVENTS: AuditEvent[] = [

@@ -44,7 +44,7 @@ export function messageFromParsed(p: ParsedMessage, raw: string, integrity: Inte
     importance: IMPORTANCE[p.precedence],
     lifecycle: ownLifecycle(p),
     relatesTo: p.directive?.target,
-    communities: [],
+    topics: [],
     attachments: [],
     sections: p.poc ? [...p.sections, { heading: "Point of Contact", body: [p.poc] }] : p.sections,
     rawText: raw,

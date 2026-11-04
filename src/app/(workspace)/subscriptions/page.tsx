@@ -3,21 +3,27 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Filter, Info, Lock, Pencil, Plus, Radio, Search, Star, FileText, X } from "lucide-react";
-import { SUBSCRIPTION_CATEGORIES } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import { MESSAGE_TYPES } from "@/lib/message-types";
-import type { Community, Frequency, Message, MessageType, Subscription } from "@/lib/types";
+import { TOPICS, matchesTopics, parentOf, topicName, topicPath } from "@/lib/topics";
+import { TopicPicker } from "@/components/topic-picker";
+import type { Frequency, Message, MessageType, Subscription } from "@/lib/types";
 import { Button, Check, Panel, Pill, Select, Tabs, TextInput, Toggle, cx, td, th, theadRow } from "@/components/ui";
 
 const ALL_TYPES: MessageType[] = MESSAGE_TYPES;
 
-const RECOMMENDED = [
-  { name: "Submarine Safety", category: "Safety" as Community, description: "Safety messages and stand-downs for submarine units.", types: ["GENADMIN"] as MessageType[], keywords: ["safety"] },
-  { name: "Watch Team Qualifications", category: "Training & Education" as Community, description: "Watch team qualification standards and changes.", types: ["COMSUBFOR INST"] as MessageType[] },
-  { name: "Records Management", category: "Policy" as Community, description: "Official records retention and handling.", types: ["ALNAV"] as MessageType[] },
-  { name: "Port Visit Planning", category: "Submarine Warfare" as Community, description: "Port visit force protection and logistics.", types: ["GENADMIN", "LOGREQ", "MOVREP"] as MessageType[] },
-  { name: "Maintenance Availabilities", category: "Maintenance" as Community, description: "Availability scheduling and reporting.", types: ["NAVSEAINST"] as MessageType[] },
+const RECOMMENDED: { name: string; description: string; topics: string[]; types: MessageType[] }[] = [
+  { name: "Submarine Safety", description: "All safety traffic, from stand-downs to hearing conservation.", topics: ["safety"], types: [] },
+  { name: "Motorcycle Safety", description: "Rider training, PPE and mishap prevention.", topics: ["safety.motorcycle"], types: [] },
+  { name: "Watch Team Qualifications", description: "Watch team qualification standards and changes.", topics: ["training.watch-quals"], types: [] },
+  { name: "Records Management", description: "Official records retention and handling.", topics: ["policy.records"], types: [] },
+  { name: "Port Visit Planning", description: "Port visit coordination, logistics requests and port services.", topics: ["submarine.port-visits", "logistics.port-services"], types: [] },
+  { name: "Equipment Casualties", description: "CASREPs and casualty corrections across the force.", topics: ["maintenance.casualties"], types: [] },
 ];
+
+/** "Safety (all)" for a whole topic, "Safety › Electrical Safety" for a subtopic. */
+const topicLabel = (id: string) => (id.includes(".") ? topicPath(id) : `${topicName(id)} (all)`);
+const topicsText = (ids?: string[]) => (ids?.length ? ids.map(topicLabel).join(", ") : "Any topic");
 
 type TabId = "mine" | "recommended" | "categories" | "shared";
 
@@ -32,9 +38,10 @@ function matches(s: Subscription, messages: Message[]) {
   return messages.filter(
     (m) =>
       (!s.criteria.messageTypes.length || s.criteria.messageTypes.includes(m.type)) &&
+      matchesTopics(m.topics, s.criteria.topics ?? []) &&
       (!s.criteria.precedence || s.criteria.precedence.includes(m.precedence)) &&
       (!s.criteria.originators?.length || s.criteria.originators.includes(m.source)) &&
-      (!s.criteria.keywords?.length || s.criteria.keywords.some((k) => (m.subject + " " + m.communities.join(" ")).toLowerCase().includes(k.toLowerCase()))),
+      (!s.criteria.keywords?.length || s.criteria.keywords.some((k) => (m.subject + " " + m.topics.map(topicPath).join(" ")).toLowerCase().includes(k.toLowerCase()))),
   );
 }
 
@@ -49,12 +56,16 @@ export default function SubscriptionsPage() {
   const rows = useMemo(
     () =>
       subscriptions.filter(
-        (s) => (!cat || s.category === cat) && (!q || (s.name + s.description).toLowerCase().includes(q.toLowerCase())),
+        (s) => (!cat || (s.criteria.topics ?? []).some((t) => parentOf(t) === cat)) && (!q || (s.name + s.description).toLowerCase().includes(q.toLowerCase())),
       ),
     [subscriptions, cat, q],
   );
   const current = subscriptions.find((s) => s.id === selected) ?? subscriptions[0];
   const recent = matches(current, messages).slice(0, 5);
+  const messageCount = (id: string) => messages.filter((m) => matchesTopics(m.topics, [id])).length;
+  const subsFor = (id: string) => subscriptions.filter((s) => (s.criteria.topics ?? []).some((t) => parentOf(t) === id)).length;
+  const subscribeTo = (topics: string[], name: string) =>
+    setForm({ name, description: `Messages tagged ${topics.map(topicLabel).join(", ")}.`, frequency: "Daily Digest", channels: { inApp: true, email: true, teams: false }, criteria: { messageTypes: [], topics } });
 
   return (
     <>
@@ -63,7 +74,7 @@ export default function SubscriptionsPage() {
           <Radio className="mt-1 size-9 text-navy-900" aria-hidden />
           <div>
             <h1 className="text-2xl font-bold sm:text-[28px]">Message Subscriptions</h1>
-            <p className="text-[15px] text-muted">Stay informed about the topics and communities that matter to your mission.</p>
+            <p className="text-[15px] text-muted">Subscribe to the topics and subtopics that matter to your mission.</p>
           </div>
         </div>
         <Button variant="primary" icon={Plus} onClick={() => setForm({ frequency: "Daily Digest", channels: { inApp: true, email: true, teams: false }, criteria: { messageTypes: [] } })}>
@@ -82,7 +93,7 @@ export default function SubscriptionsPage() {
         tabs={[
           { id: "mine", label: `My Subscriptions (${subscriptions.length})` },
           { id: "recommended", label: `Recommended (${RECOMMENDED.length})` },
-          { id: "categories", label: "All Categories" },
+          { id: "categories", label: "Browse Topics" },
           { id: "shared", label: "Shared with Me (2)" },
         ]}
       />
@@ -92,9 +103,9 @@ export default function SubscriptionsPage() {
           {RECOMMENDED.map((r) => (
             <Panel key={r.name}>
               <div className="font-semibold">{r.name}</div>
-              <div className="text-xs text-muted">{r.category} · {r.types.join(", ")}</div>
+              <div className="text-xs text-muted">{topicsText(r.topics)}</div>
               <p className="my-2 text-sm">{r.description}</p>
-              <Button size="sm" variant="primary" onClick={() => setForm({ name: r.name, category: r.category, description: r.description, frequency: "Daily Digest", channels: { inApp: true, email: true, teams: false }, criteria: { messageTypes: r.types, keywords: "keywords" in r ? r.keywords : undefined } })}>
+              <Button size="sm" variant="primary" onClick={() => setForm({ name: r.name, description: r.description, frequency: "Daily Digest", channels: { inApp: true, email: true, teams: false }, criteria: { messageTypes: r.types, topics: r.topics } })}>
                 Request
               </Button>
             </Panel>
@@ -103,12 +114,30 @@ export default function SubscriptionsPage() {
       )}
 
       {tab === "categories" && (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {SUBSCRIPTION_CATEGORIES.map((c) => (
-            <button key={c.name} type="button" onClick={() => { setCat(c.name); setTab("mine"); }} className="rounded-lg border border-line bg-white p-4 text-left shadow-sm hover:border-navy-600">
-              <div className="font-semibold">{c.name}</div>
-              <div className="text-sm text-muted">{c.count} subscribable topics</div>
-            </button>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {TOPICS.map((t) => (
+            <Panel key={t.id}>
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <div>
+                  <div className="font-semibold">{t.name}</div>
+                  <div className="text-xs text-muted">{messageCount(t.id)} messages · {t.subtopics.length} subtopics</div>
+                </div>
+                <Button size="sm" onClick={() => subscribeTo([t.id], t.name)}>Subscribe to all</Button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {t.subtopics.map((st) => (
+                  <button
+                    key={st.id}
+                    type="button"
+                    onClick={() => subscribeTo([st.id], st.name)}
+                    title={`Request a subscription to ${st.name}`}
+                    className="rounded border border-line bg-white px-2 py-1 text-xs hover:border-navy-600 hover:bg-navy-50"
+                  >
+                    {st.name} <span className="text-muted">({messageCount(st.id)})</span>
+                  </button>
+                ))}
+              </div>
+            </Panel>
           ))}
         </div>
       )}
@@ -125,17 +154,17 @@ export default function SubscriptionsPage() {
       {tab === "mine" && (
         <>
           <div className="mb-4 grid gap-4 lg:grid-cols-[250px_1fr]">
-            <Panel title="Subscription Categories" bodyClassName="p-2">
+            <Panel title="Topics" bodyClassName="p-2">
               <ul>
                 <li>
                   <button type="button" onClick={() => setCat(null)} className={cx("w-full rounded px-3 py-2 text-left text-[15px]", !cat ? "bg-navy-100 font-semibold" : "hover:bg-navy-50")}>
-                    All categories
+                    All topics
                   </button>
                 </li>
-                {SUBSCRIPTION_CATEGORIES.map((c) => (
-                  <li key={c.name}>
-                    <button type="button" onClick={() => setCat(c.name)} className={cx("w-full rounded px-3 py-2 text-left text-[15px]", cat === c.name ? "bg-navy-100 font-semibold" : "hover:bg-navy-50")}>
-                      {c.name} ({c.count})
+                {TOPICS.filter((t) => subsFor(t.id)).map((t) => (
+                  <li key={t.id}>
+                    <button type="button" onClick={() => setCat(t.id)} className={cx("w-full rounded px-3 py-2 text-left text-[15px]", cat === t.id ? "bg-navy-100 font-semibold" : "hover:bg-navy-50")}>
+                      {t.name} ({subsFor(t.id)})
                     </button>
                   </li>
                 ))}
@@ -147,7 +176,7 @@ export default function SubscriptionsPage() {
                 <label className="relative min-w-[200px] flex-1">
                   <span className="sr-only">Search subscriptions</span>
                   <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
-                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search subscriptions, keywords, or communities..." className="w-full rounded-md border border-line py-2 pl-9 pr-3 text-sm focus:outline-2 focus:outline-navy-600" />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search subscriptions or keywords..." className="w-full rounded-md border border-line py-2 pl-9 pr-3 text-sm focus:outline-2 focus:outline-navy-600" />
                 </label>
                 <Button variant="primary" icon={Filter} size="sm">Filter</Button>
               </div>
@@ -156,7 +185,7 @@ export default function SubscriptionsPage() {
                   <thead>
                     <tr className={theadRow}>
                       <th className={th}>Subscription Name</th>
-                      <th className={th}>Category</th>
+                      <th className={th}>Topics</th>
                       <th className={th}>Description</th>
                       <th className={th}>Message Types</th>
                       <th className={th}>Frequency</th>
@@ -173,9 +202,9 @@ export default function SubscriptionsPage() {
                             {s.name}
                           </span>
                         </td>
-                        <td className={td}>{s.category}</td>
+                        <td className={td}>{topicsText(s.criteria.topics)}</td>
                         <td className={td}>{s.description}</td>
-                        <td className={td}>{s.criteria.messageTypes.join(", ") || (s.criteria.precedence ?? []).join(", ")}</td>
+                        <td className={td}>{s.criteria.messageTypes.join(", ") || (s.criteria.precedence ?? []).join(", ") || "Any"}</td>
                         <td className={td}>{s.frequency}</td>
                         <td className={td}>{statusPill(s)}</td>
                         <td className={td} onClick={(e) => e.stopPropagation()}>
@@ -202,7 +231,7 @@ export default function SubscriptionsPage() {
                 {current.mandatory && <Pill className="bg-navy-100 text-navy-800"><Lock className="size-3" /> Mandatory</Pill>}
               </div>
               <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
-                <Field k="Category" v={current.category} />
+                <Field k="Topics" v={topicsText(current.criteria.topics)} />
                 <Field k="Description" v={current.description} />
                 <Field k="Message Types" v={current.criteria.messageTypes.join(", ") || "Any"} />
                 <Field k="Frequency" v={current.frequency} />
@@ -261,7 +290,7 @@ type Req = Parameters<ReturnType<typeof useStore>["requestSubscription"]>[0];
 
 function RequestDialog({ initial, onClose, onSubmit }: { initial: Partial<Subscription>; onClose: () => void; onSubmit: (s: Req) => void }) {
   const [name, setName] = useState(initial.name ?? "");
-  const [category, setCategory] = useState<Community>(initial.category ?? "Readiness");
+  const [topics, setTopics] = useState<string[]>(initial.criteria?.topics ?? []);
   const [description, setDescription] = useState(initial.description ?? "");
   const [types, setTypes] = useState<MessageType[]>(initial.criteria?.messageTypes ?? []);
   const [keywords, setKeywords] = useState((initial.criteria?.keywords ?? []).join(", "));
@@ -279,8 +308,12 @@ function RequestDialog({ initial, onClose, onSubmit }: { initial: Partial<Subscr
         </div>
         <div className="space-y-3">
           <TextInput label="Subscription name" value={name} onChange={(e) => setName(e.target.value)} />
-          <Select label="Category" value={category} onChange={(v) => setCategory(v as Community)} options={SUBSCRIPTION_CATEGORIES.map((c) => c.name)} />
           <TextInput label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <fieldset>
+            <legend className="mb-1 text-sm font-semibold">Topics</legend>
+            <p className="mb-1 text-xs text-muted">Check a topic for everything in it, or open it and pick subtopics. None checked means any topic.</p>
+            <TopicPicker value={topics} onChange={setTopics} className="max-h-64 overflow-y-auto rounded-md border border-line p-2" />
+          </fieldset>
           <fieldset>
             <legend className="mb-1 text-sm font-semibold">Message types</legend>
             <div className="grid grid-cols-2">
@@ -308,9 +341,8 @@ function RequestDialog({ initial, onClose, onSubmit }: { initial: Partial<Subscr
             onClick={() =>
               onSubmit({
                 name,
-                category,
                 description,
-                criteria: { messageTypes: types, keywords: keywords.split(",").map((k) => k.trim()).filter(Boolean) },
+                criteria: { messageTypes: types, topics, keywords: keywords.split(",").map((k) => k.trim()).filter(Boolean) },
                 frequency,
                 channels,
                 justification,

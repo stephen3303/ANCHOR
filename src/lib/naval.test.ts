@@ -3,6 +3,7 @@ import test from "node:test";
 import { MESSAGES, resolveAckStatus } from "./data";
 import { messageFromParsed } from "./ingest-record";
 import { categoryOf, formatForType, precedenceAdvisory, PRECEDENCE_OBJECTIVE } from "./message-types";
+import { isTopic, matchesTopics } from "./topics";
 import { fromDtg, NavalParseError, normRef, ownLifecycle, parseNavalMessage, targetLifecycle, toDtg } from "./naval";
 
 const SAMPLE = `O 041530Z NOV 26
@@ -122,4 +123,15 @@ test("precedence objectives and the administrative precedence ceiling", () => {
   assert.equal(precedenceAdvisory("GENADMIN", "PRIORITY"), null);
   assert.match(precedenceAdvisory("GENADMIN", "IMMEDIATE") ?? "", /death, serious illness/);
   assert.equal(precedenceAdvisory("OPREP-3", "FLASH"), null);
+});
+
+test("demo topic tags are all known, and a topic covers its subtopics", () => {
+  for (const m of MESSAGES) {
+    assert.ok(m.topics.length, m.reference);
+    for (const t of m.topics) assert.ok(isTopic(t), `${m.reference}: ${t}`);
+  }
+  assert.equal(matchesTopics(["safety.electrical"], ["safety"]), true);
+  assert.equal(matchesTopics(["safety.electrical"], ["safety.motorcycle"]), false);
+  assert.equal(matchesTopics(["safety"], ["safety.electrical"]), false);
+  assert.equal(matchesTopics(["policy.records"], []), true);
 });

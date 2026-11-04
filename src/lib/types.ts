@@ -38,19 +38,6 @@ export type MessageType =
   | "NAVSEAINST"
   | "COMSUBFOR INST";
 
-export type Community =
-  | "Submarine Warfare"
-  | "Surface Warfare"
-  | "Aviation"
-  | "Cybersecurity"
-  | "Readiness"
-  | "Personnel"
-  | "Training & Education"
-  | "Maintenance"
-  | "Safety"
-  | "Policy"
-  | "Expeditionary Forces";
-
 export interface Attachment {
   name: string;
   size: string;
@@ -83,7 +70,8 @@ export interface Message {
   relatesTo?: string;
   /** Reference that superseded or cancelled this one */
   replacedBy?: string;
-  communities: Community[];
+  /** Topic tags (src/lib/topics.ts), usually subtopics such as "safety.electrical". */
+  topics: string[];
   attachments: Attachment[];
   sections: MessageSection[];
   /**
@@ -140,10 +128,11 @@ export type Frequency = "Real-time" | "Daily Digest" | "Weekly";
 export interface Subscription {
   id: string;
   name: string;
-  category: Community;
   description: string;
   criteria: {
     messageTypes: MessageType[];
+    /** Topics or subtopics; a topic covers all of its subtopics. */
+    topics?: string[];
     originators?: string[];
     keywords?: string[];
     precedence?: Precedence[];

@@ -5,30 +5,19 @@ import { useRouter } from "next/navigation";
 import { FileText, FolderOpen, RotateCcw, Save, Sparkles, CheckSquare, Square } from "lucide-react";
 import { selectBriefing } from "@/lib/briefing";
 import { DEFAULT_BRIEFING, useStore } from "@/lib/store";
-import type { Community } from "@/lib/types";
+import { TOPICS, topicName, topicPath } from "@/lib/topics";
 import { hoursAgo } from "@/lib/format";
 import { Button, Check, ImportanceBadge, LifecycleBadge, PageHeader, Panel, Select, Tag, TextInput, cx } from "@/components/ui";
 
-const COMMUNITIES: Community[] = [
-  "Submarine Warfare",
-  "Surface Warfare",
-  "Expeditionary Forces",
-  "Cybersecurity",
-  "Readiness",
-  "Personnel",
-  "Training & Education",
-  "Maintenance",
-  "Safety",
-  "Policy",
-];
+const TOPIC_IDS = TOPICS.map((t) => t.id);
 
 export default function BriefingBuilder() {
   const router = useRouter();
   const { briefing: b, setBriefing, userState, log, notify, messages } = useStore();
   const set = (p: Partial<typeof b>) => setBriefing({ ...b, ...p });
   const preview = selectBriefing(b, (id) => userState[id]?.read === "read", messages);
-  const toggleComm = (c: Community) => set({ communities: b.communities.includes(c) ? b.communities.filter((x) => x !== c) : [...b.communities, c] });
-  const allOn = b.communities.length === COMMUNITIES.length;
+  const toggleTopic = (t: string) => set({ topics: b.topics.includes(t) ? b.topics.filter((x) => x !== t) : [...b.topics.filter((x) => !x.startsWith(`${t}.`)), t] });
+  const allOn = TOPIC_IDS.every((t) => b.topics.includes(t));
 
   const generate = () => {
     log("Create Briefing", b.name, `Briefing generated from ${preview.length} messages.`);
@@ -63,26 +52,26 @@ export default function BriefingBuilder() {
           </section>
 
           <section>
-            <h2 className="text-lg font-bold">2. Communities / Topics</h2>
-            <p className="mb-2 text-sm text-muted">Select the communities and topics to include in this briefing.</p>
+            <h2 className="text-lg font-bold">2. Topics</h2>
+            <p className="mb-2 text-sm text-muted">Select the topics to include in this briefing. Each topic covers all of its subtopics.</p>
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              {COMMUNITIES.map((c) => {
-                const on = b.communities.includes(c);
+              {TOPICS.map(({ id: c, name }) => {
+                const on = b.topics.includes(c);
                 return (
                   <button
                     key={c}
                     type="button"
                     aria-pressed={on}
-                    onClick={() => toggleComm(c)}
+                    onClick={() => toggleTopic(c)}
                     className={cx("flex items-center gap-2 rounded-md border px-3 py-3 text-left text-sm", on ? "border-navy-600 bg-navy-100 font-semibold" : "border-line bg-white hover:bg-navy-50")}
                   >
                     {on ? <CheckSquare className="size-5 text-navy-600" /> : <Square className="size-5 text-slate-400" />}
-                    {c}
+                    {name}
                   </button>
                 );
               })}
-              <button type="button" onClick={() => set({ communities: allOn ? [] : COMMUNITIES })} className="rounded-md border border-line bg-white px-3 py-3 text-sm hover:bg-navy-50">
-                {allOn ? "Clear All" : "All Communities"}
+              <button type="button" onClick={() => set({ topics: allOn ? [] : TOPIC_IDS })} className="rounded-md border border-line bg-white px-3 py-3 text-sm hover:bg-navy-50">
+                {allOn ? "Clear All" : "All Topics"}
               </button>
             </div>
           </section>
@@ -121,7 +110,7 @@ export default function BriefingBuilder() {
                 <div className="min-w-0 flex-1">
                   <Link href={`/messages/${m.id}`} className="font-semibold text-link hover:underline">{m.subject}</Link> <LifecycleBadge l={m.lifecycle} />
                   <div className="text-[13px]">{m.reference} | {m.source} | {m.dtg}</div>
-                  <div className="mt-1 flex flex-wrap gap-1">{m.communities.map((c) => <Tag key={c}>{c}</Tag>)}</div>
+                  <div className="mt-1 flex flex-wrap gap-1">{m.topics.map((t) => <Tag key={t} title={topicPath(t)}>{topicName(t)}</Tag>)}</div>
                 </div>
                 <div className="text-right">
                   <ImportanceBadge i={m.importance} />

@@ -13,7 +13,7 @@ import { UserAdminPanel } from "@/components/user-admin";
 // Business rules that make delivery mandatory (ANCHOR.txt section 6).
 const ALERT_RULES = [
   { rule: "Precedence", match: <><PrecedenceBadge p="FLASH" /> <PrecedenceBadge p="IMMEDIATE" /></>, audience: "All addressed units", ack: "Required, 2h", escalate: "Department Head → XO" },
-  { rule: "Community", match: "Safety", audience: "All personnel", ack: "Required, 24h", escalate: "Safety Officer" },
+  { rule: "Topic", match: "Safety (all subtopics)", audience: "All personnel", ack: "Required, 24h", escalate: "Safety Officer" },
   { rule: "Command applicability", match: "COMSUBLANT action messages", audience: "Commanding Officers, XOs", ack: "Required, 48h", escalate: "SUBRON Commander" },
   { rule: "Role", match: "Cybersecurity directives", audience: "ISSM, IT Chief", ack: "Required, 72h", escalate: "Comms Officer" },
 ];

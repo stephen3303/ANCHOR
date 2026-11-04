@@ -5,11 +5,12 @@ import { useMemo, useState } from "react";
 import { ArrowUpDown, Bookmark, BookmarkPlus, Building2, CalendarDays, FileText, HelpCircle, Lock, Search, Sparkles, Tags, Users, X } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { MESSAGE_CATEGORIES, MESSAGE_TYPES, categoryOf } from "@/lib/message-types";
-import type { Community, Message, MessageCategory, MessageType, Precedence } from "@/lib/types";
+import { TopicPicker } from "@/components/topic-picker";
+import { matchesTopics, topicName, topicPath } from "@/lib/topics";
+import type { Message, MessageCategory, MessageType, Precedence } from "@/lib/types";
 import { Button, Check, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Select, Tabs, Tag, cx } from "@/components/ui";
 
 const TYPES = MESSAGE_TYPES;
-const COMMUNITIES: Community[] = ["Submarine Warfare", "Readiness", "Cybersecurity", "Personnel", "Maintenance", "Training & Education", "Safety", "Policy"];
 const PRECEDENCE: Precedence[] = ["FLASH", "IMMEDIATE", "PRIORITY", "ROUTINE"];
 
 const SAVED = [
@@ -33,7 +34,7 @@ export default function SearchPage() {
   const [cats, setCats] = useState<MessageCategory[]>([]);
   const [types, setTypes] = useState<MessageType[]>(["GENADMIN", "NAVADMIN"]);
   const [sources, setSources] = useState<string[]>([]);
-  const [comms, setComms] = useState<Community[]>(["Readiness"]);
+  const [comms, setComms] = useState<string[]>(["readiness"]);
   const [prec, setPrec] = useState<Precedence[]>([]);
   const [range, setRange] = useState("Last 12 months");
   const [includeRetired, setIncludeRetired] = useState(false);
@@ -45,7 +46,7 @@ export default function SearchPage() {
   const results = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     const scored = messages.map((m) => {
-      const hay = [m.subject, m.reference, m.originator, ...m.communities, ...m.sections.flatMap((s) => s.body)].join(" ").toLowerCase();
+      const hay = [m.subject, m.reference, m.originator, ...m.topics.map(topicPath), ...m.sections.flatMap((s) => s.body)].join(" ").toLowerCase();
       const score = words.reduce((a, w) => a + (m.subject.toLowerCase().includes(w) ? 3 : 0) + (hay.includes(w) ? 1 : 0), 0);
       return { m, score };
     }).filter(({ m, score }) => {
@@ -54,7 +55,7 @@ export default function SearchPage() {
         if (cats.length && !cats.includes(categoryOf(m.type))) return false;
         if (types.length && !types.includes(m.type)) return false;
         if (sources.length && !sources.includes(m.source)) return false;
-        if (comms.length && !m.communities.some((c) => comms.includes(c))) return false;
+        if (!matchesTopics(m.topics, comms)) return false;
         if (prec.length && !prec.includes(m.precedence)) return false;
       }
       if (!includeRetired && ["SUPERSEDED", "CANCELLED", "EXPIRED"].includes(m.lifecycle)) return false;
@@ -89,9 +90,8 @@ export default function SearchPage() {
   const subscribeToSearch = () =>
     requestSubscription({
       name: `Saved search: ${q}`,
-      category: comms[0] ?? "Readiness",
       description: `Messages matching "${q}"${types.length ? ` (${types.join(", ")})` : ""}.`,
-      criteria: { messageTypes: types, keywords: q.split(/\s+/) },
+      criteria: { messageTypes: types, topics: comms, keywords: q.split(/\s+/).filter(Boolean) },
       frequency: "Daily Digest",
       channels: { inApp: true, email: true, teams: false },
       justification: "Created from Advanced Search.",
@@ -201,10 +201,8 @@ export default function SearchPage() {
             <FilterGroup icon={Lock} title="Classification">
               <Check label="Unclassified" checked onChange={() => notify("Higher classifications are not available on this network")} />
             </FilterGroup>
-            <FilterGroup icon={Users} title="Communities / Topics">
-              <div className="grid grid-cols-2 gap-x-2">
-                {COMMUNITIES.map((c) => <Check key={c} label={c} checked={comms.includes(c)} onChange={() => toggle(comms, c, setComms)} />)}
-              </div>
+            <FilterGroup icon={Users} title="Topics">
+              <TopicPicker value={comms} onChange={setComms} counts={(id) => messages.filter((m) => matchesTopics(m.topics, [id])).length} />
             </FilterGroup>
             <Check label="Include superseded, cancelled & expired" checked={includeRetired} onChange={setIncludeRetired} />
           </Panel>
@@ -267,7 +265,7 @@ function ResultRow({ m }: { m: Message }) {
         </div>
         <p className="mt-1 text-[13px] text-ink">{m.sections[0].body[0]}</p>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {m.communities.map((c) => <Tag key={c}>{c}</Tag>)}
+          {m.topics.map((t) => <Tag key={t} title={topicPath(t)}>{topicName(t)}</Tag>)}
         </div>
       </div>
     </li>

@@ -77,7 +77,7 @@ Attach the mockups (in the project files) and this file to Prompt 1. Everything 
 - Integrity: `c2oix_id`, `sha256`, `size_kb`, `retention`
 - `ai_summary` (text, optional, never merged into `sections`)
 
-**MessageUserState**: `message_id`, `user_email`, `read_state` (new, unread, read), `starred`, `acknowledged_at`.
+**MessageUserState**: `message_id`, `user_email`, `read_state` (new, unread, read), `acknowledged_at`.
 
 **Subscription**: `name`, `category`, `description`, criteria (`message_types`, `originators`, `keywords`, `precedence`), `frequency` (Real-time, Daily Digest, Weekly), `status` (Pending Approval, Active, Paused, Denied), `mandatory` (bool, assigned by role/command, cannot be paused), channels (`in_app`, `email`, `teams`), `requested_by`, `approver`, `justification`, dates.
 

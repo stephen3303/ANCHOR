@@ -122,7 +122,6 @@ export interface AckReceipt {
 
 export interface MessageUserState {
   read: ReadState;
-  starred: boolean;
   acknowledgedAt?: string;
 }
 

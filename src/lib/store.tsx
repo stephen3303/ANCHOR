@@ -51,7 +51,6 @@ interface Store {
   markRead: (id: string) => void;
   markUnread: (id: string) => void;
   markAllRead: () => void;
-  toggleStar: (id: string) => void;
   acknowledge: (id: string) => void;
 
   subscriptions: Subscription[];
@@ -151,7 +150,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setUserState((s) =>
           Object.fromEntries(Object.entries(s).map(([k, v]) => [k, { ...v, read: "read" as const }])),
         ),
-      toggleStar: (id) => patch(id, { starred: !userState[id]?.starred }),
       acknowledge: (id) => {
         const m = MESSAGES.find((x) => x.id === id);
         // Use the mock clock so the time lines up with acknowledgements from other commands.

@@ -635,13 +635,12 @@ export const MESSAGES: Message[] = seeds
 export const messageById = (id: string) => MESSAGES.find((m) => m.id === id);
 export const messageByRef = (ref: string) => MESSAGES.find((m) => m.reference === ref);
 
-/** Initial per-user state: what LT Taylor has read, starred and acknowledged. */
+/** Initial per-user state: what LT Taylor has read and acknowledged. */
 export const INITIAL_USER_STATE: Record<string, MessageUserState> = Object.fromEntries(
   MESSAGES.map((m, i) => [
     m.id,
     {
       read: i < 2 ? "new" : i < 5 ? "unread" : "read",
-      starred: ["comsublant-078-26", "navadmin-234-26", "comsubfor-3500-1", "usff-2026-11"].includes(m.id),
     } satisfies MessageUserState,
   ]),
 );

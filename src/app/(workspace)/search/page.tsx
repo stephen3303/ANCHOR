@@ -6,7 +6,6 @@ import { ArrowUpDown, Bookmark, BookmarkPlus, Building2, CalendarDays, FileText,
 import { MESSAGES } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import type { Community, Message, MessageType, Precedence } from "@/lib/types";
-import { StarButton } from "@/components/message";
 import { Button, Check, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Select, Tabs, Tag, cx } from "@/components/ui";
 
 const TYPES: MessageType[] = ["NAVADMIN", "ALNAV", "OPNAVINST", "COMSUBLANT MSG", "COMSUBFOR INST", "NAVSEAINST", "FLEET MSG", "SAFETY MSG"];
@@ -247,7 +246,6 @@ function FilterGroup({ icon: Icon, title, children }: { icon: typeof Search; tit
 function ResultRow({ m }: { m: Message }) {
   return (
     <li className="flex gap-3 px-4 py-3">
-      <StarButton id={m.id} />
       <FileText className="mt-0.5 size-6 shrink-0 text-ink" strokeWidth={1.5} aria-hidden />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">

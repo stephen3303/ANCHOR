@@ -1,7 +1,10 @@
 // Mock data for the prototype. Every message, person, unit and address here is
 // fictional and exists only to exercise the UI. None of it is real traffic.
 import type {
+  AckReceipt,
   ActionItem,
+  Addressee,
+  AddressGroup,
   AuditEvent,
   Message,
   MessageSection,
@@ -16,9 +19,11 @@ export const CURRENT_USER = {
   rank: "LT",
   community: "Submarine Warfare",
   billet: "Communications Officer",
-  unit: "COMSUBLANT Pilot Unit (SSN)",
+  unit: "COMSUBLANT N6",
   command: "Commander, Submarine Force Atlantic",
-  location: "Afloat",
+  /** Message source code for the user's command; traffic with this source was sent by it. */
+  commandSource: "COMSUBLANT",
+  location: "Ashore",
   email: "taylor.j@example.mil",
   dsn: "312-555-1234",
   roles: [
@@ -30,7 +35,7 @@ export const CURRENT_USER = {
     { name: "Designated Release Authority", detail: "Release outgoing command traffic", granted: false },
     { name: "System Admin", detail: "Manage unit users and settings", granted: false },
   ],
-  groups: ["COMSUBLANT", "SUBRON Staff", "Pilot Unit Wardroom", "Comms Division"],
+  groups: ["COMSUBLANT", "COMSUBLANT N6", "Comms Division"],
 };
 
 // Small deterministic hash so mock SHA-256 values are stable between renders.
@@ -64,8 +69,8 @@ function sections(
   return s;
 }
 
-type Seed = Omit<Message, "sha256" | "c2oixId" | "distribution" | "retention"> &
-  Partial<Pick<Message, "distribution" | "retention">>;
+type Seed = Omit<Message, "sha256" | "c2oixId" | "distribution" | "retention" | "addressees"> &
+  Partial<Pick<Message, "distribution" | "retention" | "addressees">>;
 
 const seeds: Seed[] = [
   {
@@ -98,7 +103,12 @@ const seeds: Seed[] = [
     ),
     ackRequired: true,
     ackDue: "2026-10-26T18:30:00Z",
-    actionItem: { text: "Submit deployment readiness report", suspense: "07 NOV 2026", assignedTo: "LT Taylor" },
+    addressees: [
+      { name: "All COMSUBLANT Units", role: "TO", kind: "group" },
+      { name: "COMSUBFOR", role: "INFO", kind: "command" },
+      { name: "SUBRON Commanders", role: "INFO", kind: "group" },
+    ],
+    actionItem: { text: "Track unit readiness report submissions", suspense: "07 NOV 2026", assignedTo: "LT Taylor" },
     sizeKb: 1228,
     related: ["comsublant-061-26", "comsubfor-3500-1", "navadmin-236-26"],
     aiSummary:
@@ -130,6 +140,7 @@ const seeds: Seed[] = [
     ),
     ackRequired: true,
     ackDue: "2026-10-27T12:00:00Z",
+    addressees: [{ name: "ALSUBS", role: "TO", kind: "group" }],
     actionItem: { text: "Implement cybersecurity controls", suspense: "13 NOV 2026", assignedTo: "IT Chief" },
     sizeKb: 820,
     related: ["navadmin-235-26", "comsublant-078-26"],
@@ -190,7 +201,11 @@ const seeds: Seed[] = [
     ),
     ackRequired: true,
     ackDue: "2026-10-25T05:15:00Z",
-    actionItem: { text: "Conduct safety stand-down and report", suspense: "31 OCT 2026", assignedTo: "Safety Officer" },
+    addressees: [
+      { name: "All COMSUBLANT Units", role: "TO", kind: "group" },
+      { name: "COMSUBFOR", role: "INFO", kind: "command" },
+    ],
+    actionItem: { text: "Collect safety stand-down completion reports", suspense: "31 OCT 2026", assignedTo: "Safety Officer" },
     sizeKb: 210,
     related: ["comsublant-078-26"],
     aiSummary: "Each unit holds a one-day safety stand-down by 31 OCT 2026 using the enclosed agenda, then reports completion.",
@@ -391,6 +406,10 @@ const seeds: Seed[] = [
     ),
     ackRequired: true,
     ackDue: "2026-10-25T19:00:00Z",
+    addressees: [
+      { name: "Pilot Unit (SSN)", role: "TO", kind: "command" },
+      { name: "SUBRON 4", role: "INFO", kind: "command" },
+    ],
     sizeKb: 75,
     related: [],
   },
@@ -540,10 +559,11 @@ export const MESSAGES: Message[] = seeds
       "COMSUBLANT N3",
       "COMSUBLANT N6",
       "SUBRON Staff",
-      "Pilot Unit (SSN) Wardroom",
+      "COMSUBLANT Staff",
       "Comms Division",
     ],
     retention: s.lifecycle === "EXPIRED" ? "Permanent (expired)" : "Permanent",
+    addressees: [],
     ...s,
     c2oixId: `C2OIX-26-${String(48210 + i * 37).padStart(6, "0")}`,
     sha256: mockSha(s.id + s.dtg),
@@ -560,7 +580,6 @@ export const INITIAL_USER_STATE: Record<string, MessageUserState> = Object.fromE
     {
       read: i < 2 ? "new" : i < 5 ? "unread" : "read",
       starred: ["comsublant-078-26", "navadmin-234-26", "comsubfor-3500-1", "usff-2026-11"].includes(m.id),
-      acknowledgedAt: m.id === "comsublant-074-26" ? "2026-10-21T08:12:00Z" : undefined,
     } satisfies MessageUserState,
   ]),
 );
@@ -737,7 +756,7 @@ export const AUDIT_EVENTS: AuditEvent[] = [
   ["2026-10-24T18:32:00Z", "JSmith", "View", "Message (NAVADMIN 236/26)", "Success", "Message opened in reader."],
   ["2026-10-24T18:15:00Z", "MKelly", "Request Subscription", "Cybersecurity Controls", "Success", "Subscription request routed to approver."],
   ["2026-10-24T17:40:00Z", "ASanchez", "Generate Report", "Acknowledgement Report", "Success", "Report generated for COMSUBLANT 080/26."],
-  ["2026-10-24T17:20:00Z", "LTaylor", "Acknowledge", "Message (COMSUBLANT 074/26)", "Success", "Receipt acknowledged."],
+  ["2026-10-24T17:20:00Z", "System", "Ack Received", "Message (COMSUBLANT 080/26)", "Success", "Acknowledgement received from USS Ironfin (SSN-903)."],
   ["2026-10-24T17:12:00Z", "RWalker", "Search", "Keyword: “readiness”", "Success", "Search returned 45 results."],
   ["2026-10-24T16:50:00Z", "JSmith", "Export", "Messages (Filtered Set)", "Warning", "Export included 2 superseded messages; user warned."],
   ["2026-10-24T16:21:00Z", "System", "Ingest", "C2OIX feed (14 messages)", "Success", "Source artifacts stored immutably. Hashes recorded."],
@@ -754,7 +773,7 @@ export const AUDIT_EVENTS: AuditEvent[] = [
   result: result as AuditEvent["result"],
   sourceIp: `10.15.32.${18 + i}`,
   device: i % 3 === 0 ? "ANCHOR-OPS-01" : "ANCHOR-WS-0" + ((i % 4) + 2),
-  location: "Pilot Unit (SSN)",
+  location: "COMSUBLANT N6",
   details,
   hash: mockSha(timestamp + action),
 }));
@@ -777,7 +796,7 @@ export const AUDIT_BY_CLASSIFICATION = [
 ];
 
 export const SYNC_QUEUE: SyncItem[] = [
-  { id: "s1", type: "Acknowledgement", description: "Ack: COMSUBLANT 080/26", created: "24 OCT 0630Z", status: "Pending" },
+  { id: "s1", type: "Acknowledgement", description: "Ack received: COMSUBLANT 080/26 (USS Ironfin)", created: "24 OCT 0630Z", status: "Pending" },
   { id: "s2", type: "Message Record", description: "New message record (local)", created: "24 OCT 0615Z", status: "Pending" },
   { id: "s3", type: "Briefing", description: "Watch Turnover Briefing", created: "24 OCT 0600Z", status: "Pending" },
   { id: "s4", type: "Action Item", description: "Action item update", created: "24 OCT 0555Z", status: "Pending" },
@@ -790,7 +809,7 @@ export const SYNC_QUEUE: SyncItem[] = [
 export const WATCH_NOTES = [
   "Monitor submissions for COMSUBLANT 078/26 readiness reporting.",
   "Coordinate with IT Chief on cybersecurity controls timeline (NAVADMIN 236/26).",
-  "Safety stand-down (COMSUBLANT 080/26) must be scheduled before 31 OCT.",
+  "Collect safety stand-down completion reports for COMSUBLANT 080/26 (due 31 OCT).",
   "Follow up with Training PO on course seat availability.",
   "No outstanding critical issues.",
 ];
@@ -827,14 +846,89 @@ export function actionItems(): ActionItem[] {
   }));
 }
 
-/** Unit-wide acknowledgement roll-up used by Reports. */
-export const ACK_ROSTER = [
-  { name: "CDR Hale", billet: "Commanding Officer" },
-  { name: "LCDR Ortiz", billet: "Executive Officer" },
-  { name: "LT Taylor", billet: "Communications Officer" },
-  { name: "LT Chen", billet: "Navigator" },
-  { name: "LTJG Patel", billet: "Weapons Officer" },
-  { name: "ITC Ramirez", billet: "Leading Chief, Comms" },
-  { name: "ETC Nguyen", billet: "Training PO" },
-  { name: "MMCS Doyle", billet: "Chief of the Boat" },
+// Command-level pub/sub: which commands are subscribed to each address group.
+// A message addressed to a group is tracked for acknowledgement from every
+// member command. Hull names and numbers are fictional.
+const SSNS_LANT = ["Pilot Unit (SSN)", "USS Stonefish (SSN-901)", "USS Ironfin (SSN-903)", "USS Lanternfish (SSN-905)"];
+const SSNS_PAC = ["USS Thornback (SSN-907)", "USS Ghostfin (SSN-909)"];
+
+export const COMMAND_GROUPS: AddressGroup[] = [
+  { id: "grp-alsubs", name: "ALSUBS", members: [...SSNS_LANT, ...SSNS_PAC] },
+  { id: "grp-comsublant-units", name: "All COMSUBLANT Units", members: [...SSNS_LANT, "SUBRON 4", "SUBRON 6"] },
+  { id: "grp-subron-cdrs", name: "SUBRON Commanders", members: ["SUBRON 4", "SUBRON 6"] },
+  { id: "grp-subfor-units", name: "All Submarine Force Units", members: [...SSNS_LANT, ...SSNS_PAC, "SUBRON 4", "SUBRON 6", "COMSUBLANT", "COMSUBPAC"] },
 ];
+
+/** True when this command originated the message (it tracks acknowledgements rather than giving one). */
+export const sentByOwnCommand = (m: Message) => m.source === CURRENT_USER.commandSource;
+
+/** Received, live traffic this command must acknowledge to the originator. */
+export const needsOwnAck = (m: Message) =>
+  m.ackRequired && !sentByOwnCommand(m) && m.lifecycle !== "SUPERSEDED" && m.lifecycle !== "CANCELLED";
+
+/**
+ * Acknowledgements received from addressees of traffic this command sent, by
+ * message id. A command can acknowledge more than once (e.g. again after an
+ * amendment). Every time falls between the message's receipt and MOCK_NOW.
+ */
+export const ACK_RECEIPTS: Record<string, AckReceipt[]> = {
+  "comsublant-078-26": [
+    { command: "USS Stonefish (SSN-901)", at: "2026-10-24T18:41:00Z" },
+    { command: "SUBRON 4", at: "2026-10-24T18:47:00Z" },
+    { command: "COMSUBFOR", at: "2026-10-24T18:55:00Z" },
+  ],
+  "comsublant-080-26": [
+    { command: "SUBRON 4", at: "2026-10-24T05:40:00Z" },
+    { command: "USS Stonefish (SSN-901)", at: "2026-10-24T05:52:00Z" },
+    { command: "USS Ironfin (SSN-903)", at: "2026-10-24T06:30:00Z" },
+    { command: "SUBRON 6", at: "2026-10-24T07:05:00Z" },
+    { command: "COMSUBFOR", at: "2026-10-24T09:20:00Z" },
+    { command: "USS Ironfin (SSN-903)", at: "2026-10-24T17:20:00Z" },
+  ],
+  "comsublant-074-26": [
+    { command: "SUBRON 4", at: "2026-10-20T21:30:00Z" },
+    { command: "Pilot Unit (SSN)", at: "2026-10-21T08:12:00Z" },
+    { command: "SUBRON 4", at: "2026-10-23T09:00:00Z" },
+  ],
+};
+
+export interface CommandAckStatus {
+  command: string;
+  /** Strongest role the command was addressed in (TO beats INFO). */
+  role: Addressee["role"];
+  /** Address groups the command was reached through; empty when addressed directly. */
+  via: string[];
+  /** Acknowledgement times received from this command, earliest first. */
+  receipts: string[];
+}
+
+export interface AddresseeRollup {
+  addressee: Addressee;
+  acked: number;
+  total: number;
+}
+
+const groupMembers = (a: Addressee) =>
+  a.kind === "group" ? (COMMAND_GROUPS.find((g) => g.name === a.name)?.members ?? []) : [a.name];
+
+/** Expands a sent message's addressees to commands and merges acknowledgements received. */
+export function resolveAckStatus(m: Message): { commands: CommandAckStatus[]; rollup: AddresseeRollup[] } {
+  const byCommand = new Map<string, CommandAckStatus>();
+  for (const a of m.addressees) {
+    for (const command of groupMembers(a)) {
+      const c = byCommand.get(command) ?? { command, role: a.role, via: [], receipts: [] };
+      if (a.role === "TO") c.role = "TO";
+      if (a.kind === "group") c.via.push(a.name);
+      byCommand.set(command, c);
+    }
+  }
+  for (const r of ACK_RECEIPTS[m.id] ?? []) byCommand.get(r.command)?.receipts.push(r.at);
+  for (const c of byCommand.values()) c.receipts.sort();
+
+  const commands = [...byCommand.values()];
+  const rollup = m.addressees.map((addressee) => {
+    const members = groupMembers(addressee);
+    return { addressee, total: members.length, acked: members.filter((c) => byCommand.get(c)!.receipts.length > 0).length };
+  });
+  return { commands, rollup };
+}

@@ -2,76 +2,141 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { AlertTriangle, BarChart3, BellRing, CheckCircle2, Database, Download, HardDrive, Mail } from "lucide-react";
-import { ACK_ROSTER, MESSAGES } from "@/lib/data";
-import { fmtDateTime } from "@/lib/format";
+import { AlertTriangle, BarChart3, BellRing, CheckCircle2, Database, Download, HardDrive, Mail, Send } from "lucide-react";
+import { CURRENT_USER, MESSAGES, resolveAckStatus, sentByOwnCommand } from "@/lib/data";
+import { fmtDateTime, MOCK_NOW } from "@/lib/format";
 import { useStore } from "@/lib/store";
-import { Bar, Button, PageHeader, Panel, Select, StatCard, StatusDot, tableWrap, td, th, theadRow, tbodyRow } from "@/components/ui";
+import type { Message } from "@/lib/types";
+import { Bar, Button, cx, PageHeader, Panel, StatCard, StatusDot, tableWrap, td, th, theadRow, tbodyRow, type DotTone } from "@/components/ui";
 
-const ackMessages = MESSAGES.filter((m) => m.ackRequired && m.lifecycle !== "SUPERSEDED" && m.lifecycle !== "CANCELLED");
+// Messages this command originated that addressees must acknowledge.
+const sentMessages = MESSAGES.filter(
+  (m) => sentByOwnCommand(m) && m.ackRequired && m.lifecycle !== "SUPERSEDED" && m.lifecycle !== "CANCELLED",
+);
 
-// Deterministic mock: which roster members have acknowledged each message.
-function rosterFor(msgIndex: number, mine?: string) {
-  return ACK_ROSTER.map((p, i) => {
-    if (p.name === "LT Taylor") return { ...p, at: mine };
-    const acked = (i * 7 + msgIndex * 3) % 5 !== 0;
-    return { ...p, at: acked ? `2026-10-${String(22 + ((i + msgIndex) % 3)).padStart(2, "0")}T${String(8 + i).padStart(2, "0")}:15:00Z` : undefined };
-  });
+type SentStatus = "Complete" | "In Progress" | "Overdue";
+const statusTone: Record<SentStatus, DotTone> = { Complete: "green", "In Progress": "amber", Overdue: "red" };
+
+function sentStatus(m: Message, acked: number, total: number): SentStatus {
+  if (acked === total) return "Complete";
+  return m.ackDue && new Date(m.ackDue) < MOCK_NOW ? "Overdue" : "In Progress";
 }
 
 export default function ReportsPage() {
-  const { userState, log, notify } = useStore();
-  const [sel, setSel] = useState(ackMessages[0].reference);
-  const idx = ackMessages.findIndex((m) => m.reference === sel);
-  const m = ackMessages[idx];
-  const roster = rosterFor(idx, userState[m.id].acknowledgedAt);
-  const done = roster.filter((r) => r.at).length;
+  const { log, notify } = useStore();
+  const [selected, setSelected] = useState(sentMessages[0].id);
+
+  const rows = sentMessages.map((m) => {
+    const { commands, rollup } = resolveAckStatus(m);
+    const acked = commands.filter((c) => c.receipts.length > 0).length;
+    return { m, commands, rollup, acked, total: commands.length, status: sentStatus(m, acked, commands.length) };
+  });
+  const current = rows.find((r) => r.m.id === selected) ?? rows[0];
+  const ackedAll = rows.reduce((n, r) => n + r.acked, 0);
+  const totalAll = rows.reduce((n, r) => n + r.total, 0);
 
   return (
     <>
       <PageHeader
         icon={BarChart3}
         title="Reports"
-        subtitle="Acknowledgement accountability and traffic measures for your command."
-        actions={<Button variant="primary" icon={Download} onClick={() => { log("Generate Report", `Acknowledgement Report (${m.reference})`); notify("Report exported"); }}>Export Report</Button>}
+        subtitle={`Acknowledgement of traffic sent by ${CURRENT_USER.commandSource}, and traffic measures.`}
+        actions={<Button variant="primary" icon={Download} onClick={() => { log("Generate Report", "Acknowledgement Report (sent messages)"); notify("Report exported"); }}>Export Report</Button>}
       />
 
       <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={BellRing} value={`${Math.round((done / roster.length) * 100)}%`} label="Acknowledged" note={`${done} of ${roster.length} for ${m.reference}`} tone="green" />
-        <StatCard icon={AlertTriangle} value={roster.length - done} label="Outstanding" tone="red" note="Escalate at suspense" />
+        <StatCard icon={BellRing} value={`${Math.round((ackedAll / totalAll) * 100)}%`} label="Acknowledged" note={`${ackedAll} of ${totalAll} command acknowledgements across ${rows.length} sent messages`} tone="green" />
+        <StatCard icon={AlertTriangle} value={totalAll - ackedAll} label="Outstanding" tone="red" note="Escalate at due time" />
         <StatCard icon={Mail} value="−82%" label="Duplicate Email Copies" note="Illustrative. Baseline set in discovery" tone="navy" />
         <StatCard icon={HardDrive} value="1.4 TB" label="Mailbox Storage Avoided" note="Illustrative. Baseline set in discovery" tone="amber" />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_400px]">
-        <Panel title="Acknowledgement Report" icon={CheckCircle2} action={<Select value={sel} onChange={setSel} options={ackMessages.map((x) => x.reference)} />}>
-          <p className="mb-3 text-sm">
-            <Link href={`/messages/${m.id}`} className="font-semibold text-link hover:underline">{m.subject}</Link>
-            <span className="text-muted"> · due {m.ackDue && fmtDateTime(m.ackDue)}</span>
-          </p>
-          <div className={tableWrap}>
-            <table className="w-full min-w-[520px]">
-              <thead>
-                <tr className={theadRow}>
-                  <th className={th}>Name</th>
-                  <th className={th}>Billet</th>
-                  <th className={th}>Status</th>
-                  <th className={th}>Acknowledged</th>
-                </tr>
-              </thead>
-              <tbody>
-                {roster.map((r) => (
-                  <tr key={r.name} className={tbodyRow}>
-                    <td className={`${td} font-semibold`}>{r.name}</td>
-                    <td className={td}>{r.billet}</td>
-                    <td className={td}>{r.at ? <StatusDot tone="green">Acknowledged</StatusDot> : <StatusDot tone="red">Pending</StatusDot>}</td>
-                    <td className={td}>{r.at ? fmtDateTime(r.at) : <Button size="sm" onClick={() => notify(`Reminder sent to ${r.name}`)}>Send reminder</Button>}</td>
+        <div className="space-y-4">
+          <Panel title="Sent Messages Requiring Acknowledgement" icon={Send}>
+            <div className={tableWrap}>
+              <table className="w-full min-w-[720px]">
+                <thead>
+                  <tr className={theadRow}>
+                    <th className={th}>Reference</th>
+                    <th className={th}>Subject</th>
+                    <th className={th}>Addressees</th>
+                    <th className={th}>Due</th>
+                    <th className={th}>Commands Acknowledged</th>
+                    <th className={th}>Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const [first, ...rest] = r.m.addressees;
+                    return (
+                      <tr
+                        key={r.m.id}
+                        onClick={() => setSelected(r.m.id)}
+                        className={cx("cursor-pointer border-b border-line/70", current.m.id === r.m.id ? "bg-navy-100/70" : "hover:bg-navy-50")}
+                      >
+                        <td className={`${td} font-semibold`}>{r.m.reference}</td>
+                        <td className={td}>{r.m.subject}</td>
+                        <td className={td}>{first?.name}{rest.length > 0 && <span className="block text-xs text-muted">+{rest.length} more</span>}</td>
+                        <td className={td}>{r.m.ackDue && fmtDateTime(r.m.ackDue)}</td>
+                        <td className={td}>{r.acked} of {r.total}</td>
+                        <td className={td}><StatusDot tone={statusTone[r.status]}>{r.status}</StatusDot></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+
+          <Panel title="Acknowledgement Details" icon={CheckCircle2}>
+            <p className="text-sm">
+              <span className="font-semibold">{current.m.reference}</span>
+              <span className="text-muted"> · </span>
+              <Link href={`/messages/${current.m.id}`} className="font-semibold text-link hover:underline">{current.m.subject}</Link>
+              <span className="text-muted"> · {current.m.originator} · due {current.m.ackDue && fmtDateTime(current.m.ackDue)}</span>
+            </p>
+            <p className="mb-3 text-xs text-muted">
+              {current.rollup.map((r) => `${r.addressee.role} ${r.addressee.name} ${r.acked}/${r.total}`).join(" · ")}
+            </p>
+            <div className={tableWrap}>
+              <table className="w-full min-w-[640px]">
+                <thead>
+                  <tr className={theadRow}>
+                    <th className={th}>Command</th>
+                    <th className={th}>Via</th>
+                    <th className={th}>Role</th>
+                    <th className={th}>Status</th>
+                    <th className={th}>Acknowledged</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {current.commands.map((c) => {
+                    const [firstAt, ...more] = c.receipts;
+                    return (
+                      <tr key={c.command} className={tbodyRow}>
+                        <td className={`${td} font-semibold`}>{c.command}</td>
+                        <td className={td}>{c.via.length ? c.via.join(", ") : "Direct"}</td>
+                        <td className={td}>{c.role}</td>
+                        <td className={td}>{firstAt ? <StatusDot tone="green">Acknowledged</StatusDot> : <StatusDot tone="red">Pending</StatusDot>}</td>
+                        <td className={td}>
+                          {firstAt ? (
+                            <>
+                              {fmtDateTime(firstAt)}
+                              {more.map((t, i) => <span key={`${t}-${i}`} className="block text-xs text-muted">Again {fmtDateTime(t)}</span>)}
+                            </>
+                          ) : (
+                            <Button size="sm" onClick={() => notify(`Reminder sent to ${c.command}`)}>Send reminder</Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        </div>
 
         <div className="space-y-4">
           <Panel title="Traffic by Source (30 days)" icon={Database}>
@@ -83,18 +148,14 @@ export default function ReportsPage() {
               </div>
             ))}
           </Panel>
-          <Panel title="Acknowledgement Rate by Message">
-            {ackMessages.map((x, i) => {
-              const r = rosterFor(i, userState[x.id].acknowledgedAt);
-              const n = r.filter((p) => p.at).length;
-              return (
-                <div key={x.id} className="mb-2 grid grid-cols-[140px_1fr_40px] items-center gap-2 text-sm">
-                  <span className="truncate">{x.reference}</span>
-                  <Bar value={n} max={r.length} color={n === r.length ? "bg-green-600" : "bg-amber-500"} />
-                  <span className="text-right">{Math.round((n / r.length) * 100)}%</span>
-                </div>
-              );
-            })}
+          <Panel title="Command Acknowledgement Rate by Message">
+            {rows.map((r) => (
+              <div key={r.m.id} className="mb-2 grid grid-cols-[140px_1fr_40px] items-center gap-2 text-sm">
+                <span className="truncate">{r.m.reference}</span>
+                <Bar value={r.acked} max={r.total} color={r.acked === r.total ? "bg-green-600" : "bg-amber-500"} />
+                <span className="text-right">{Math.round((r.acked / r.total) * 100)}%</span>
+              </div>
+            ))}
           </Panel>
         </div>
       </div>

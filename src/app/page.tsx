@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { AlertTriangle, BellRing, CheckCircle2, ClipboardList, FileText, Home, Mail, ShieldCheck, WifiOff } from "lucide-react";
-import { CURRENT_USER, MESSAGES } from "@/lib/data";
+import { CURRENT_USER, MESSAGES, needsOwnAck } from "@/lib/data";
 import { fmtDateTime, hoursUntil } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { MiniMessageTable } from "@/components/message";
@@ -10,7 +10,7 @@ import { Button, LifecycleBadge, PageHeader, Panel, PrecedenceBadge, StatCard, t
 
 export default function HomePage() {
   const { userState, acknowledge, subscriptions, syncQueue, offline, approvals } = useStore();
-  const needAck = MESSAGES.filter((m) => m.ackRequired && m.lifecycle !== "SUPERSEDED" && m.lifecycle !== "CANCELLED");
+  const needAck = MESSAGES.filter(needsOwnAck);
   const pending = needAck.filter((m) => !userState[m.id].acknowledgedAt);
   const unread = MESSAGES.filter((m) => userState[m.id].read !== "read").length;
   const changed = MESSAGES.filter((m) => m.lifecycle !== "ACTIVE").slice(0, 5);

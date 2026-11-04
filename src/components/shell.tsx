@@ -24,7 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { CURRENT_USER, MESSAGES } from "@/lib/data";
+import { CURRENT_USER, MESSAGES, needsOwnAck } from "@/lib/data";
 import { fmtDate, fmtTime } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 import { cx } from "./ui";
@@ -181,7 +181,7 @@ function Sidebar({ open, onClose }: { open: boolean | null; onClose: () => void 
 
 function AlertStrip() {
   const { userState, offline } = useStore();
-  const pending = MESSAGES.filter((m) => m.ackRequired && m.lifecycle !== "SUPERSEDED" && m.lifecycle !== "CANCELLED" && !userState[m.id]?.acknowledgedAt);
+  const pending = MESSAGES.filter((m) => needsOwnAck(m) && !userState[m.id]?.acknowledgedAt);
   return (
     <>
       {offline && (

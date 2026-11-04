@@ -11,10 +11,11 @@ import {
   FileSpreadsheet,
   FileText,
   FileType2,
+  Send,
   Sparkles,
   Star,
 } from "lucide-react";
-import { messageById, messageByRef } from "@/lib/data";
+import { messageById, messageByRef, resolveAckStatus, sentByOwnCommand } from "@/lib/data";
 import { fmtDateTime, hoursUntil, shortHash } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import type { Attachment, Message } from "@/lib/types";
@@ -69,6 +70,19 @@ export function LifecycleNotice({ m }: { m: Message }) {
 export function AckPanel({ m, compact }: { m: Message; compact?: boolean }) {
   const { userState, acknowledge } = useStore();
   if (!m.ackRequired) return null;
+  if (sentByOwnCommand(m)) {
+    const { commands } = resolveAckStatus(m);
+    const acked = commands.filter((c) => c.receipts.length > 0).length;
+    return (
+      <div className={cx("flex flex-wrap items-center gap-3 rounded-md border border-line bg-navy-50 px-3 py-2 text-sm", compact && "py-1.5")}>
+        <Send className="size-4" aria-hidden />
+        <span>
+          <strong>Sent by your command</strong> · {acked} of {commands.length} addressee commands acknowledged
+        </span>
+        <Link href="/reports" className="ml-auto font-semibold text-link hover:underline">View in Reports</Link>
+      </div>
+    );
+  }
   const at = userState[m.id]?.acknowledgedAt;
   if (at)
     return (
@@ -228,7 +242,7 @@ export function MetadataTable({ m }: { m: Message }) {
     ["From", m.originator],
     ["To", m.to],
     ["Information", m.info],
-    ["Acknowledgement", m.ackRequired ? (userState[m.id]?.acknowledgedAt ? "Acknowledged" : "Required") : "Not required"],
+    ["Acknowledgement", !m.ackRequired ? "Not required" : sentByOwnCommand(m) ? "Required of addressees" : userState[m.id]?.acknowledgedAt ? "Acknowledged" : "Required"],
     ["Retention", m.retention],
     ["Size", `${(m.sizeKb / 1024).toFixed(1)} MB`],
   ];

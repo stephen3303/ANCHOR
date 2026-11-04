@@ -15,7 +15,6 @@ import {
   WifiOff,
   Wrench,
 } from "lucide-react";
-import { MESSAGES } from "@/lib/data";
 import { fmtDateTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { MiniMessageTable } from "@/components/message";
@@ -24,7 +23,7 @@ import { Button, Panel, PrecedenceBadge, Select, StatusDot, Tabs, TextInput, Tog
 type Tab = "overview" | "cached" | "create" | "queue" | "settings";
 
 export default function OfflinePage() {
-  const { offline, setOffline, syncQueue, syncNow, lastSync, queueLocal, notify } = useStore();
+  const { offline, setOffline, syncQueue, syncNow, lastSync, queueLocal, notify, messages } = useStore();
   const [tab, setTab] = useState<Tab>("overview");
   const [subject, setSubject] = useState("");
   const [ref, setRef] = useState("");
@@ -134,7 +133,7 @@ export default function OfflinePage() {
           </Panel>
           <QueueTable />
           <Panel title="Recent Messages (Cached)" icon={Mail} className="xl:col-span-2">
-            <MiniMessageTable items={MESSAGES.slice(0, 5)} cols={["subject", "reference", "dtg", "classification"]} />
+            <MiniMessageTable items={messages.slice(0, 5)} cols={["subject", "reference", "dtg", "classification"]} />
           </Panel>
           <Panel title="Offline Tools" icon={Wrench}>
             <div className="grid gap-2">
@@ -149,7 +148,7 @@ export default function OfflinePage() {
 
       {tab === "cached" && (
         <Panel title="Cached Messages">
-          <MiniMessageTable items={MESSAGES} cols={["subject", "reference", "dtg", "precedence", "classification"]} />
+          <MiniMessageTable items={messages} cols={["subject", "reference", "dtg", "precedence", "classification"]} />
         </Panel>
       )}
 

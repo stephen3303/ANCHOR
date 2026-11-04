@@ -2,18 +2,19 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { CURRENT_USER, MESSAGES } from "@/lib/data";
+import { CURRENT_USER } from "@/lib/data";
 import { MOCK_NOW, fmtDateTime, fmtTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
+import type { Message } from "@/lib/types";
 import { HOUR, isCurrent, needsAck, screeningMessages, watchDeadlines } from "@/lib/watch-prep";
 import { Panel, PrecedenceBadge } from "@/components/ui";
 
 const input = "mt-1 block w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-ink";
-const types = [...new Set(MESSAGES.map((m) => m.type))];
 type Focus = "all" | "unread" | "ack" | "urgent" | "changes";
 
 export function WatchPrep() {
-  const { userState, offline, syncQueue, lastSync } = useStore();
+  const { userState, offline, syncQueue, lastSync, messages } = useStore();
+  const types = [...new Set(messages.map((m) => m.type))];
   const [hours, setHours] = useState("24");
   const [asOf, setAsOf] = useState(MOCK_NOW.toISOString().slice(0, 16));
   const [customStart, setCustomStart] = useState(new Date(MOCK_NOW.getTime() - 24 * HOUR).toISOString().slice(0, 16));
@@ -22,10 +23,10 @@ export function WatchPrep() {
   const end = Date.parse(asOf + "Z");
   const start = hours === "custom" ? Date.parse(customStart + "Z") : end - Number(hours) * HOUR;
   const valid = Number.isFinite(start) && Number.isFinite(end) && start <= end;
-  const windowMessages = valid ? screeningMessages(MESSAGES, start, end) : [];
-  const unread = (m: typeof MESSAGES[number]) => userState[m.id]?.read !== "read";
-  const urgent = (m: typeof MESSAGES[number]) => isCurrent(m) && ["FLASH", "IMMEDIATE"].includes(m.precedence);
-  const changed = (m: typeof MESSAGES[number]) => m.lifecycle !== "ACTIVE" || !!m.relatesTo;
+  const windowMessages = valid ? screeningMessages(messages, start, end) : [];
+  const unread = (m: Message) => userState[m.id]?.read !== "read";
+  const urgent = (m: Message) => isCurrent(m) && ["FLASH", "IMMEDIATE"].includes(m.precedence);
+  const changed = (m: Message) => m.lifecycle !== "ACTIVE" || !!m.relatesTo;
   const counts: Record<Focus, number> = {
     all: windowMessages.length,
     unread: windowMessages.filter(unread).length,
@@ -37,7 +38,7 @@ export function WatchPrep() {
   const visible = windowMessages.filter((m) => (type === "all" || m.type === type) &&
     (focus === "all" || (focus === "unread" && unread(m)) || (focus === "ack" && needsAck(m, userState, CURRENT_USER.commandSource)) || (focus === "urgent" && urgent(m)) || (focus === "changes" && changed(m))));
   // Forward-looking obligations must include traffic older than the screening range.
-  const known = MESSAGES.filter((m) => Date.parse(m.received) <= end);
+  const known = messages.filter((m) => Date.parse(m.received) <= end);
   const deadlines = valid ? watchDeadlines(known, userState, end, CURRENT_USER.commandSource) : [];
   const carryover = valid ? known.filter((m) => Date.parse(m.received) < start && (needsAck(m, userState, CURRENT_USER.commandSource) || (urgent(m) && unread(m)))) : [];
 

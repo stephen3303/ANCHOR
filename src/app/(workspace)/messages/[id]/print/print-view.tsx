@@ -3,17 +3,24 @@
 import Link from "next/link";
 import { useNow } from "@/lib/use-now";
 import { ArrowLeft, Printer } from "lucide-react";
-import { messageById } from "@/lib/data";
 import { useCurrentUser } from "@/lib/current-user";
 import { fmtDateTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
+import { MissingMessage } from "@/components/message";
 import { Button } from "@/components/ui";
+import type { Message } from "@/lib/types";
 
 /** Official printable / PDF rendition with integrity information on the page. */
 export function PrintView({ id }: { id: string }) {
+  const { messageById, messageSource } = useStore();
+  const m = messageById(id);
+  if (!m) return <MissingMessage loading={messageSource === "loading"} />;
+  return <Rendition m={m} />;
+}
+
+function Rendition({ m }: { m: Message }) {
   const CURRENT_USER = useCurrentUser();
-  const m = messageById(id)!;
-  const { log } = useStore();
+  const { log, messageSource } = useStore();
   const now = useNow();
   const printedAt = now ? fmtDateTime(now) : "";
   const retired = m.lifecycle !== "ACTIVE" && m.lifecycle !== "AMENDED" && m.lifecycle !== "CORRECTED";
@@ -77,9 +84,13 @@ export function PrintView({ id }: { id: string }) {
         <div className="space-y-0.5 font-sans text-xs text-slate-700">
           <p className="font-bold">ANCHOR INTEGRITY VALIDATION</p>
           <p>Status: {m.lifecycle}{m.replacedBy ? ` (see ${m.replacedBy})` : ""}</p>
-          <p>Source: C2OIX {m.c2oixId}, stored immutably at ingestion</p>
+          <p>Source: C2OIX {m.c2oixId}{messageSource === "server" ? ", stored unchanged at ingestion" : ""}</p>
           <p className="break-all">SHA-256: {m.sha256}</p>
-          <p>Verification: hash matches source artifact</p>
+          <p>
+            {messageSource === "server"
+              ? "Verification: SHA-256 of the raw text recorded at ingestion; ANCHOR's integrity check recomputes it."
+              : "Verification: bundled demo data; no stored artifact to check against."}
+          </p>
           <p suppressHydrationWarning>
             Rendered for {CURRENT_USER.name}, {CURRENT_USER.unit}, {printedAt}
           </p>

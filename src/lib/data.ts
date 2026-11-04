@@ -894,9 +894,9 @@ export const TURNOVER_CHECKLIST = [
   "Finalize turnover package",
 ];
 
-export function actionItems(): ActionItem[] {
+export function actionItems(messages: Message[] = MESSAGES): ActionItem[] {
   const live = (m: Message) => m.lifecycle !== "SUPERSEDED" && m.lifecycle !== "CANCELLED" && m.lifecycle !== "EXPIRED";
-  return MESSAGES.filter((m) => m.actionItem && live(m)).map((m, i) => ({
+  return messages.filter((m) => m.actionItem && live(m)).map((m, i) => ({
     id: `ai-${m.id}`,
     importance: m.importance,
     text: m.actionItem!.text,
@@ -973,7 +973,7 @@ const groupMembers = (a: Addressee) =>
   a.kind === "group" ? (COMMAND_GROUPS.find((g) => g.name === a.name)?.members ?? []) : [a.name];
 
 /** Expands a sent message's addressees to commands and merges acknowledgements received. */
-export function resolveAckStatus(m: Message): { commands: CommandAckStatus[]; rollup: AddresseeRollup[] } {
+export function resolveAckStatus(m: Message, receipts: AckReceipt[] = ACK_RECEIPTS[m.id] ?? []): { commands: CommandAckStatus[]; rollup: AddresseeRollup[] } {
   const byCommand = new Map<string, CommandAckStatus>();
   for (const a of m.addressees) {
     for (const command of groupMembers(a)) {
@@ -983,7 +983,7 @@ export function resolveAckStatus(m: Message): { commands: CommandAckStatus[]; ro
       byCommand.set(command, c);
     }
   }
-  for (const r of ACK_RECEIPTS[m.id] ?? []) byCommand.get(r.command)?.receipts.push(r.at);
+  for (const r of receipts) byCommand.get(r.command)?.receipts.push(r.at);
   for (const c of byCommand.values()) c.receipts.sort();
 
   const commands = [...byCommand.values()];

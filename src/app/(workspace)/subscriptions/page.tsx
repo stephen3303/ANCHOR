@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Filter, Info, Lock, Pencil, Plus, Radio, Search, Star, FileText, X } from "lucide-react";
-import { MESSAGES, SUBSCRIPTION_CATEGORIES } from "@/lib/data";
+import { SUBSCRIPTION_CATEGORIES } from "@/lib/data";
 import { useStore } from "@/lib/store";
-import type { Community, Frequency, MessageType, Subscription } from "@/lib/types";
+import type { Community, Frequency, Message, MessageType, Subscription } from "@/lib/types";
 import { Button, Check, Panel, Pill, Select, Tabs, TextInput, Toggle, cx, td, th, theadRow } from "@/components/ui";
 
 const ALL_TYPES: MessageType[] = ["NAVADMIN", "ALNAV", "OPNAVINST", "COMSUBLANT MSG", "COMSUBFOR INST", "NAVSEAINST", "FLEET MSG", "SAFETY MSG"];
@@ -27,8 +27,8 @@ function statusPill(s: Subscription) {
   return <Pill className="bg-slate-200 text-slate-700">Paused</Pill>;
 }
 
-function matches(s: Subscription) {
-  return MESSAGES.filter(
+function matches(s: Subscription, messages: Message[]) {
+  return messages.filter(
     (m) =>
       (!s.criteria.messageTypes.length || s.criteria.messageTypes.includes(m.type)) &&
       (!s.criteria.precedence || s.criteria.precedence.includes(m.precedence)) &&
@@ -38,7 +38,7 @@ function matches(s: Subscription) {
 }
 
 export default function SubscriptionsPage() {
-  const { subscriptions, toggleSubscription, requestSubscription } = useStore();
+  const { subscriptions, toggleSubscription, requestSubscription, messages } = useStore();
   const [tab, setTab] = useState<TabId>("mine");
   const [cat, setCat] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -53,7 +53,7 @@ export default function SubscriptionsPage() {
     [subscriptions, cat, q],
   );
   const current = subscriptions.find((s) => s.id === selected) ?? subscriptions[0];
-  const recent = matches(current).slice(0, 5);
+  const recent = matches(current, messages).slice(0, 5);
 
   return (
     <>

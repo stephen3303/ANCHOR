@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -16,7 +16,7 @@ import {
   Send,
   Sparkles,
 } from "lucide-react";
-import { messageById, messageByRef, resolveAckStatus, sentByOwnCommand } from "@/lib/data";
+import { resolveAckStatus, sentByOwnCommand } from "@/lib/data";
 import { fmtDateTime, hoursUntil, shortHash } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import type { Attachment, Message } from "@/lib/types";
@@ -38,6 +38,7 @@ function MessageLink({ id, className, children }: { id: string; className?: stri
 }
 
 export function RefLink({ to: r }: { to: string }) {
+  const { messageByRef } = useStore();
   const m = messageByRef(r);
   if (!m) return <span>{r}</span>;
   return (
@@ -74,10 +75,10 @@ export function LifecycleNotice({ m }: { m: Message }) {
 }
 
 export function AckPanel({ m, compact }: { m: Message; compact?: boolean }) {
-  const { userState, acknowledge } = useStore();
+  const { userState, acknowledge, ackReceipts } = useStore();
   if (!m.ackRequired) return null;
   if (sentByOwnCommand(m)) {
-    const { commands } = resolveAckStatus(m);
+    const { commands } = resolveAckStatus(m, ackReceipts[m.id] ?? []);
     const acked = commands.filter((c) => c.receipts.length > 0).length;
     return (
       <div className={cx("flex flex-wrap items-center gap-3 rounded-md border border-line bg-navy-50 px-3 py-2 text-sm", compact && "py-1.5")}>
@@ -221,6 +222,7 @@ type Tab = "message" | "raw" | "metadata" | "related" | "references" | "distribu
 
 export function MessageTabs({ m }: { m: Message }) {
   const [tab, setTab] = useState<Tab>("message");
+  const { messageById, messageByRef } = useStore();
   const related = m.related.map(messageById).filter(Boolean) as Message[];
   const refs = [m.relatesTo, m.replacedBy].filter(Boolean) as string[];
   return (
@@ -288,21 +290,64 @@ export function MetadataTable({ m }: { m: Message }) {
   );
 }
 
+interface ArtifactCheck { intact: boolean; recomputedSha256: string; checkedAt: string }
+
 export function IntegrityTable({ m }: { m: Message }) {
+  const { messageSource } = useStore();
+  const [check, setCheck] = useState<ArtifactCheck | { error: string } | null>(null);
+  useEffect(() => {
+    if (messageSource !== "server") return;
+    const controller = new AbortController();
+    fetch(`/api/messages/${encodeURIComponent(m.id)}/artifact`, { cache: "no-store", signal: controller.signal })
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || "The integrity check failed.");
+        setCheck({ intact: data.intact, recomputedSha256: data.recomputedSha256, checkedAt: new Date().toISOString() });
+      })
+      .catch((e: Error) => { if (!controller.signal.aborted) setCheck({ error: e.message }); });
+    return () => controller.abort();
+  }, [m.id, messageSource]);
+
+  const banner =
+    messageSource !== "server" ? (
+      <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+        <AlertTriangle className="size-4" aria-hidden /> Bundled demo data: there is no stored artifact to check this message against.
+      </div>
+    ) : !check ? (
+      <p role="status" className="text-muted">Recomputing the hash of the stored raw text…</p>
+    ) : "error" in check ? (
+      <div role="alert" className="flex items-center gap-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-red-900">
+        <AlertTriangle className="size-4" aria-hidden /> {check.error}
+      </div>
+    ) : check.intact ? (
+      <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-green-900">
+        <CheckCircle2 className="size-4" aria-hidden /> The stored raw text still hashes to the SHA-256 recorded at C2OIX ingestion.
+      </div>
+    ) : (
+      <div role="alert" className="flex items-center gap-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-red-900">
+        <AlertTriangle className="size-4" aria-hidden /> The stored raw text no longer matches the hash recorded at ingestion.
+      </div>
+    );
   return (
     <div className="space-y-3 text-sm">
-      <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-green-900">
-        <CheckCircle2 className="size-4" /> Stored copy matches the source artifact recorded at C2OIX ingestion.
-      </div>
+      {banner}
       <dl className="grid grid-cols-[minmax(0,10rem)_1fr] gap-x-4 gap-y-1.5">
         <dt className="text-muted">Source</dt><dd>C2OIX (automated ingestion)</dd>
         <dt className="text-muted">C2OIX ID</dt><dd className="font-mono">{m.c2oixId}</dd>
         <dt className="text-muted">SHA-256</dt><dd className="break-all font-mono text-xs">{m.sha256}</dd>
-        <dt className="text-muted">Signature</dt><dd>Originator signature verified where available</dd>
-        <dt className="text-muted">Storage</dt><dd>Immutable (write once, read many)</dd>
-        <dt className="text-muted">Last verified</dt><dd>24 OCT 2026 1310Z (scheduled integrity check)</dd>
+        <dt className="text-muted">Storage</dt><dd>{messageSource === "server" ? "Append-only: the database refuses changes to stored raw text" : "Bundled with the app"}</dd>
+        {check && "checkedAt" in check && <><dt className="text-muted">Last verified</dt><dd>{fmtDateTime(check.checkedAt)} (when this tab opened)</dd></>}
       </dl>
     </div>
+  );
+}
+
+/** Shown while the message store loads, or when no message has this id. */
+export function MissingMessage({ loading }: { loading: boolean }) {
+  return loading ? (
+    <p role="status" className="text-sm text-muted">Loading message…</p>
+  ) : (
+    <p role="alert" className="text-sm text-muted">ANCHOR does not hold this message. It may not have been ingested yet.</p>
   );
 }
 

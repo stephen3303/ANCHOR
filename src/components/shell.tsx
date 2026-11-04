@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { useRouting } from "@/lib/routing-store";
-import { MESSAGES, needsOwnAck } from "@/lib/data";
+import { needsOwnAck } from "@/lib/data";
 import { useUserSession } from "@/lib/current-user";
 import { fmtDate, fmtTime } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
@@ -134,9 +134,9 @@ function Header({ onMenu }: { onMenu: () => void }) {
 
 function Sidebar({ open, onClose }: { open: boolean | null; onClose: () => void }) {
   const path = usePathname();
-  const { userState, syncQueue, approvals } = useStore();
+  const { userState, syncQueue, approvals, messages } = useStore();
   const { drafts, actorId } = useRouting();
-  const unread = MESSAGES.filter((m) => userState[m.id]?.read !== "read").length;
+  const unread = messages.filter((m) => userState[m.id]?.read !== "read").length;
   const routing = drafts.filter((d) => d.status === "in_routing" && d.route.find((s) => s.status === "current")?.personId === actorId).length;
   const badges = { unread, sync: syncQueue.length, approvals: approvals.length, routing };
 
@@ -193,10 +193,15 @@ function Sidebar({ open, onClose }: { open: boolean | null; onClose: () => void 
 }
 
 function AlertStrip() {
-  const { userState, offline } = useStore();
-  const pending = MESSAGES.filter((m) => needsOwnAck(m) && !userState[m.id]?.acknowledgedAt);
+  const { userState, offline, messages, messageSource } = useStore();
+  const pending = messages.filter((m) => needsOwnAck(m) && !userState[m.id]?.acknowledgedAt);
   return (
     <>
+      {messageSource === "bundled" && (
+        <div role="status" className="no-print flex items-center gap-2 bg-slate-200 px-4 py-2 text-sm text-slate-800">
+          <strong>Demo messages only.</strong> The server message store is not set up, so reads and acknowledgements are not saved. Run <code>npm run db:migrate</code> and <code>npm run db:seed:messages</code>.
+        </div>
+      )}
       {offline && (
         <div className="no-print flex items-center gap-2 bg-amber-100 px-4 py-2 text-sm text-amber-900">
           <WifiOff className="size-4" aria-hidden />
@@ -204,7 +209,7 @@ function AlertStrip() {
           <Link href="/offline" className="ml-auto font-semibold underline">Offline status</Link>
         </div>
       )}
-      {pending.length > 0 && (
+      {pending.length > 0 && messageSource !== "loading" && (
         <div role="alert" className="no-print flex flex-wrap items-center gap-2 bg-red-700 px-4 py-2 text-sm text-white">
           <BellRing className="size-4" aria-hidden />
           <strong>Mandatory:</strong> {pending.length} message{pending.length > 1 ? "s" : ""} require your acknowledgement.

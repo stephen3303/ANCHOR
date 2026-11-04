@@ -3,14 +3,20 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { ArrowLeft, Bell, Clock, Copy, Download, FileText, Link2, Mail, Plus, Printer, FilePlus2 } from "lucide-react";
-import { messageById } from "@/lib/data";
 import { useStore } from "@/lib/store";
-import { AckPanel, Attachments, LifecycleNotice, MessageList, MessageTabs, MetadataTable } from "@/components/message";
+import { AckPanel, Attachments, LifecycleNotice, MessageList, MessageTabs, MetadataTable, MissingMessage } from "@/components/message";
 import { Button, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tag } from "@/components/ui";
 import type { Message } from "@/lib/types";
 
 export function MessageDetail({ id, onBack }: { id: string; onBack?: () => void }) {
-  const m = messageById(id)!;
+  const { messageById, messageSource } = useStore();
+  const m = messageById(id);
+  if (!m) return <MissingMessage loading={messageSource === "loading"} />;
+  return <LoadedDetail m={m} onBack={onBack} />;
+}
+
+function LoadedDetail({ m, onBack }: { m: Message; onBack?: () => void }) {
+  const id = m.id;
   const { markRead, markUnread, log, notify, briefing, setBriefing } = useStore();
 
   useEffect(() => {
@@ -105,6 +111,7 @@ export function MessageDetail({ id, onBack }: { id: string; onBack?: () => void 
 }
 
 function RelatedPanel({ m }: { m: Message }) {
+  const { messageById } = useStore();
   const items = m.related.map(messageById).filter(Boolean) as Message[];
   if (!items.length) return null;
   return (

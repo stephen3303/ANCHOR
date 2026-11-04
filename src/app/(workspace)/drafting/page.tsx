@@ -5,9 +5,11 @@ import { ArrowRight, CornerUpLeft, FilePenLine, Plus, Send, ShieldCheck, Trash2,
 import { ActAs, HolderNote, fieldCls } from "@/components/routing";
 import { Button, EmptyState, PageHeader, Panel, Pill, PrecedenceBadge, Tabs, TextInput, cx } from "@/components/ui";
 import { fmtDateTime } from "@/lib/format";
+import { PRECEDENCE_OBJECTIVE, categoryOf, precedenceAdvisory } from "@/lib/message-types";
 import {
   DRAFT_STATUS,
   DRAFT_TYPES,
+  OFFICES,
   STEP_STATUS,
   currentStep,
   isEditable,
@@ -127,7 +129,7 @@ function Workspace({ draft: d }: { draft: Draft }) {
   const canEdit = isEditable(d) && d.drafterId === r.actorId;
   const edit = (patch: Partial<Draft>) => r.updateDraft(d.id, patch);
   const step = currentStep(d);
-  const preview = useMemo(() => (isEditable(d) ? selectWorkflow(r.workflows, d.type, d.originator) : null), [d, r.workflows]);
+  const preview = useMemo(() => (isEditable(d) ? selectWorkflow(r.workflows, d.type, d.originator, d.office) : null), [d, r.workflows]);
   const stranded = preview ? strandedSteps(preview.steps) : [];
   const gate = releaseGate(r.authorities, r.actorId, d);
   const holdsStep = step?.personId === r.actorId;
@@ -160,10 +162,20 @@ function Workspace({ draft: d }: { draft: Draft }) {
             </label>
             <TextInput label="Originator" value={d.originator} disabled />
             <label className="block text-sm">
+              <span className="mb-1 block font-semibold">Drafting office</span>
+              <select className={fieldCls} value={d.office} disabled={!canEdit} onChange={(e) => edit({ office: e.target.value })}>
+                {OFFICES.map((o) => <option key={o.code} value={o.code}>{o.code} · {o.name}</option>)}
+              </select>
+            </label>
+            <label className="block text-sm">
               <span className="mb-1 block font-semibold">Precedence</span>
               <select className={fieldCls} value={d.precedence} disabled={!canEdit} onChange={(e) => edit({ precedence: e.target.value as Precedence })}>
                 {PRECEDENCES.map((p) => <option key={p}>{p}</option>)}
               </select>
+              <span className="mt-1 block text-xs text-muted">
+                {categoryOf(d.type)} · objective {PRECEDENCE_OBJECTIVE[d.precedence].label.toLowerCase()}
+              </span>
+              {precedenceAdvisory(d.type, d.precedence) && <span className="mt-1 block text-xs font-semibold text-amber-800">{precedenceAdvisory(d.type, d.precedence)}</span>}
             </label>
             <label className="block text-sm">
               <span className="mb-1 block font-semibold">Classification</span>
@@ -236,7 +248,7 @@ function Workspace({ draft: d }: { draft: Draft }) {
                 </div>
               ) : (
                 <p className="flex gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden /> No routing workflow matches this message type and originator. An administrator must define one first.
+                  <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden /> No routing workflow matches this message type, originator and office. An administrator must define one first.
                 </p>
               )}
               {d.status === "returned" && (

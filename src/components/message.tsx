@@ -18,9 +18,10 @@ import {
 } from "lucide-react";
 import { resolveAckStatus, sentByOwnCommand } from "@/lib/data";
 import { fmtDateTime, hoursUntil, shortHash } from "@/lib/format";
+import { MESSAGE_TYPE_INFO, PRECEDENCE_OBJECTIVE, categoryOf, precedenceAdvisory } from "@/lib/message-types";
 import { useStore } from "@/lib/store";
 import type { Attachment, Message } from "@/lib/types";
-import { Button, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tabs, cx, tableWrap, tbodyRow } from "./ui";
+import { Button, CategoryBadge, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tabs, cx, tableWrap, tbodyRow } from "./ui";
 import { MessageCellsRow, MessageHeaderRow, messageColumns, type MessageCells } from "./message-columns";
 
 /** When provided, message links open in the existing reader instead of navigating. */
@@ -267,8 +268,11 @@ export function MetadataTable({ m }: { m: Message }) {
   const rows: [string, React.ReactNode][] = [
     ["Classification", <ClassBadge key="c" c={m.classification} />],
     ["Precedence", <PrecedenceBadge key="p" p={m.precedence} />],
+    ["Delivery Objective", `${PRECEDENCE_OBJECTIVE[m.precedence].label}, time of file to receipt`],
+    ...(precedenceAdvisory(m.type, m.precedence) ? [["Precedence Check", <span key="pa" className="text-amber-800">{precedenceAdvisory(m.type, m.precedence)}</span>] as [string, React.ReactNode]] : []),
     ["Status", m.lifecycle === "ACTIVE" ? "Active" : <LifecycleBadge key="l" l={m.lifecycle} />],
-    ["Message Type", m.type],
+    ["Category", <CategoryBadge key="cat" c={categoryOf(m.type)} />],
+    ["Message Type", `${m.type}${MESSAGE_TYPE_INFO[m.type].name !== m.type ? ` (${MESSAGE_TYPE_INFO[m.type].name})` : ""}`],
     ["Reference", m.reference],
     ["Date-Time Group", m.dtg],
     ["From", m.originator],

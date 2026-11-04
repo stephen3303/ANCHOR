@@ -6,7 +6,7 @@ import { useState } from "react";
 import { ArrowRight, GitBranch, Pencil, Plus, Save, Settings2, ShieldCheck, Trash2 } from "lucide-react";
 import { HolderNote, PersonSelect, fieldCls } from "./routing";
 import { Button, EmptyState, Panel, Pill, TextInput, Toggle, cx, tableWrap, td, th, theadRow, tbodyRow } from "./ui";
-import { DRAFT_TYPES, OWN_ORIGINATOR, ROSTER_STATE, nextAssignment, personById, personName } from "@/lib/routing";
+import { DRAFT_TYPES, OFFICES, OWN_ORIGINATOR, ROSTER_STATE, authorityScope, nextAssignment, personById, personName } from "@/lib/routing";
 import { useRouting } from "@/lib/routing-store";
 import type { CommandSettings, MessageType, RoutingWorkflow, WorkflowStep } from "@/lib/types";
 
@@ -17,6 +17,7 @@ const blankWorkflow = (): RoutingWorkflow => ({
   active: true,
   matchTypes: [],
   matchOriginators: [],
+  matchOffices: [],
   steps: [
     { title: "", personId: "", action: "review" },
     { title: "", personId: "", action: "release" },
@@ -40,7 +41,7 @@ export function RoutingAdminPanel() {
         action={<Button size="sm" variant="primary" icon={Plus} disabled={!!editing} onClick={() => setEditing(blankWorkflow())}>New workflow</Button>}
       >
         <p className="mb-3 text-sm text-muted">
-          A draft takes the most specific active chain that matches its message type and originator. Every step is held by a person on the roster, and the chain must end at a release step.
+          A draft takes the most specific active chain that matches its drafting office, message type and originator. Every step is held by a person on the roster, and the chain must end at a release step.
         </p>
         {editing ? (
           <WorkflowEditor initial={editing} onDone={() => setEditing(null)} />
@@ -66,6 +67,7 @@ export function RoutingAdminPanel() {
                     <td className={td}>
                       <div>{w.matchTypes.length ? w.matchTypes.join(", ") : "Any type"}</div>
                       <div className="text-xs text-muted">{w.matchOriginators.length ? w.matchOriginators.join(", ") : "Any originator"}</div>
+                      <div className="text-xs text-muted">{w.matchOffices.length ? `Office ${w.matchOffices.join(", ")}` : "Any office"}</div>
                     </td>
                     <td className={td}>
                       <div className="flex flex-wrap items-center gap-1 text-xs">
@@ -99,6 +101,7 @@ function WorkflowEditor({ initial, onDone }: { initial: RoutingWorkflow; onDone:
   const { saveWorkflow } = useRouting();
   const [w, setW] = useState(initial);
   const [originators, setOriginators] = useState(initial.matchOriginators.join(", "));
+  const toggleOffice = (o: string) => set({ matchOffices: w.matchOffices.includes(o) ? w.matchOffices.filter((x) => x !== o) : [...w.matchOffices, o] });
   const set = (p: Partial<RoutingWorkflow>) => setW((x) => ({ ...x, ...p }));
   const setStep = (i: number, p: Partial<WorkflowStep>) => set({ steps: w.steps.map((s, j) => (j === i ? { ...s, ...p } : s)) });
   const toggleType = (t: MessageType) => set({ matchTypes: w.matchTypes.includes(t) ? w.matchTypes.filter((x) => x !== t) : [...w.matchTypes, t] });
@@ -128,6 +131,23 @@ function WorkflowEditor({ initial, onDone }: { initial: RoutingWorkflow; onDone:
               className={cx("rounded border px-2 py-1 text-xs font-semibold", w.matchTypes.includes(t) ? "border-navy-600 bg-navy-600 text-white" : "border-line bg-white text-muted hover:border-navy-600/50")}
             >
               {t}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend className="mb-1 text-sm font-semibold">Drafting offices (none selected = any office)</legend>
+        <div className="flex flex-wrap gap-1.5">
+          {OFFICES.map((o) => (
+            <button
+              key={o.code}
+              type="button"
+              aria-pressed={w.matchOffices.includes(o.code)}
+              onClick={() => toggleOffice(o.code)}
+              className={cx("rounded border px-2 py-1 text-xs font-semibold", w.matchOffices.includes(o.code) ? "border-navy-600 bg-navy-600 text-white" : "border-line bg-white text-muted hover:border-navy-600/50")}
+            >
+              {o.code} · {o.name}
             </button>
           ))}
         </div>
@@ -183,18 +203,20 @@ function AuthorityPanel() {
   const { authorities, addAuthority, removeAuthority } = useRouting();
   const [personId, setPersonId] = useState("");
   const [scope, setScope] = useState<"all" | MessageType>("all");
+  const [office, setOffice] = useState("all");
   const [error, setError] = useState("");
 
   const add = () => {
     const p = personById(personId);
     if (!p) return setError("Pick a person from the roster.");
     if (p.status === "detached") return setError(`${p.rank} ${p.name} is detached from the command. Designate their relief.`);
-    if (authorities.some((a) => a.personId === p.id && (scope === "all" ? !a.scope.length : a.scope.includes(scope))))
+    if (authorities.some((a) => a.personId === p.id && (scope === "all" ? !a.scope.length : a.scope.includes(scope)) && (office === "all" ? !a.offices.length : a.offices.includes(office))))
       return setError(`${p.rank} ${p.name} already holds that designation.`);
     setError("");
-    addAuthority({ personId: p.id, designation: p.position, isCommandingOfficer: /^commander$/i.test(p.position), scope: scope === "all" ? [] : [scope] });
+    addAuthority({ personId: p.id, designation: p.position, isCommandingOfficer: /^commander$/i.test(p.position), scope: scope === "all" ? [] : [scope], offices: office === "all" ? [] : [office] });
     setPersonId("");
     setScope("all");
+    setOffice("all");
   };
 
   return (
@@ -209,7 +231,7 @@ function AuthorityPanel() {
                   {personName(a.personId)}
                   {a.isCommandingOfficer && <Pill className="ml-2 bg-navy-100 text-navy-800">Commander</Pill>}
                 </div>
-                <div className="text-xs text-muted">{a.designation} · {a.scope.length ? a.scope.join(", ") : "all message types"}</div>
+                <div className="text-xs text-muted">{a.designation} · {authorityScope(a)}</div>
                 {p && p.status !== "present" && (
                   <div className={cx("text-xs font-semibold", ROSTER_STATE[p.status].className)}>
                     {p.status === "detached" ? "Detached from the command. Nothing can be released under this designation until it is re-held." : "On leave. Confirm the covering watchstander before a release."}
@@ -230,6 +252,13 @@ function AuthorityPanel() {
             <select className={fieldCls} value={scope} onChange={(e) => setScope(e.target.value as typeof scope)}>
               <option value="all">All message types</option>
               {DRAFT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-semibold">From office</span>
+            <select className={fieldCls} value={office} onChange={(e) => setOffice(e.target.value)}>
+              <option value="all">Any office</option>
+              {OFFICES.map((o) => <option key={o.code} value={o.code}>{o.code} · {o.name}</option>)}
             </select>
           </label>
         </div>

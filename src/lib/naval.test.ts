@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { MESSAGES, resolveAckStatus } from "./data";
 import { messageFromParsed } from "./ingest-record";
+import { categoryOf, formatForType, precedenceAdvisory, PRECEDENCE_OBJECTIVE } from "./message-types";
 import { fromDtg, NavalParseError, normRef, ownLifecycle, parseNavalMessage, targetLifecycle, toDtg } from "./naval";
 
 const SAMPLE = `O 041530Z NOV 26
@@ -35,6 +36,7 @@ test("every demo message's raw text parses back to its record", () => {
     assert.equal(p.classification, m.classification, m.reference);
     assert.equal(p.originator.toUpperCase(), m.originator.toUpperCase(), m.reference);
     assert.equal(p.subject, m.subject.toUpperCase(), m.reference);
+    assert.equal(p.type, m.type, m.reference);
     assert.ok(p.sections.length > 0, m.reference);
   }
 });
@@ -94,4 +96,30 @@ test("sent-traffic status counts only the receipts it is given", () => {
   assert.equal(resolveAckStatus(m, []).commands.filter((c) => c.receipts.length).length, 0);
   const { commands } = resolveAckStatus(m, [{ command: "SUBRON 4", at: "2026-10-24T05:40:00Z" }]);
   assert.deepEqual(commands.filter((c) => c.receipts.length).map((c) => c.command), ["SUBRON 4"]);
+});
+
+test("the MSGID message identifier sets the type, and general messages go by title", () => {
+  const withMsgid = (msgid: string) => parseNavalMessage(SAMPLE.replace(/MSGID\/.*\n/, `${msgid}\n`)).type;
+  assert.equal(withMsgid("MSGID/CASREP/USS STONEFISH/STONEFISH CASREP 26-004//"), "CASREP");
+  assert.equal(withMsgid("MSGID/OPREP-3/USS STONEFISH/STONEFISH SITREP 003/26//"), "OPREP-3");
+  assert.equal(withMsgid("MSGID/MOVREP/USS STONEFISH/STONEFISH MOVREP 012/26//"), "MOVREP");
+  assert.equal(withMsgid("MSGID/LOGREQ/USS STONEFISH/STONEFISH LOGREQ 007/26//"), "LOGREQ");
+  assert.equal(withMsgid("MSGID/GENADMIN/COMSUBLANT N3/COMSUBLANT 090/26//"), "GENADMIN");
+  assert.equal(withMsgid("MSGID/GENADMIN/CNO WASHINGTON DC/NAVADMIN 240/26//"), "NAVADMIN");
+  assert.equal(withMsgid("MSGID/GENADMIN/CMC WASHINGTON DC/ALMAR 012/26//"), "ALMAR");
+  assert.equal(withMsgid("MSGID/SOMEMTF/USFF N7/USFF 2026-12//"), "GENADMIN");
+});
+
+test("categories follow NTP 3(J): operational reports versus administrative traffic", () => {
+  for (const t of ["MOVREP", "LOGREQ", "OPREP-3", "OPREP-5", "CASREP", "INDIGO"] as const) assert.equal(categoryOf(t), "Operational", t);
+  for (const t of ["GENADMIN", "NAVADMIN", "ALNAV", "ALMAR", "MARADMIN"] as const) assert.equal(categoryOf(t), "Administrative", t);
+  assert.equal(formatForType("NAVADMIN"), "GENADMIN");
+  assert.equal(formatForType("CASREP"), "CASREP");
+});
+
+test("precedence objectives and the administrative precedence ceiling", () => {
+  assert.deepEqual(Object.values(PRECEDENCE_OBJECTIVE).map((o) => [o.prosign, o.minutes]), [["Z", 10], ["O", 30], ["P", 180], ["R", 360]]);
+  assert.equal(precedenceAdvisory("GENADMIN", "PRIORITY"), null);
+  assert.match(precedenceAdvisory("GENADMIN", "IMMEDIATE") ?? "", /death, serious illness/);
+  assert.equal(precedenceAdvisory("OPREP-3", "FLASH"), null);
 });

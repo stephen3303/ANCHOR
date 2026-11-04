@@ -4,17 +4,19 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ArrowUpDown, Bookmark, BookmarkPlus, Building2, CalendarDays, FileText, HelpCircle, Lock, Search, Sparkles, Tags, Users, X } from "lucide-react";
 import { useStore } from "@/lib/store";
-import type { Community, Message, MessageType, Precedence } from "@/lib/types";
+import { MESSAGE_CATEGORIES, MESSAGE_TYPES, categoryOf } from "@/lib/message-types";
+import type { Community, Message, MessageCategory, MessageType, Precedence } from "@/lib/types";
 import { Button, Check, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Select, Tabs, Tag, cx } from "@/components/ui";
 
-const TYPES: MessageType[] = ["NAVADMIN", "ALNAV", "OPNAVINST", "COMSUBLANT MSG", "COMSUBFOR INST", "NAVSEAINST", "FLEET MSG", "SAFETY MSG"];
+const TYPES = MESSAGE_TYPES;
 const COMMUNITIES: Community[] = ["Submarine Warfare", "Readiness", "Cybersecurity", "Personnel", "Maintenance", "Training & Education", "Safety", "Policy"];
 const PRECEDENCE: Precedence[] = ["FLASH", "IMMEDIATE", "PRIORITY", "ROUTINE"];
 
 const SAVED = [
-  { name: "Readiness reporting (COMSUBLANT)", query: "readiness", types: ["COMSUBLANT MSG"] as MessageType[] },
+  { name: "Readiness reporting (COMSUBLANT)", query: "readiness", types: ["GENADMIN"] as MessageType[] },
   { name: "Cyber controls, last 30 days", query: "cybersecurity", types: [] as MessageType[] },
-  { name: "Safety traffic", query: "safety", types: ["SAFETY MSG"] as MessageType[] },
+  { name: "Safety traffic", query: "safety", types: [] as MessageType[] },
+  { name: "Equipment casualties", query: "", types: ["CASREP"] as MessageType[] },
   { name: "Personnel policy", query: "personnel", types: ["NAVADMIN", "ALNAV"] as MessageType[] },
   { name: "Training pipeline", query: "training", types: [] as MessageType[] },
   { name: "Port visits", query: "port visit", types: [] as MessageType[] },
@@ -28,7 +30,8 @@ export default function SearchPage() {
   const [mode, setMode] = useState<Mode>("advanced");
   const [q, setQ] = useState("deployment readiness");
   const [nl, setNl] = useState("Show me readiness messages from COMSUBLANT that need acknowledgement");
-  const [types, setTypes] = useState<MessageType[]>(["COMSUBLANT MSG", "NAVADMIN"]);
+  const [cats, setCats] = useState<MessageCategory[]>([]);
+  const [types, setTypes] = useState<MessageType[]>(["GENADMIN", "NAVADMIN"]);
   const [sources, setSources] = useState<string[]>([]);
   const [comms, setComms] = useState<Community[]>(["Readiness"]);
   const [prec, setPrec] = useState<Precedence[]>([]);
@@ -48,6 +51,7 @@ export default function SearchPage() {
     }).filter(({ m, score }) => {
       if (words.length && score === 0) return false;
       if (mode !== "basic") {
+        if (cats.length && !cats.includes(categoryOf(m.type))) return false;
         if (types.length && !types.includes(m.type)) return false;
         if (sources.length && !sources.includes(m.source)) return false;
         if (comms.length && !m.communities.some((c) => comms.includes(c))) return false;
@@ -60,7 +64,7 @@ export default function SearchPage() {
     else if (sort === "Oldest") scored.sort((a, b) => a.m.received.localeCompare(b.m.received));
     else scored.sort((a, b) => b.score - a.score);
     return scored.map((s) => s.m);
-  }, [messages, q, types, sources, comms, prec, includeRetired, sort, mode]);
+  }, [messages, q, cats, types, sources, comms, prec, includeRetired, sort, mode]);
 
   const runSearch = () => log("Search", `Keyword: “${q}”`, `Search returned ${results.length} results.`);
 
@@ -155,7 +159,7 @@ export default function SearchPage() {
                 <Bookmark className="size-4 text-navy-700" />
                 <span className="font-medium">{s.name}</span>
                 <span className="text-muted">&ldquo;{s.query}&rdquo;</span>
-                <Button size="sm" className="ml-auto" onClick={() => { setQ(s.query); setTypes(s.types); setComms([]); setSources([]); setMode("advanced"); }}>Run</Button>
+                <Button size="sm" className="ml-auto" onClick={() => { setQ(s.query); setCats([]); setTypes(s.types); setComms([]); setSources([]); setMode("advanced"); }}>Run</Button>
               </li>
             ))}
           </ul>
@@ -173,6 +177,11 @@ export default function SearchPage() {
           <Panel bodyClassName="space-y-5 p-4">
             <FilterGroup icon={CalendarDays} title="Date Range">
               <Select value={range} onChange={setRange} options={["Last 30 days", "Last 90 days", "Last 12 months", "All dates"]} />
+            </FilterGroup>
+            <FilterGroup icon={Tags} title="Category">
+              <div className="grid grid-cols-2 gap-x-2">
+                {MESSAGE_CATEGORIES.map((c) => <Check key={c} label={c} checked={cats.includes(c)} onChange={() => toggle(cats, c, setCats)} />)}
+              </div>
             </FilterGroup>
             <FilterGroup icon={FileText} title="Message Type">
               <div className="grid grid-cols-2 gap-x-2">

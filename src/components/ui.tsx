@@ -5,7 +5,8 @@
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import type { Classification, Importance, Lifecycle, Precedence, ReadState } from "@/lib/types";
+import { MESSAGE_TYPE_INFO } from "@/lib/message-types";
+import type { Classification, Importance, Lifecycle, MessageCategory, MessageType, Precedence, ReadState } from "@/lib/types";
 
 export function cx(...c: (string | false | null | undefined)[]) {
   return c.filter(Boolean).join(" ");
@@ -148,6 +149,18 @@ const precTone: Record<Precedence, string> = {
   ROUTINE: "bg-slate-100 text-slate-700",
 };
 export const PrecedenceBadge = ({ p }: { p: Precedence }) => <Pill className={precTone[p]}>{p}</Pill>;
+
+const categoryTone: Record<MessageCategory, string> = {
+  Operational: "bg-teal-50 text-teal-800 ring-1 ring-teal-200",
+  Administrative: "bg-slate-50 text-slate-600 ring-1 ring-slate-200",
+};
+/** Operational or Administrative, from the message type. */
+export const CategoryBadge = ({ c }: { c: MessageCategory }) => <Pill className={categoryTone[c]}>{c}</Pill>;
+
+/** The type's short code, with its full name and purpose on hover. */
+export const MessageTypeLabel = ({ t }: { t: MessageType }) => (
+  <abbr title={`${MESSAGE_TYPE_INFO[t].name}: ${MESSAGE_TYPE_INFO[t].description}`} className="no-underline">{t}</abbr>
+);
 
 const lifeTone: Record<Lifecycle, string> = {
   ACTIVE: "",

@@ -5,16 +5,17 @@ import { useMemo, useState } from "react";
 import { Filter, Info, Lock, Pencil, Plus, Radio, Search, Star, FileText, X } from "lucide-react";
 import { SUBSCRIPTION_CATEGORIES } from "@/lib/data";
 import { useStore } from "@/lib/store";
+import { MESSAGE_TYPES } from "@/lib/message-types";
 import type { Community, Frequency, Message, MessageType, Subscription } from "@/lib/types";
 import { Button, Check, Panel, Pill, Select, Tabs, TextInput, Toggle, cx, td, th, theadRow } from "@/components/ui";
 
-const ALL_TYPES: MessageType[] = ["NAVADMIN", "ALNAV", "OPNAVINST", "COMSUBLANT MSG", "COMSUBFOR INST", "NAVSEAINST", "FLEET MSG", "SAFETY MSG"];
+const ALL_TYPES: MessageType[] = MESSAGE_TYPES;
 
 const RECOMMENDED = [
-  { name: "Submarine Safety", category: "Safety" as Community, description: "Safety messages and stand-downs for submarine units.", types: ["SAFETY MSG"] as MessageType[] },
+  { name: "Submarine Safety", category: "Safety" as Community, description: "Safety messages and stand-downs for submarine units.", types: ["GENADMIN"] as MessageType[], keywords: ["safety"] },
   { name: "Watch Team Qualifications", category: "Training & Education" as Community, description: "Watch team qualification standards and changes.", types: ["COMSUBFOR INST"] as MessageType[] },
   { name: "Records Management", category: "Policy" as Community, description: "Official records retention and handling.", types: ["ALNAV"] as MessageType[] },
-  { name: "Port Visit Planning", category: "Submarine Warfare" as Community, description: "Port visit force protection and logistics.", types: ["COMSUBLANT MSG"] as MessageType[] },
+  { name: "Port Visit Planning", category: "Submarine Warfare" as Community, description: "Port visit force protection and logistics.", types: ["GENADMIN", "LOGREQ", "MOVREP"] as MessageType[] },
   { name: "Maintenance Availabilities", category: "Maintenance" as Community, description: "Availability scheduling and reporting.", types: ["NAVSEAINST"] as MessageType[] },
 ];
 
@@ -93,7 +94,7 @@ export default function SubscriptionsPage() {
               <div className="font-semibold">{r.name}</div>
               <div className="text-xs text-muted">{r.category} · {r.types.join(", ")}</div>
               <p className="my-2 text-sm">{r.description}</p>
-              <Button size="sm" variant="primary" onClick={() => setForm({ name: r.name, category: r.category, description: r.description, frequency: "Daily Digest", channels: { inApp: true, email: true, teams: false }, criteria: { messageTypes: r.types } })}>
+              <Button size="sm" variant="primary" onClick={() => setForm({ name: r.name, category: r.category, description: r.description, frequency: "Daily Digest", channels: { inApp: true, email: true, teams: false }, criteria: { messageTypes: r.types, keywords: "keywords" in r ? r.keywords : undefined } })}>
                 Request
               </Button>
             </Panel>

@@ -22,6 +22,8 @@ import {
   renderMessage,
   selectWorkflow,
   strandedSteps,
+  authorityScope,
+  draftingOffice,
 } from "./routing";
 import type { CommandSettings, Draft, ReleaseAuthority, RoutingEvent, RoutingEventType, RoutingWorkflow } from "./types";
 
@@ -109,8 +111,9 @@ export function RoutingProvider({ children }: { children: ReactNode }) {
           {
             id,
             subject: "",
-            type: "COMSUBLANT MSG",
+            type: "GENADMIN",
             originator: OWN_ORIGINATOR,
+            office: draftingOffice(actorId),
             precedence: "ROUTINE",
             classification: "UNCLASSIFIED",
             to: [],
@@ -139,8 +142,8 @@ export function RoutingProvider({ children }: { children: ReactNode }) {
         if (d.drafterId !== actorId) return fail(`Only the drafter, ${personName(d.drafterId)}, can submit this draft.`);
         if (!d.subject.trim()) return fail("Give the draft a subject before submitting it.");
         if (!d.to.length) return fail("Name at least one action addressee.");
-        const wf = selectWorkflow(workflows, d.type, d.originator);
-        if (!wf) return fail("No routing workflow matches this message type and originator.");
+        const wf = selectWorkflow(workflows, d.type, d.originator, d.office);
+        if (!wf) return fail("No routing workflow matches this message type, originator and office.");
         const stranded = strandedSteps(wf.steps);
         if (stranded.length) return fail(`${stranded[0].title} is held by someone detached from the command. An administrator must re-hold it first.`);
         put(id, { status: "in_routing", workflowId: wf.id, route: buildRoute(wf) });
@@ -245,7 +248,7 @@ export function RoutingProvider({ children }: { children: ReactNode }) {
       },
       addAuthority: (a) => {
         setAuthorities((all) => [...all, { ...a, id: nextId("ra") }]);
-        log("Designate Release Authority", personName(a.personId), `${a.designation} · ${a.scope.length ? a.scope.join(", ") : "all message types"}.`);
+        log("Designate Release Authority", personName(a.personId), `${a.designation} · ${authorityScope({ ...a, id: "" })}.`);
         notify(`${personName(a.personId)} may now release messages`);
       },
       removeAuthority: (id) => {

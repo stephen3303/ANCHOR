@@ -26,6 +26,7 @@
 //   BT
 //   #1001                            optional channel serial
 //   NNNN                             optional end of message
+import { typeForFormat } from "./message-types";
 import type { Classification, Lifecycle, MessageSection, MessageType, Precedence } from "./types";
 
 const PROSIGN: Record<string, Precedence> = { Z: "FLASH", O: "IMMEDIATE", P: "PRIORITY", R: "ROUTINE" };
@@ -97,21 +98,24 @@ export const normRef = (s: string) => s.trim().replace(/\s+/g, " ").toUpperCase(
 export const idFor = (reference: string) =>
   reference.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-/** Message type from the serial, e.g. "NAVADMIN 236/26" -> NAVADMIN. */
-export function typeOf(reference: string, originator = ""): MessageType {
-  if (/\bSAFETY\b/i.test(originator)) return "SAFETY MSG";
-  const known: [RegExp, MessageType][] = [
+/**
+ * Message type. Service-wide general messages and instructions are known by
+ * their serial ("NAVADMIN 236/26" -> NAVADMIN). Otherwise the MSGID format
+ * names the type ("MSGID/CASREP/..." -> CASREP). Anything else is GENADMIN,
+ * the format NTP 3(J) para 305 uses for most narrative traffic.
+ */
+export function typeOf(reference: string, format = ""): MessageType {
+  const bySerial: [RegExp, MessageType][] = [
     [/^NAVADMIN\b/, "NAVADMIN"],
     [/^ALNAV\b/, "ALNAV"],
+    [/^ALMAR\b/, "ALMAR"],
     [/^OPNAVINST\b/, "OPNAVINST"],
     [/^MARADMIN\b/, "MARADMIN"],
     [/^NAVSEAINST\b/, "NAVSEAINST"],
     [/^COMSUBFOR INST\b/, "COMSUBFOR INST"],
-    [/^COMSUBLANT\b/, "COMSUBLANT MSG"],
-    [/^SAFETY\b/, "SAFETY MSG"],
   ];
-  for (const [re, t] of known) if (re.test(reference.toUpperCase())) return t;
-  return "FLEET MSG";
+  for (const [re, t] of bySerial) if (re.test(reference.toUpperCase())) return t;
+  return typeForFormat(format) ?? "GENADMIN";
 }
 
 /** The lifecycle a new message carries itself, from its directive. */
@@ -188,6 +192,7 @@ export function parseNavalMessage(raw: string): ParsedMessage {
   let subject = "";
   let originator = header.FM;
   let serial = "";
+  let format = "";
   let narr = "";
   let ackDue: string | undefined;
   let poc: string | undefined;
@@ -197,9 +202,10 @@ export function parseNavalMessage(raw: string): ParsedMessage {
     let m: RegExpExecArray | null;
     if ((m = /^SUBJ\/(.*)$/.exec(body))) subject = m[1].trim();
     // The serial itself may contain a slash ("COMSUBLANT 078/26"), so it takes the rest of the set.
-    else if ((m = /^MSGID\/[^/]*\/([^/]*)\/(.*)$/.exec(body))) {
-      originator = m[1].trim() || originator;
-      serial = m[2].trim();
+    else if ((m = /^MSGID\/([^/]*)\/([^/]*)\/(.*)$/.exec(body))) {
+      format = m[1].trim().toUpperCase();
+      originator = m[2].trim() || originator;
+      serial = m[3].trim();
     } else if ((m = /^REF\/([A-Z])\/[^/]*\/(.*)$/.exec(body))) refs.push({ letter: m[1], ref: normRef(m[2]) });
     else if ((m = /^NARR\/(.*)$/.exec(body))) narr = m[1];
     else if ((m = /^ACK\/(.*)$/.exec(body))) ackDue = fromDtg(m[1]) ?? fail(`ACK due "${m[1]}" is not a valid date-time group.`);
@@ -248,7 +254,7 @@ export function parseNavalMessage(raw: string): ParsedMessage {
     ],
     classification,
     reference,
-    type: typeOf(reference, originator),
+    type: typeOf(reference, format),
     subject,
     references: refs.map((r) => r.ref),
     directive,

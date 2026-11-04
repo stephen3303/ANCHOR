@@ -4,14 +4,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCheck, Download, Filter, Mail, Paperclip, Search } from "lucide-react";
 import { needsOwnAck } from "@/lib/data";
 import { useStore } from "@/lib/store";
-import type { Lifecycle, Message, MessageType, ReadState } from "@/lib/types";
+import { MESSAGE_CATEGORIES, MESSAGE_TYPES, categoryOf } from "@/lib/message-types";
+import type { Lifecycle, Message, MessageCategory, MessageType, ReadState } from "@/lib/types";
 import { MessageReaderNavigation } from "@/components/message";
 import { MessageCellsRow, MessageHeaderRow, messageColumns } from "@/components/message-columns";
 import { MessageDetail } from "./[id]/detail";
 import {
   Button,
+  CategoryBadge,
   Check,
   LifecycleBadge,
+  MessageTypeLabel,
   Panel,
   PrecedenceBadge,
   ReadStatus,
@@ -24,10 +27,11 @@ const RETIRED: Lifecycle[] = ["SUPERSEDED", "CANCELLED", "EXPIRED"];
 export default function MessagesPage() {
   const { messages, userState, markAllRead, log, notify } = useStore();
   const SOURCES = useMemo(() => [...new Set(messages.map((m) => m.source))], [messages]);
-  const TYPES = useMemo(() => [...new Set(messages.map((m) => m.type))], [messages]);
+  const TYPES = useMemo(() => MESSAGE_TYPES.filter((t) => messages.some((m) => m.type === t)), [messages]);
   const count = <K extends keyof Message>(k: K, v: Message[K]) => messages.filter((m) => m[k] === v).length;
   const [q, setQ] = useState("");
   const [sources, setSources] = useState<string[]>([]);
+  const [categories, setCategories] = useState<MessageCategory[]>([]);
   const [types, setTypes] = useState<MessageType[]>([]);
   const [states, setStates] = useState<ReadState[]>([]);
   const [ackOnly, setAckOnly] = useState(false);
@@ -46,13 +50,14 @@ export default function MessagesPage() {
       const st = userState[m.id];
       if (needle && ![m.subject, m.reference, m.originator, ...m.sections.flatMap((s) => s.body)].join(" ").toLowerCase().includes(needle)) return false;
       if (sources.length && !sources.includes(m.source)) return false;
+      if (categories.length && !categories.includes(categoryOf(m.type))) return false;
       if (types.length && !types.includes(m.type)) return false;
       if (states.length && !states.includes(st.read)) return false;
       if (ackOnly && !(needsOwnAck(m) && !st.acknowledgedAt)) return false;
       if (!showRetired && RETIRED.includes(m.lifecycle)) return false;
       return true;
     });
-  }, [messages, q, sources, types, states, ackOnly, showRetired, userState]);
+  }, [messages, q, sources, categories, types, states, ackOnly, showRetired, userState]);
 
   // Keep the list mounted and its scroll containers untouched beneath the reader.
   // A same-document history entry also makes browser Back/Forward work.
@@ -122,11 +127,14 @@ export default function MessagesPage() {
     from: { className: "whitespace-nowrap", cell: (m) => m.originator },
     dtg: { className: "whitespace-nowrap", cell: (m) => m.dtg },
     precedence: (m) => <PrecedenceBadge p={m.precedence} />,
+    category: (m) => <CategoryBadge c={categoryOf(m.type)} />,
+    type: { className: "whitespace-nowrap", cell: (m) => <MessageTypeLabel t={m.type} /> },
     status: (m) => <ReadStatus r={userState[m.id].read} />,
   });
 
   const clearAll = () => {
     setSources([]);
+    setCategories([]);
     setTypes([]);
     setStates([]);
     setAckOnly(false);
@@ -165,7 +173,7 @@ export default function MessagesPage() {
             </Button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px]">
+            <table className="w-full min-w-[1180px]">
               <thead>
                 <MessageHeaderRow cols={cols} />
               </thead>
@@ -209,6 +217,12 @@ export default function MessagesPage() {
                 ))}
                 <Check label="Needs acknowledgement" checked={ackOnly} onChange={setAckOnly} />
                 <Check label="Show superseded, cancelled & expired" checked={showRetired} onChange={setShowRetired} />
+              </fieldset>
+              <fieldset>
+                <legend className="mb-1 text-sm font-semibold">Category</legend>
+                {MESSAGE_CATEGORIES.map((c) => (
+                  <Check key={c} label={c} count={messages.filter((m) => categoryOf(m.type) === c).length} checked={categories.includes(c)} onChange={() => toggle(categories, c, setCategories)} />
+                ))}
               </fieldset>
               <fieldset>
                 <legend className="mb-1 text-sm font-semibold">Message Type</legend>

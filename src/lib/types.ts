@@ -19,16 +19,24 @@ export type ReadState = "new" | "unread" | "read";
 
 export type Importance = "High" | "Medium" | "Low";
 
+/** Purpose of a message. Derived from its type (see message-types.ts). */
+export type MessageCategory = "Operational" | "Administrative";
+
 export type MessageType =
+  | "MOVREP"
+  | "LOGREQ"
+  | "OPREP-3"
+  | "OPREP-5"
+  | "CASREP"
+  | "INDIGO"
+  | "GENADMIN"
   | "NAVADMIN"
   | "ALNAV"
+  | "ALMAR"
   | "OPNAVINST"
   | "MARADMIN"
   | "NAVSEAINST"
-  | "COMSUBLANT MSG"
-  | "COMSUBFOR INST"
-  | "FLEET MSG"
-  | "SAFETY MSG";
+  | "COMSUBFOR INST";
 
 export type Community =
   | "Submarine Warfare"
@@ -213,6 +221,8 @@ export interface RoutingWorkflow {
   active: boolean;
   matchTypes: MessageType[];
   matchOriginators: string[];
+  /** Drafting office codes this chain handles; empty means any office. */
+  matchOffices: string[];
   steps: WorkflowStep[];
 }
 
@@ -224,6 +234,8 @@ export interface ReleaseAuthority {
   isCommandingOfficer: boolean;
   /** Message types this designation covers; empty means all. */
   scope: MessageType[];
+  /** Drafting offices this designation covers; empty means all. */
+  offices: string[];
 }
 
 export interface CommandSettings {
@@ -248,6 +260,8 @@ export interface Draft {
   subject: string;
   type: MessageType;
   originator: string;
+  /** Drafting office code, written with the originator in the MSGID set (NTP 3(J) requires it on GENADMIN). */
+  office: string;
   precedence: Precedence;
   classification: Classification;
   to: string[];

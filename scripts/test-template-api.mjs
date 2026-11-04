@@ -31,7 +31,7 @@ try {
   assert.equal(seed.status, 0, seed.stderr);
   sql(seed.stdout);
   sql(seed.stdout);
-  assert.equal(sql("SELECT count(*) FROM users;").trim(), "1");
+  assert.equal(sql("SELECT count(*) FROM users;").trim(), "10");
   const seededProfile = JSON.parse(sql("SELECT profile::text FROM users WHERE login = 'LTaylor';"));
   sql("INSERT INTO commands (name) SELECT 'TEST COMMAND ' || lpad(n::text, 2, '0') FROM generate_series(1, 30) n;");
 
@@ -62,8 +62,8 @@ try {
   let sessionCookie = "";
   const publish = (body, headers = {}) => fetch(`${base}/api/message-templates`, { method: "POST", headers: { "Content-Type": "application/json", Origin: base, Cookie: sessionCookie, ...headers }, body: JSON.stringify(body) });
   const accountList = await (await fetch(`${base}/api/users`)).json();
-  assert.equal(accountList.users.length, 1);
-  const seededUser = accountList.users[0];
+  assert.equal(accountList.users.length, 10);
+  const seededUser = accountList.users.find((user) => user.login === "LTaylor");
   assert.equal(seededUser.login, "LTaylor");
   assert.equal(seededUser.name, "LT Taylor");
   assert.equal(seededUser.commandName, "COMSUBLANT NORFOLK VA");
@@ -203,6 +203,35 @@ try {
   assert.notEqual(rotated.cookie, sessionCookie);
   assert.equal((await preview(automatic, base, sessionCookie)).status, 401);
   sessionCookie = rotated.cookie;
+  // User management (Admin > Users) requires System Admin and persists changes.
+  const admin = (path, method = "GET", body, cookie = sessionCookie) => fetch(`${base}/api/admin/users${path}`, {
+    method, headers: { Origin: base, Cookie: cookie, ...(body ? { "Content-Type": "application/json" } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const patel = accountList.users.find((user) => user.login === "RPatel");
+  const patelSession = await login(patel.id);
+  assert.equal((await admin("", "GET", undefined, patelSession.cookie)).status, 403, "Non-admins cannot list users");
+  assert.equal((await admin("", "GET", undefined, "")).status, 401);
+  const managed = await (await admin("")).json();
+  assert.equal(managed.users.length, 11);
+  assert.ok(managed.users.find((user) => user.login === "RWalsh").roles.includes("Designated Release Authority"));
+  assert.equal((await admin("", "POST", { login: "TJones", rank: "lt", surname: "Jones", billet: "Assistant N3", unit: "COMSUBLANT N3", roles: ["Message Viewer"] }, sessionCookie)).status, 201);
+  assert.equal((await admin("", "POST", { login: "tjones", rank: "LT", surname: "Jones", billet: "Assistant N3", unit: "COMSUBLANT N3", roles: [] })).status, 409);
+  assert.equal((await admin("", "POST", { login: "Bad", rank: "LT", surname: "X", billet: "B", unit: "U", roles: ["Emperor"] })).status, 400);
+  assert.equal((await admin("", "POST", { login: "X1", rank: "LT", surname: "X", billet: "B", unit: "U", roles: [] }, sessionCookie.replace(/=.*/, "=bad"))).status, 401);
+  assert.equal((await (await fetch(`${base}/api/users`)).json()).users.length, 12);
+  const edited = await admin(`/${patel.id}`, "PATCH", { billet: "Assistant Logistics Officer (N4A)", roles: ["Message Viewer", "Briefing Creator"] });
+  assert.equal(edited.status, 200, await edited.clone().text());
+  assert.deepEqual((await edited.json()).user.roles, ["Message Viewer", "Briefing Creator"]);
+  assert.equal(JSON.parse(sql(`SELECT profile::text FROM users WHERE id = '${patel.id}';`)).billet, "Assistant Logistics Officer (N4A)");
+  assert.equal((await admin(`/${seededUser.id}`, "PATCH", { active: false })).status, 400, "Admins cannot deactivate themselves");
+  assert.equal((await admin(`/${seededUser.id}`, "PATCH", { roles: ["Message Viewer"] })).status, 400, "Admins cannot drop their own System Admin role");
+  assert.equal((await admin(`/${patel.id}`, "PATCH", { active: false })).status, 200);
+  assert.equal((await (await fetch(`${base}/api/session`, { headers: { Cookie: patelSession.cookie } })).json()).user, null, "Deactivation signs the user out");
+  assert.ok(!(await (await fetch(`${base}/api/users`)).json()).users.some((user) => user.id === patel.id));
+  assert.equal((await admin(`/${patel.id}`, "PATCH", { active: true })).status, 200);
+  const crossOrigin = await fetch(`${base}/api/admin/users/${patel.id}`, { method: "PATCH", headers: { Origin: "https://untrusted.example", Cookie: sessionCookie, "Content-Type": "application/json" }, body: "{\"active\":false}" });
+  assert.equal(crossOrigin.status, 403);
+
   const logout = await fetch(`${base}/api/session`, { method: "DELETE", headers: { Origin: base, Cookie: sessionCookie } });
   assert.equal(logout.status, 200);
   assert.equal((await preview(automatic)).status, 401);
@@ -211,7 +240,7 @@ try {
   assert.equal(new URL(signedOutPage.url).pathname, "/login");
   const html = await signedOutPage.text();
   assert.ok(html.includes("ANCHOR") && html.includes("Demo sign in"));
-  console.log("API integration tests passed: user seed, sessions, rotation/logout/expiry, per-user originators, Zulu outputs, and template persistence.");
+  console.log("API integration tests passed: user seed, user management, sessions, rotation/logout/expiry, per-user originators, Zulu outputs, and template persistence.");
 } finally {
   if (app && app.exitCode === null) {
     const exited = new Promise((resolve) => app.once("exit", resolve));

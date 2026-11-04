@@ -33,7 +33,7 @@ export const CURRENT_USER = {
     { name: "Report Viewer", detail: "Acknowledgement and traffic reports", granted: true },
     { name: "Subscription Approver", detail: "Approve unit subscription requests", granted: true },
     { name: "Designated Release Authority", detail: "Release outgoing command traffic", granted: false },
-    { name: "System Admin", detail: "Manage unit users and settings", granted: false },
+    { name: "System Admin", detail: "Manage unit users and settings", granted: true },
   ],
   groups: ["COMSUBLANT", "COMSUBLANT N6", "Comms Division"],
 };

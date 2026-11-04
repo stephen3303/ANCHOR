@@ -31,7 +31,7 @@ npm run db:seed:users
 `db:migrate` applies SQL from `database/init/` and `database/migrations/`.
 `db:seed:commands` imports `database/seeds/PLADS.txt` into the `commands` table;
 **no Downloads file or manual file copy is needed**. `db:seed:users` imports
-LT Taylor and links the account to its command. Seed commands are safe to rerun,
+the ten demo accounts and links each one to its command. Seed commands are safe to rerun,
 but are not required for routine startup.
 
 4. Launch **one** app mode:
@@ -151,10 +151,22 @@ builder searches the command directory through the reference-data API.
 
 With `ENABLE_DEMO_LOGIN=true` in `.env`, the app presents a passwordless account
 picker. Run `npm run db:seed:users` after migrations, then continue as **LT Taylor**.
-The seed imports the full `CURRENT_USER` profile from `src/lib/data.ts` as the only
-initial account, login `LTaylor`. It explicitly maps that profile to the PLADS
-command **COMSUBLANT NORFOLK VA**, reusing its ID (or creating that one directory
-entry on a fresh database). Repeated seeds preserve account IDs and later edits.
+The seed imports ten COMSUBLANT staff accounts from `src/lib/demo-users.ts`: the
+full `CURRENT_USER` profile (login `LTaylor`) plus the people who hold steps in the
+routing and release chains (Commander, Deputy, Chief of Staff, N1, N2, N3, N4,
+N41 and the N6 ISSM). Each is mapped explicitly to the PLADS command
+**COMSUBLANT NORFOLK VA**, reusing its ID (or creating that one directory entry on a
+fresh database). Repeated seeds add missing accounts and preserve account IDs and
+later edits. If no active account holds System Admin (a database seeded before the
+Users tab existed), the seed restores LT Taylor's seeded roles so someone can
+administer.
+
+**Admin > Users** (`/admin#users`) lists every account and lets a System Admin add
+users, change billet, unit and roles, and deactivate or reactivate accounts.
+LT Taylor, YNC Nguyen and ITC Harper hold System Admin. Deactivating an account
+signs it out immediately and removes it from the account picker. Admins cannot
+deactivate themselves or remove their own System Admin role. This is role-based
+UI gating on a passwordless demo, not real authorization.
 
 Sessions use random HttpOnly, SameSite=Strict cookies and expire after eight
 hours; only SHA-256 token hashes are stored in `user_sessions`. Refreshing the
@@ -163,7 +175,7 @@ to select another account. Switching accounts remounts mock frontend state and
 previews. User-specific profile, header, audit actor and printed-user information
 come from the session rather than frontend `CURRENT_USER` imports.
 
-To add another demo account, insert an active row in `users` with its own unique
+To add an account without the UI, insert an active row in `users` with its own unique
 `login`, `name`, `command_id`, and optional profile JSON, then reload the account
 picker. For example (run manually only if another account is wanted):
 
@@ -321,6 +333,9 @@ REST endpoints:
 | --- | --- |
 | `GET /api/users` | List active demo accounts (requires demo login to be enabled) |
 | `GET /api/session` | Current session profile, or null when signed out |
+| `GET /api/admin/users` | List all accounts, active and deactivated (System Admin) |
+| `POST /api/admin/users` | Add an account: `{ login, rank, surname, billet, unit, email?, roles }` (System Admin) |
+| `PATCH /api/admin/users/{id}` | Change `billet`, `unit`, `roles` or `active` (System Admin) |
 | `POST /api/session` | Passwordless demo sign-in using `{ userId }` |
 | `DELETE /api/session` | Revoke the current session and clear its cookie |
 | `GET /api/message-templates` | List up to 100 active published templates |

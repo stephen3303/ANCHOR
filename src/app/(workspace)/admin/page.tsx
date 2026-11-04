@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { BellRing, Check as CheckIcon, GitBranch, Lock, ShieldCheck, UserCog, Users, X } from "lucide-react";
 import { useCurrentUser } from "@/lib/current-user";
 import { useStore } from "@/lib/store";
-import { Button, EmptyState, PageHeader, Panel, Pill, PrecedenceBadge, tableWrap, td, th, theadRow, tbodyRow } from "@/components/ui";
+import { Button, EmptyState, PageHeader, Panel, Pill, PrecedenceBadge, Tabs, tableWrap, td, th, theadRow, tbodyRow } from "@/components/ui";
+import { UserAdminPanel } from "@/components/user-admin";
 
 // Business rules that make delivery mandatory (ANCHOR.txt section 6).
 const ALERT_RULES = [
@@ -20,18 +22,44 @@ const ACCESS = [
   { group: "SUBRON Staff", basis: "Group", members: 38, scope: "Squadron traffic" },
 ];
 
+type AdminTab = "overview" | "users";
+const TABS: { id: AdminTab; label: string }[] = [
+  { id: "overview", label: "Approvals & Access" },
+  { id: "users", label: "Users" },
+];
+
 export default function AdminPage() {
-  const CURRENT_USER = useCurrentUser();
-  const { approvals, decideApproval } = useStore();
+  const [tab, setTab] = useState<AdminTab>("overview");
+  // The tab lives in the URL hash so /admin#users links straight to it.
+  useEffect(() => {
+    const sync = () => setTab(window.location.hash === "#users" ? "users" : "overview");
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
+  const choose = (next: AdminTab) => {
+    setTab(next);
+    window.history.replaceState(null, "", next === "users" ? "#users" : window.location.pathname);
+  };
   return (
     <>
       <PageHeader
         icon={UserCog}
         title="Admin"
-        subtitle="Approve subscriptions, review mandatory alert rules, and manage command access."
+        subtitle="Approve subscriptions, review mandatory alert rules, and manage users and command access."
         actions={<Button href="/admin/routing" icon={GitBranch}>Routing & Release</Button>}
       />
+      <Tabs tabs={TABS} active={tab} onChange={choose} />
+      {tab === "users" ? <UserAdminPanel /> : <Overview />}
+    </>
+  );
+}
 
+function Overview() {
+  const CURRENT_USER = useCurrentUser();
+  const { approvals, decideApproval } = useStore();
+  return (
+    <>
       <Panel title={`Subscription Approval Queue (${approvals.length})`} icon={CheckIcon} className="mb-4">
         <p className="mb-3 text-sm text-muted">You hold the Subscription Approver role for {CURRENT_USER.unit}. Requests are not active until approved.</p>
         {approvals.length ? (

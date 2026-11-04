@@ -24,6 +24,8 @@ export const ROSTER: Person[] = [
   { id: "p-patel", rank: "LT", name: "R. Patel", position: "Supply Officer (N41)", code: "N41", status: "present" },
   { id: "p-taylor", rank: "LT", name: "J. Taylor", position: "Communications Officer (N6)", code: "N6", status: "present" },
   { id: "p-nguyen", rank: "YNC", name: "S. Nguyen", position: "Admin Chief (N1)", code: "N1", status: "present" },
+  { id: "p-morales", rank: "LCDR", name: "E. Morales", position: "Intelligence Officer (N2)", code: "N2", status: "present" },
+  { id: "p-harper", rank: "ITC", name: "D. Harper", position: "Information Systems Security Manager (N6)", code: "N61", status: "present" },
 ];
 
 /** The roster record of the signed-in user (LT Taylor). */

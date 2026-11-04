@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { AlertCircle, AlertTriangle, CheckCircle2, CheckSquare, Clock, Download, FileText, Pencil, Printer, Users, FilePlus2 } from "lucide-react";
+import { AlertCircle, CheckSquare, Clock, Download, FileText, Pencil, Printer, Users, FilePlus2 } from "lucide-react";
 import { MESSAGES, ONGOING_TOPICS, TURNOVER_CHECKLIST, actionItems, needsOwnAck } from "@/lib/data";
 import { fmtTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { WatchPrep } from "@/components/watch-prep";
-import { Button, Check, Delta, ImportanceBadge, LifecycleBadge, Panel, StatCard, StatusDot, Tabs, tableWrap, td, th, theadRow, tbodyRow, type DotTone } from "@/components/ui";
+import { Button, Check, ImportanceBadge, LifecycleBadge, Panel, StatusDot, Tabs, tableWrap, td, th, theadRow, tbodyRow, type DotTone } from "@/components/ui";
 
 type Tab = "summary" | "actions" | "topics" | "recent" | "notes";
 const statusTone: Record<string, DotTone> = { Open: "red", "In Progress": "amber", "Not Started": "gray", Done: "green", Active: "green", Monitoring: "amber" };
@@ -39,36 +39,25 @@ export default function WatchTurnover() {
           <Clock className="mt-1 size-10 text-ink" strokeWidth={1.75} aria-hidden />
           <div>
             <h1 className="text-2xl font-bold sm:text-[28px]">Watch Turnover</h1>
-            <p className="text-[15px] text-muted">Ensure a smooth transition of duties with a complete operational picture.</p>
+            <p className="text-[15px] text-muted">Review traffic. Resolve priorities. Take the watch.</p>
           </div>
         </div>
         <div className="no-print flex flex-wrap gap-2">
-          <Button variant="primary" icon={FileText} onClick={() => { log("Generate Report", "Watch Turnover Package"); notify("Turnover package generated"); }}>Generate Turnover Package</Button>
-          <Button icon={FilePlus2} href="/briefings/generated">Use Latest Briefing</Button>
-          <Button variant="primary" icon={Download} onClick={() => { log("Export", "Watch Turnover"); notify("Exported turnover PDF"); }}>Export</Button>
+          <Button variant="primary" icon={FileText} onClick={() => { log("Generate Report", "Watch Turnover Package"); notify("Turnover package generated"); }}>Prepare package</Button>
+          <Button icon={FilePlus2} href="/briefings/generated">Briefing</Button>
+          <Button icon={Download} onClick={() => { log("Export", "Watch Turnover"); notify("Exported turnover PDF"); }}>Export</Button>
           <Button icon={Printer} onClick={() => window.print()}>Print</Button>
         </div>
       </div>
 
       <WatchPrep />
 
-      <div className="mb-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <StatCard icon={FileText} value={MESSAGES.filter((m) => m.received >= "2026-10-23T19:00:00Z").length} label="New This Watch" note={<Delta dir="down" good>25% from last watch</Delta>} />
-        <StatCard icon={AlertTriangle} value={high.length} label="High Priority" tone="red" note={<Delta dir="up">1 from last watch</Delta>} />
-        <StatCard icon={CheckSquare} value={actions.length} label="Action Items" tone="amber" note={<Delta dir="up">2 from last watch</Delta>} />
-        <StatCard icon={Users} value={ONGOING_TOPICS.length} label="Ongoing Topics" note="Require continued monitoring" />
-        <div className={`rounded-lg border p-4 shadow-sm ${ready ? "border-green-300 bg-green-50" : "border-amber-300 bg-amber-50"}`}>
-          <div className="flex items-start gap-2">
-            {ready ? <CheckCircle2 className="size-8 text-green-600" /> : <AlertCircle className="size-8 text-amber-600" />}
-            <div>
-              <div className="text-[17px] font-bold">{ready ? "Turnover Package Ready" : `${TURNOVER_CHECKLIST.length - done} checklist item${TURNOVER_CHECKLIST.length - done === 1 ? "" : "s"} left`}</div>
-              <div className="text-sm">Includes messages, actions, acknowledgements and notes.</div>
-            </div>
-          </div>
-          <Button variant="primary" icon={Download} className="mt-3 w-full" disabled={!ready} onClick={() => notify("Downloaded turnover package")}>Download Turnover Package</Button>
-        </div>
-      </div>
-
+      <details className="rounded-lg border border-line bg-white p-4">
+        <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 font-semibold">
+          <span>Turnover notes &amp; checklist <span className="ml-2 text-sm font-normal text-link">Expand ↓</span></span>
+          <span className={`text-sm ${ready ? "text-green-700" : "text-amber-800"}`}>{done}/{TURNOVER_CHECKLIST.length} checks complete</span>
+        </summary>
+        <div className="mt-4">
       <Tabs
         active={tab}
         onChange={setTab}
@@ -131,6 +120,8 @@ export default function WatchTurnover() {
           </Panel>
         </div>
       </div>
+        </div>
+      </details>
     </>
   );
 }

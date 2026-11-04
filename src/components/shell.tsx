@@ -8,6 +8,7 @@ import {
   BarChart3,
   BellRing,
   ChevronDown,
+  FilePenLine,
   FileText,
   FilePlus2,
   Globe,
@@ -17,14 +18,17 @@ import {
   Menu,
   Network,
   Search,
+  Server,
   Settings,
   ShieldCheck,
   UserCog,
+  Waypoints,
   WifiOff,
   ClipboardList,
   X,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
+import { useRouting } from "@/lib/routing-store";
 import { MESSAGES, needsOwnAck } from "@/lib/data";
 import { useUserSession } from "@/lib/current-user";
 import { fmtDate, fmtTime } from "@/lib/format";
@@ -39,9 +43,12 @@ const NAV = [
   { href: "/search", label: "Search", icon: Search },
   { href: "/briefings", label: "Briefings", icon: FileText },
   { href: "/watch-turnover", label: "Watch Turnover", icon: ClipboardList },
+  { href: "/drafting", label: "Drafting & Release", icon: FilePenLine, badge: "routing" as const },
   { href: "/offline", label: "Offline Mode", icon: WifiOff, badge: "sync" as const },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/audit", label: "Audit & Integrity", icon: ShieldCheck },
+  { href: "/simulators", label: "Server Simulators", icon: Server },
+  { href: "/topology", label: "Network Topology", icon: Waypoints },
   { href: "/admin", label: "Admin", icon: UserCog, badge: "approvals" as const },
   { href: "/profile", label: "Profile & Settings", icon: Settings },
 ];
@@ -128,8 +135,10 @@ function Header({ onMenu }: { onMenu: () => void }) {
 function Sidebar({ open, onClose }: { open: boolean | null; onClose: () => void }) {
   const path = usePathname();
   const { userState, syncQueue, approvals } = useStore();
+  const { drafts, actorId } = useRouting();
   const unread = MESSAGES.filter((m) => userState[m.id]?.read !== "read").length;
-  const badges = { unread, sync: syncQueue.length, approvals: approvals.length };
+  const routing = drafts.filter((d) => d.status === "in_routing" && d.route.find((s) => s.status === "current")?.personId === actorId).length;
+  const badges = { unread, sync: syncQueue.length, approvals: approvals.length, routing };
 
   return (
     <>

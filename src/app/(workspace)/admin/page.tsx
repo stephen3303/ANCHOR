@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRing, Check as CheckIcon, Lock, ShieldCheck, UserCog, Users, X } from "lucide-react";
+import { BellRing, Check as CheckIcon, GitBranch, Lock, ShieldCheck, UserCog, Users, X } from "lucide-react";
 import { useCurrentUser } from "@/lib/current-user";
 import { useStore } from "@/lib/store";
 import { Button, EmptyState, PageHeader, Panel, Pill, PrecedenceBadge, tableWrap, td, th, theadRow, tbodyRow } from "@/components/ui";
@@ -25,7 +25,12 @@ export default function AdminPage() {
   const { approvals, decideApproval } = useStore();
   return (
     <>
-      <PageHeader icon={UserCog} title="Admin" subtitle="Approve subscriptions, review mandatory alert rules, and manage command access." />
+      <PageHeader
+        icon={UserCog}
+        title="Admin"
+        subtitle="Approve subscriptions, review mandatory alert rules, and manage command access."
+        actions={<Button href="/admin/routing" icon={GitBranch}>Routing & Release</Button>}
+      />
 
       <Panel title={`Subscription Approval Queue (${approvals.length})`} icon={CheckIcon} className="mb-4">
         <p className="mb-3 text-sm text-muted">You hold the Subscription Approver role for {CURRENT_USER.unit}. Requests are not active until approved.</p>

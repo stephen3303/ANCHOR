@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import { UserProvider } from "@/lib/current-user";
 import { StoreProvider } from "@/lib/store";
+import { RoutingProvider } from "@/lib/routing-store";
+import { SimProvider } from "@/lib/sim-store";
 import { currentSessionUser } from "@/lib/server/session";
 
 export default function WorkspaceLayout({ children }: { children: ReactNode }) {
@@ -21,7 +23,11 @@ async function SessionWorkspace({ children }: { children: ReactNode }) {
   return (
     <UserProvider initialUser={user}>
       <StoreProvider>
-        <AppShell>{children}</AppShell>
+        <RoutingProvider>
+          <SimProvider>
+            <AppShell>{children}</AppShell>
+          </SimProvider>
+        </RoutingProvider>
       </StoreProvider>
     </UserProvider>
   );

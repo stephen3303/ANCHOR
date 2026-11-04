@@ -14,8 +14,9 @@ import {
   WATCH_NOTES,
 } from "./data";
 import { MOCK_NOW } from "./format";
+import { appendEvent, chainLog, type ChainedAuditEvent } from "./audit";
 import { useCurrentUser } from "./current-user";
-import type { AuditEvent, Community, MessageUserState, Subscription, SyncItem } from "./types";
+import type { Community, MessageUserState, Subscription, SyncItem } from "./types";
 
 export interface BriefingConfig {
   name: string;
@@ -66,8 +67,12 @@ interface Store {
   queueLocal: (type: SyncItem["type"], description: string) => void;
   lastSync: Date;
 
-  audit: AuditEvent[];
-  log: (action: string, resource: string, details?: string) => void;
+  audit: ChainedAuditEvent[];
+  log: (action: string, resource: string, details?: string, result?: ChainedAuditEvent["result"]) => void;
+  /** Demonstration only: alter a stored event in place, bypassing the append path, so the integrity check has something to catch. */
+  tamperAudit: (seq: number) => void;
+  undoTamper: () => void;
+  tampered: boolean;
 
   watchNotes: string[];
   setWatchNotes: (n: string[]) => void;
@@ -94,7 +99,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [offline, setOfflineState] = useState(false);
   const [syncQueue, setSyncQueue] = useState<SyncItem[]>(SYNC_QUEUE);
   const [lastSync, setLastSync] = useState(new Date("2026-10-21T18:00:00Z"));
-  const [audit, setAudit] = useState(AUDIT_EVENTS);
+  const [audit, setAudit] = useState(() => chainLog(AUDIT_EVENTS));
+  const [original, setOriginal] = useState<ChainedAuditEvent | null>(null);
   const [watchNotes, setWatchNotes] = useState(WATCH_NOTES);
   const [checklist, setChecklist] = useState<Record<string, boolean>>(
     Object.fromEntries(TURNOVER_CHECKLIST.map((c, i) => [c, i < TURNOVER_CHECKLIST.length - 1])),
@@ -108,23 +114,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const log = useCallback(
-    (action: string, resource: string, details = "") => {
-      setAudit((a) => [
-        {
+    (action: string, resource: string, details = "", result: ChainedAuditEvent["result"] = "Success") => {
+      // The only write path to the audit log: every event is chained to the one before it.
+      setAudit((a) =>
+        appendEvent(a, {
           id: nextId("evt"),
           timestamp: new Date().toISOString(),
           user: CURRENT_USER.login,
           action,
           resource,
           classification: "UNCLASSIFIED",
-          result: "Success",
+          result,
           sourceIp: "10.15.32.18",
           device: "ANCHOR-OPS-01",
           location: CURRENT_USER.unit,
           details: details || (offline ? "Recorded locally; will sync when connectivity returns." : "Recorded."),
-        },
-        ...a,
-      ]);
+        }),
+      );
     },
     [offline, CURRENT_USER],
   );
@@ -212,6 +218,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       audit,
       log,
+      tampered: original !== null,
+      tamperAudit: (seq) => {
+        const row = audit.find((e) => e.seq === seq);
+        if (!row || original) return;
+        setOriginal(row);
+        setAudit((a) => a.map((e) => (e.seq === seq ? { ...e, details: `${e.details} [edited outside the append path]` } : e)));
+        notify(`Event #${seq} altered in storage (demonstration)`);
+      },
+      undoTamper: () => {
+        if (!original) return;
+        setAudit((a) => a.map((e) => (e.seq === original.seq ? original : e)));
+        setOriginal(null);
+        notify("Demonstration edit reverted");
+      },
 
       watchNotes,
       setWatchNotes: (n) => {
@@ -228,7 +248,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toast,
       notify,
     }),
-    [CURRENT_USER, userState, subscriptions, approvals, offline, syncQueue, lastSync, audit, watchNotes, checklist, briefing, toast, log, notify, queue],
+    [CURRENT_USER, userState, subscriptions, approvals, offline, syncQueue, lastSync, audit, original, watchNotes, checklist, briefing, toast, log, notify, queue],
   );
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;

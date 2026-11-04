@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { AlertTriangle, BellRing, CheckCircle2, ClipboardList, FileText, Home, Mail, ShieldCheck, WifiOff } from "lucide-react";
-import { MESSAGES, needsOwnAck } from "@/lib/data";
+import { needsOwnAck } from "@/lib/data";
 import { useCurrentUser } from "@/lib/current-user";
 import { fmtDateTime, hoursUntil } from "@/lib/format";
 import { useStore } from "@/lib/store";
@@ -13,11 +13,11 @@ import { Button, LifecycleBadge, PageHeader, Panel, PrecedenceBadge, StatCard, t
 
 export default function HomePage() {
   const CURRENT_USER = useCurrentUser();
-  const { userState, acknowledge, subscriptions, syncQueue, offline, approvals } = useStore();
-  const needAck = MESSAGES.filter(needsOwnAck);
+  const { userState, acknowledge, subscriptions, syncQueue, offline, approvals, messages } = useStore();
+  const needAck = messages.filter(needsOwnAck);
   const pending = needAck.filter((m) => !userState[m.id].acknowledgedAt);
-  const unread = MESSAGES.filter((m) => userState[m.id].read !== "read").length;
-  const changed = MESSAGES.filter((m) => m.lifecycle !== "ACTIVE").slice(0, 5);
+  const unread = messages.filter((m) => userState[m.id].read !== "read").length;
+  const changed = messages.filter((m) => m.lifecycle !== "ACTIVE").slice(0, 5);
 
   const ackCols = messageColumns<Message>({
     subject: (m) => (
@@ -81,7 +81,7 @@ export default function HomePage() {
           </div>
 
           <Panel title="Latest Traffic" icon={Mail} action={<Link href="/messages" className="text-sm text-link">View All</Link>}>
-            <MiniMessageTable items={MESSAGES.slice(0, 6)} cols={["subject", "reference", "dtg", "precedence"]} />
+            <MiniMessageTable items={messages.slice(0, 6)} cols={["subject", "reference", "dtg", "precedence"]} />
           </Panel>
         </div>
 

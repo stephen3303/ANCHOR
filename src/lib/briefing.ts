@@ -7,9 +7,9 @@ const RANGE_DAYS: Record<string, number> = { "Last 24 hours": 1, "Last 7 days": 
 const ORDER = { High: 0, Medium: 1, Low: 2 } as const;
 
 /** Messages a briefing config selects, most important first. */
-export function selectBriefing(cfg: BriefingConfig, read: (id: string) => boolean): Message[] {
+export function selectBriefing(cfg: BriefingConfig, read: (id: string) => boolean, messages: Message[] = MESSAGES): Message[] {
   const cutoff = MOCK_NOW.getTime() - (RANGE_DAYS[cfg.range] ?? 7) * 86_400_000;
-  return MESSAGES.filter((m) => {
+  return messages.filter((m) => {
     if (new Date(m.received).getTime() < cutoff) return false;
     if (cfg.communities.length && !m.communities.some((c) => cfg.communities.includes(c))) return false;
     if (cfg.highOnly && m.importance !== "High") return false;

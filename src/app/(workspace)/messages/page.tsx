@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCheck, Download, Filter, Mail, Paperclip, Search } from "lucide-react";
-import { MESSAGES, needsOwnAck } from "@/lib/data";
+import { needsOwnAck } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import type { Lifecycle, Message, MessageType, ReadState } from "@/lib/types";
 import { MessageReaderNavigation } from "@/components/message";
@@ -19,13 +19,13 @@ import {
   cx,
 } from "@/components/ui";
 
-const SOURCES = [...new Set(MESSAGES.map((m) => m.source))];
-const TYPES = [...new Set(MESSAGES.map((m) => m.type))];
-const count = <K extends keyof Message>(k: K, v: Message[K]) => MESSAGES.filter((m) => m[k] === v).length;
 const RETIRED: Lifecycle[] = ["SUPERSEDED", "CANCELLED", "EXPIRED"];
 
 export default function MessagesPage() {
-  const { userState, markAllRead, log, notify } = useStore();
+  const { messages, userState, markAllRead, log, notify } = useStore();
+  const SOURCES = useMemo(() => [...new Set(messages.map((m) => m.source))], [messages]);
+  const TYPES = useMemo(() => [...new Set(messages.map((m) => m.type))], [messages]);
+  const count = <K extends keyof Message>(k: K, v: Message[K]) => messages.filter((m) => m[k] === v).length;
   const [q, setQ] = useState("");
   const [sources, setSources] = useState<string[]>([]);
   const [types, setTypes] = useState<MessageType[]>([]);
@@ -42,7 +42,7 @@ export default function MessagesPage() {
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return MESSAGES.filter((m) => {
+    return messages.filter((m) => {
       const st = userState[m.id];
       if (needle && ![m.subject, m.reference, m.originator, ...m.sections.flatMap((s) => s.body)].join(" ").toLowerCase().includes(needle)) return false;
       if (sources.length && !sources.includes(m.source)) return false;
@@ -52,19 +52,19 @@ export default function MessagesPage() {
       if (!showRetired && RETIRED.includes(m.lifecycle)) return false;
       return true;
     });
-  }, [q, sources, types, states, ackOnly, showRetired, userState]);
+  }, [messages, q, sources, types, states, ackOnly, showRetired, userState]);
 
   // Keep the list mounted and its scroll containers untouched beneath the reader.
   // A same-document history entry also makes browser Back/Forward work.
   useEffect(() => {
     const sync = () => {
       const id = window.history.state?.messageReader;
-      setSelected(MESSAGES.some((m) => m.id === id) ? id : null);
+      setSelected(messages.some((m) => m.id === id) ? id : null);
     };
     sync();
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
-  }, []);
+  }, [messages]);
 
   useEffect(() => {
     const dialog = reader.current;
@@ -140,7 +140,7 @@ export default function MessagesPage() {
         <div className="flex flex-wrap items-center gap-3">
           <Mail className="size-9 text-navy-700" strokeWidth={1.75} aria-hidden />
           <h1 className="text-2xl font-bold sm:text-[28px]">
-            Messages <span className="font-semibold text-muted">({rows.length} of {MESSAGES.length})</span>
+            Messages <span className="font-semibold text-muted">({rows.length} of {messages.length})</span>
           </h1>
           <label className="relative ml-auto min-w-[240px] flex-1 sm:max-w-xl">
             <span className="sr-only">Search messages</span>
@@ -205,7 +205,7 @@ export default function MessagesPage() {
               <fieldset>
                 <legend className="mb-1 text-sm font-semibold">Status</legend>
                 {(["new", "unread", "read"] as ReadState[]).map((s) => (
-                  <Check key={s} label={s[0].toUpperCase() + s.slice(1)} count={MESSAGES.filter((m) => userState[m.id].read === s).length} checked={states.includes(s)} onChange={() => toggle(states, s, setStates)} />
+                  <Check key={s} label={s[0].toUpperCase() + s.slice(1)} count={messages.filter((m) => userState[m.id].read === s).length} checked={states.includes(s)} onChange={() => toggle(states, s, setStates)} />
                 ))}
                 <Check label="Needs acknowledgement" checked={ackOnly} onChange={setAckOnly} />
                 <Check label="Show superseded, cancelled & expired" checked={showRetired} onChange={setShowRetired} />

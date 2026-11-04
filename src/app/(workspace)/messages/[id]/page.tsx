@@ -1,6 +1,5 @@
 import { Suspense } from "react";
-import { notFound } from "next/navigation";
-import { MESSAGES, messageById } from "@/lib/data";
+import { MESSAGES } from "@/lib/data";
 import { MessageDetail } from "./detail";
 
 export function generateStaticParams() {
@@ -9,7 +8,6 @@ export function generateStaticParams() {
 
 async function Detail({ params }: { params: PageProps<"/messages/[id]">["params"] }) {
   const { id } = await params;
-  if (!messageById(id)) notFound();
   return <MessageDetail id={id} />;
 }
 

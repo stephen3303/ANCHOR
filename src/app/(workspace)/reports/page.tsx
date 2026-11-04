@@ -3,17 +3,12 @@
 import Link from "next/link";
 import { useState } from "react";
 import { AlertTriangle, BarChart3, BellRing, CheckCircle2, Database, Download, HardDrive, Mail, Send } from "lucide-react";
-import { CURRENT_USER, MESSAGES, resolveAckStatus, sentByOwnCommand } from "@/lib/data";
+import { CURRENT_USER, resolveAckStatus, sentByOwnCommand } from "@/lib/data";
 import { fmtDateTime, MOCK_NOW } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import type { Message } from "@/lib/types";
 import { MessageCellsRow, MessageHeaderRow, messageColumns } from "@/components/message-columns";
 import { Bar, Button, cx, PageHeader, Panel, StatCard, StatusDot, tableWrap, td, th, theadRow, tbodyRow, type DotTone } from "@/components/ui";
-
-// Messages this command originated that addressees must acknowledge.
-const sentMessages = MESSAGES.filter(
-  (m) => sentByOwnCommand(m) && m.ackRequired && m.lifecycle !== "SUPERSEDED" && m.lifecycle !== "CANCELLED",
-);
 
 type SentStatus = "Complete" | "In Progress" | "Overdue";
 const statusTone: Record<SentStatus, DotTone> = { Complete: "green", "In Progress": "amber", Overdue: "red" };
@@ -24,17 +19,22 @@ function sentStatus(m: Message, acked: number, total: number): SentStatus {
 }
 
 export default function ReportsPage() {
-  const { log, notify } = useStore();
-  const [selected, setSelected] = useState(sentMessages[0].id);
+  const { log, notify, messages, ackReceipts } = useStore();
+  const [selected, setSelected] = useState<string | null>(null);
 
+  // Messages this command originated that addressees must acknowledge.
+  const sentMessages = messages.filter(
+    (m) => sentByOwnCommand(m) && m.ackRequired && m.lifecycle !== "SUPERSEDED" && m.lifecycle !== "CANCELLED",
+  );
   const rows = sentMessages.map((m) => {
-    const { commands, rollup } = resolveAckStatus(m);
+    const { commands, rollup } = resolveAckStatus(m, ackReceipts[m.id] ?? []);
     const acked = commands.filter((c) => c.receipts.length > 0).length;
     return { m, commands, rollup, acked, total: commands.length, status: sentStatus(m, acked, commands.length) };
   });
   const current = rows.find((r) => r.m.id === selected) ?? rows[0];
   const ackedAll = rows.reduce((n, r) => n + r.acked, 0);
   const totalAll = rows.reduce((n, r) => n + r.total, 0);
+  if (!current) return <p className="text-sm text-muted">No traffic sent by this command is waiting on acknowledgements.</p>;
 
   const sentCols = messageColumns<(typeof rows)[number]>({
     subject: (r) => r.m.subject,

@@ -11,6 +11,7 @@ docker compose up -d --wait postgres
 npm run db:migrate
 npm run db:seed:commands
 npm run db:seed:users
+npm run db:seed:messages
 ```
 
 The bundled **`database/seeds/PLADS.txt`** supplies all command names; there is

@@ -26,12 +26,16 @@ docker compose up -d --wait postgres
 npm run db:migrate
 npm run db:seed:commands
 npm run db:seed:users
+npm run db:seed:messages
 ```
 
 `db:migrate` applies SQL from `database/init/` and `database/migrations/`.
 `db:seed:commands` imports `database/seeds/PLADS.txt` into the `commands` table;
 **no Downloads file or manual file copy is needed**. `db:seed:users` imports
-the ten demo accounts and links each one to its command. Seed commands are safe to rerun,
+the ten demo accounts and links each one to its command. `db:seed:messages` loads the
+demo traffic into the message store through the C2OIX parser, plus acknowledgements
+received from other commands. Until it runs, the app shows bundled demo messages and
+says reads and acknowledgements are not saved. Seed commands are safe to rerun,
 but are not required for routine startup.
 
 4. Launch **one** app mode:

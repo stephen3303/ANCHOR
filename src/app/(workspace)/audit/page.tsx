@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Download, FileText, Link2, Printer, RefreshCw, RotateCcw, ShieldAlert, ShieldCheck, Undo2, Users } from "lucide-react";
-import { MESSAGES } from "@/lib/data";
 import { fmtDate, fmtDateTime, fmtTime, shortHash } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { verifyChain, type AuditCategory, type ChainCheck } from "@/lib/audit";
@@ -19,7 +18,7 @@ const CATEGORY_TONE: Record<AuditCategory, string> = {
 };
 
 export default function AuditPage() {
-  const { audit, log, notify, tamperAudit, undoTamper, tampered } = useStore();
+  const { audit, log, notify, tamperAudit, undoTamper, tampered, messages } = useStore();
   const [user, setUser] = useState("All Users");
   const [action, setAction] = useState("All Actions");
   const [category, setCategory] = useState("All Categories");
@@ -210,7 +209,7 @@ export default function AuditPage() {
           <table className="w-full">
             <thead><tr className={theadRow}><th className={th}>Resource</th><th className={th}>SHA-256</th><th className={th}>Result</th></tr></thead>
             <tbody>
-              {MESSAGES.slice(0, 5).map((m) => (
+              {messages.slice(0, 5).map((m) => (
                 <tr key={m.id} className="border-b border-line/70">
                   <td className={td}>{m.reference}</td>
                   <td className={cx(td, "font-mono text-xs")}>{shortHash(m.sha256)}</td>

@@ -3,13 +3,11 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ArrowUpDown, Bookmark, BookmarkPlus, Building2, CalendarDays, FileText, HelpCircle, Lock, Search, Sparkles, Tags, Users, X } from "lucide-react";
-import { MESSAGES } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import type { Community, Message, MessageType, Precedence } from "@/lib/types";
 import { Button, Check, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Select, Tabs, Tag, cx } from "@/components/ui";
 
 const TYPES: MessageType[] = ["NAVADMIN", "ALNAV", "OPNAVINST", "COMSUBLANT MSG", "COMSUBFOR INST", "NAVSEAINST", "FLEET MSG", "SAFETY MSG"];
-const SOURCES = [...new Set(MESSAGES.map((m) => m.source))];
 const COMMUNITIES: Community[] = ["Submarine Warfare", "Readiness", "Cybersecurity", "Personnel", "Maintenance", "Training & Education", "Safety", "Policy"];
 const PRECEDENCE: Precedence[] = ["FLASH", "IMMEDIATE", "PRIORITY", "ROUTINE"];
 
@@ -25,7 +23,8 @@ const SAVED = [
 type Mode = "basic" | "advanced" | "natural" | "saved";
 
 export default function SearchPage() {
-  const { log, notify, requestSubscription } = useStore();
+  const { log, notify, requestSubscription, messages } = useStore();
+  const SOURCES = useMemo(() => [...new Set(messages.map((m) => m.source))], [messages]);
   const [mode, setMode] = useState<Mode>("advanced");
   const [q, setQ] = useState("deployment readiness");
   const [nl, setNl] = useState("Show me readiness messages from COMSUBLANT that need acknowledgement");
@@ -42,7 +41,7 @@ export default function SearchPage() {
 
   const results = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-    const scored = MESSAGES.map((m) => {
+    const scored = messages.map((m) => {
       const hay = [m.subject, m.reference, m.originator, ...m.communities, ...m.sections.flatMap((s) => s.body)].join(" ").toLowerCase();
       const score = words.reduce((a, w) => a + (m.subject.toLowerCase().includes(w) ? 3 : 0) + (hay.includes(w) ? 1 : 0), 0);
       return { m, score };
@@ -61,7 +60,7 @@ export default function SearchPage() {
     else if (sort === "Oldest") scored.sort((a, b) => a.m.received.localeCompare(b.m.received));
     else scored.sort((a, b) => b.score - a.score);
     return scored.map((s) => s.m);
-  }, [q, types, sources, comms, prec, includeRetired, sort, mode]);
+  }, [messages, q, types, sources, comms, prec, includeRetired, sort, mode]);
 
   const runSearch = () => log("Search", `Keyword: “${q}”`, `Search returned ${results.length} results.`);
 

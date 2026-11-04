@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useState } from "react";
 import { AlertCircle, CheckSquare, Clock, Download, FileText, Pencil, Printer, Users, FilePlus2 } from "lucide-react";
-import { MESSAGES, ONGOING_TOPICS, TURNOVER_CHECKLIST, actionItems, needsOwnAck } from "@/lib/data";
+import { ONGOING_TOPICS, TURNOVER_CHECKLIST, actionItems, needsOwnAck } from "@/lib/data";
 import { fmtTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
+import type { Message } from "@/lib/types";
 import { WatchPrep } from "@/components/watch-prep";
 import { MessageCellsRow, MessageHeaderRow, messageColumns } from "@/components/message-columns";
 import { Button, Check, ImportanceBadge, LifecycleBadge, Panel, StatusDot, Tabs, tableWrap, td, th, theadRow, tbodyRow, type DotTone } from "@/components/ui";
@@ -14,13 +15,13 @@ type Tab = "summary" | "actions" | "topics" | "recent" | "notes";
 const statusTone: Record<string, DotTone> = { Open: "red", "In Progress": "amber", "Not Started": "gray", Done: "green", Active: "green", Monitoring: "amber" };
 
 export default function WatchTurnover() {
-  const { userState, watchNotes, setWatchNotes, checklist, toggleChecklist, log, notify } = useStore();
+  const { userState, watchNotes, setWatchNotes, checklist, toggleChecklist, log, notify, messages } = useStore();
   const [tab, setTab] = useState<Tab>("summary");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
-  const high = MESSAGES.filter((m) => m.importance === "High" && !["SUPERSEDED", "CANCELLED", "EXPIRED"].includes(m.lifecycle));
-  const actions = actionItems();
-  const pendingAck = MESSAGES.filter((m) => needsOwnAck(m) && !userState[m.id].acknowledgedAt);
+  const high = messages.filter((m) => m.importance === "High" && !["SUPERSEDED", "CANCELLED", "EXPIRED"].includes(m.lifecycle));
+  const actions = actionItems(messages);
+  const pendingAck = messages.filter((m) => needsOwnAck(m) && !userState[m.id].acknowledgedAt);
   const done = TURNOVER_CHECKLIST.filter((c) => checklist[c]).length;
   const ready = done === TURNOVER_CHECKLIST.length;
 
@@ -66,7 +67,7 @@ export default function WatchTurnover() {
           { id: "summary", label: "Incoming Watch Summary" },
           { id: "actions", label: `Open Actions (${actions.length})` },
           { id: "topics", label: `Ongoing Topics (${ONGOING_TOPICS.length})` },
-          { id: "recent", label: `Recent Messages (${MESSAGES.length})` },
+          { id: "recent", label: `Recent Messages (${messages.length})` },
           { id: "notes", label: "Watch Notes" },
         ]}
       />
@@ -95,7 +96,7 @@ export default function WatchTurnover() {
           {tab === "recent" && (
             <Panel title="Recent Messages" bodyClassName="p-0">
               <ul className="divide-y divide-line">
-                {MESSAGES.map((m) => (
+                {messages.map((m) => (
                   <li key={m.id} className="flex items-center gap-2 px-4 py-2 text-sm">
                     <Link href={`/messages/${m.id}`} className="text-link hover:underline">{m.subject}</Link>
                     <LifecycleBadge l={m.lifecycle} />
@@ -127,9 +128,9 @@ export default function WatchTurnover() {
   );
 }
 
-function HighPriority({ items }: { items: typeof MESSAGES }) {
+function HighPriority({ items }: { items: Message[] }) {
   const { userState } = useStore();
-  const cols = messageColumns<(typeof MESSAGES)[number]>({
+  const cols = messageColumns<Message>({
     subject: (m) => <Link href={`/messages/${m.id}`} className="hover:underline">{m.subject}</Link>,
     reference: (m) => m.reference,
     received: (m) => `${m.dtg.slice(0, 2)} OCT ${fmtTime(m.received)}`,

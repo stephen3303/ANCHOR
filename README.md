@@ -8,52 +8,111 @@ ANCHOR is a proposed Commander, Submarine Force capability that ingests official
 
 ## Run it
 
-### Docker
+Requires **Node 22+, npm, and a running Docker engine with Docker Compose**.
+Run these commands from the repository root. Database setup uses host Node/npm
+via the PostgreSQL container, even if you run the app itself in Docker.
 
-Copy `.env.example` to `.env` if you do not already have one. Keep the database
-connection URL and port consistent. Database setup commands require Node 22 and npm.
+### First-time setup — once per new database
 
-```powershell
-npm install
-docker compose up -d --wait postgres
-npm run db:migrate
-npm run db:seed:users
-docker compose up --build
-```
-
-Then open http://localhost:3000. Stop with `Ctrl+C`, or `docker compose down`.
-
-### Node (for development)
-
-Use Node 22 or newer (the database integration test tooling uses Node 22 APIs).
-Copy `.env.example` to `.env` if needed, then:
-
-```powershell
-npm install
-docker compose up -d --wait postgres
-npm run db:migrate
-npm run db:seed:users
-npm run dev
-```
-
-## PostgreSQL command directory
-
-Start just the database (Docker must be running):
+1. Start Docker Desktop (or your Docker daemon).
+2. Copy `.env.example` to `.env` **only if `.env` does not already exist**.
+   Keep `POSTGRES_PORT` and `DATABASE_URL` consistent. The example uses port 5433
+   to avoid conflicting with an existing local PostgreSQL instance.
+3. Install dependencies, initialize the schema, and import the bundled data:
 
 ```sh
+npm ci
 docker compose up -d --wait postgres
 npm run db:migrate
 npm run db:seed:commands
-# Or specify a different PLADS source file:
+npm run db:seed:users
+```
+
+`db:migrate` applies SQL from `database/init/` and `database/migrations/`.
+`db:seed:commands` imports `database/seeds/PLADS.txt` into the `commands` table;
+**no Downloads file or manual file copy is needed**. `db:seed:users` imports
+LT Taylor and links the account to its command. Seed commands are safe to rerun,
+but are not required for routine startup.
+
+4. Launch **one** app mode:
+
+```sh
+# Development: keep this terminal open.
+npm run dev
+
+# OR Docker: first build, then run in the background.
+docker compose up -d --build anchor
+```
+
+Open http://localhost:3000 and continue as **LT Taylor**.
+
+### Routine startup — after a computer restart or stopping containers
+
+1. Start Docker Desktop (or your Docker daemon) and wait for it to be ready.
+2. Start the database and wait for its health check:
+
+```sh
+docker compose up -d --wait postgres
+```
+
+3. Start **one** app mode:
+
+```sh
+# Node development server (must be relaunched after a reboot):
+npm run dev
+
+# OR the already-built Docker app:
+docker compose up -d anchor
+```
+
+**Do not rerun migrations or seeds just because the computer restarted.** Existing
+records, templates, users, and unexpired sessions remain in the database volume.
+Both containers use `restart: unless-stopped`, so Docker may already restart them
+when its engine starts; the `up` commands above are safe either way. Containers
+explicitly stopped by you may need those commands to start again.
+
+### After pulling changes — only as needed
+
+- Dependency changes: `npm ci`.
+- New migration files: start PostgreSQL, then `npm run db:migrate`.
+- Updated bundled PLADS data: `npm run db:seed:commands` (adds missing names).
+- Missing initial demo account: `npm run db:seed:users`.
+- Docker app code/dependency changes: `docker compose up -d --build anchor`.
+
+### Stop, inspect, and reset
+
+```sh
+docker compose ps                        # Container status
+docker compose logs --tail=50 postgres    # Database logs
+docker compose stop                      # Stop containers; keep all data
+# Or remove containers/networks but keep database data:
+docker compose down
+```
+
+For Node development, also stop `npm run dev` with `Ctrl+C`.
+**Do not use `docker compose down -v` unless you intend to delete the entire
+project database**, including drafts/templates/users/sessions. After that reset,
+start PostgreSQL and rerun migrations and both seed commands from first-time setup.
+
+## PostgreSQL command directory
+
+The source is bundled in **`database/seeds/PLADS.txt`** (29,970 command names).
+This is a plaintext import file, not PostgreSQL's live data directory.
+With the database running and migrated, import it on first setup or refresh it
+when the source changes:
+
+```sh
+npm run db:seed:commands
+# Optional: override the bundled source with another PLADS file:
 npm run db:seed:commands -- /path/to/PLADS.txt
 ```
 
-The import defaults to `~/Downloads/PLADS.txt`. It skips the three-line PLADS
-header and blank lines, trims names, and imports every remaining unique name
-into `commands`. Each row has a generated UUID primary key (`id`) and a unique
-text `name`. Imports are transactional and safe to rerun: existing IDs and
-names are preserved, and records absent from a later file are not deleted.
-The source file is not copied into the repository.
+The default path is resolved from the script's project location, not a user's
+Downloads folder. The importer skips the three-line PLADS header and blank lines,
+trims names, and inserts each unique name into `commands`. Each row has a generated
+UUID primary key (`id`) and a unique text `name`. Imports are transactional and
+safe to rerun: existing IDs/names are preserved, and records absent from a later
+file are not deleted.
 
 Local connection defaults:
 
@@ -76,11 +135,14 @@ Inspect the directory:
 docker compose exec postgres psql -U anchor -d anchor -c 'SELECT id, name FROM commands ORDER BY name LIMIT 10;'
 ```
 
-Data persists in the `postgres_data` Docker volume across container restarts and
-`docker compose down`. **`docker compose down -v` deletes that data.** Schema
-files in `database/init/` run only when PostgreSQL initializes an empty volume.
-Run `npm run db:migrate` to apply versioned migrations to new or existing databases
-without resetting data. Applied migrations are checksum-tracked and must not be edited.
+Live PostgreSQL files are stored in `/var/lib/postgresql/data` inside the container,
+backed by the **`postgres_data` named Docker volume**. They are not stored in
+`database/seeds/` or any Downloads folder. This existing volume is unchanged;
+it persists across container/computer restarts and `docker compose down`.
+**`docker compose down -v` deletes it.** Schema files in `database/init/` run only
+on an empty volume. Run `npm run db:migrate` on first setup and when new migrations
+are added, not on every launch. Applied migrations are checksum-tracked and must
+not be edited.
 
 Existing message screens still use their original mock messages. The template
 builder searches the command directory through the reference-data API.
@@ -119,6 +181,37 @@ plain HTTP localhost. Deactivating a user invalidates their sessions immediately
 sign-out revokes the current token and switching via the API rotates it.
 Directory/template GET endpoints are still public prototype data, not protected
 by the client-side sign-in screen.
+
+### Session rendering and navigation
+
+`/login` is a public sign-in route. Workspace pages live under
+`src/app/(workspace)/` (the group does **not** change their URLs). The workspace
+layout reads the session on the server inside Suspense and passes a validated
+initial user to the client provider. The provider always renders its route
+children; it must not replace them with an effect-driven loading/login screen.
+That pattern causes Next.js 16.4's **dropped segment** development errors because
+the page disappears from instant-navigation validation, even when the client
+later makes it visible.
+
+`src/proxy.ts` redirects missing/revoked sessions before rendering workspace
+pages; the layout and API still recheck sessions. Sign-in/sign-out perform full
+navigations to discard the previous account's router/store state. Cache Components,
+Partial Prefetching, and instant-navigation validation remain enabled.
+
+Browser regression tests (database running, migrations/users seeded, demo login
+and authoring enabled in `.env`):
+
+```sh
+npx playwright install chromium     # Once, unless using an installed browser
+npm run test:navigation            # Starts or reuses next dev on port 3000
+# Optional: use an existing Google Chrome installation instead of downloading Chromium:
+E2E_BROWSER_CHANNEL=chrome npm run test:navigation
+```
+
+Run these against **next dev**, not a production server: dropped-segment diagnostics
+are development-only. The tests cover signed-out deep links, login, hard refresh,
+client navigation, logout, and revoked cookies, and fail on navigation-validation
+errors. They revoke their own test sessions without modifying users or templates.
 
 ## Message templates and drafts
 

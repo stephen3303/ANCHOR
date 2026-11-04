@@ -1,12 +1,11 @@
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 // No database driver needed: use psql inside the Compose PostgreSQL service.
 const root = fileURLToPath(new URL("../", import.meta.url));
-const source = resolve(process.argv[2] ?? `${homedir()}/Downloads/PLADS.txt`);
+const source = resolve(process.argv[2] ?? resolve(root, "database/seeds/PLADS.txt"));
 
 try {
   const lines = readFileSync(source, "utf8")

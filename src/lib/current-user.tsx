@@ -14,7 +14,7 @@ async function sessionRequest(method = "GET", userId?: string): Promise<AppUser 
   return data.user;
 }
 
-function DemoSignIn({ onSignIn }: { onSignIn: (user: AppUser) => void }) {
+export function DemoSignIn({ onSignIn }: { onSignIn: (user: AppUser) => void }) {
   const [users, setUsers] = useState<UserChoice[]>([]);
   const [selected, setSelected] = useState("");
   const [loading, setLoading] = useState(true);
@@ -54,32 +54,35 @@ function DemoSignIn({ onSignIn }: { onSignIn: (user: AppUser) => void }) {
   </div>;
 }
 
-export function UserProvider({ children }: { children: ReactNode }) {
+export function UserProvider({ initialUser, children }: { initialUser: AppUser; children: ReactNode }) {
   const requestVersion = useRef(0);
-  const [user, setUser] = useState<AppUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(initialUser);
   const [error, setError] = useState("");
   useEffect(() => {
     let live = true;
     const refresh = () => {
       const version = ++requestVersion.current;
-      return sessionRequest().then((account) => { if (live && version === requestVersion.current) { setUser(account); setError(""); } })
-        .catch((reason) => { if (live && version === requestVersion.current) setError(reason instanceof Error ? reason.message : "Session unavailable."); })
-        .finally(() => { if (live && version === requestVersion.current) setLoading(false); });
+      return sessionRequest().then((account) => {
+        if (!live || version !== requestVersion.current) return;
+        if (!account) { window.location.replace("/login"); return; }
+        // A new browser account must not reuse a cached workspace or previews
+        // from the old session. Recheck the server layout on a full navigation.
+        if (account.id !== initialUser.id) { window.location.reload(); return; }
+        setUser(account); setError("");
+      }).catch((reason) => { if (live && version === requestVersion.current) setError(reason instanceof Error ? reason.message : "Session unavailable."); });
     };
-    void refresh();
+    // The first render already has the server-validated session. Revalidate
+    // on focus, without conditionally removing Next's children route segment.
     window.addEventListener("focus", refresh);
     return () => { live = false; window.removeEventListener("focus", refresh); };
-  }, []);
+  }, [initialUser.id]);
   const signOut = async () => {
     ++requestVersion.current;
-    try { await sessionRequest("DELETE"); setUser(null); setError(""); }
+    try { await sessionRequest("DELETE"); window.location.replace("/login"); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Could not sign out."); }
   };
-  if (loading) return <p role="status" className="p-6">Loading demo session…</p>;
-  if (!user) return <>{error && <p role="alert" className="bg-red-50 p-3 text-red-800">{error}</p>}<DemoSignIn onSignIn={(account) => { ++requestVersion.current; setUser(account); setError(""); }} /></>;
-  // A different account remounts the app store and all previews. Mock read/star
-  // state and generated values must not leak between account selections.
+  // Always render the route slot. Sign-in lives on /login; session transitions
+  // navigate there rather than dropping the workspace's children from rendering.
   return <Context.Provider key={user.id} value={{ user, signOut }}>{error && <p role="alert" className="bg-red-50 p-2 text-red-800">{error}</p>}{children}</Context.Provider>;
 }
 export function useCurrentUser(): AppUser {

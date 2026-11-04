@@ -32,6 +32,7 @@ try {
   sql(seed.stdout);
   sql(seed.stdout);
   assert.equal(sql("SELECT count(*) FROM users;").trim(), "1");
+  const seededProfile = JSON.parse(sql("SELECT profile::text FROM users WHERE login = 'LTaylor';"));
   sql("INSERT INTO commands (name) SELECT 'TEST COMMAND ' || lpad(n::text, 2, '0') FROM generate_series(1, 30) n;");
 
   const socket = createServer();
@@ -77,10 +78,13 @@ try {
   assert.equal((await publish({})).status, 401);
   const signedIn = await login(seededUser.id);
   sessionCookie = signedIn.cookie;
-  assert.equal(signedIn.user.unit, "COMSUBLANT Pilot Unit (SSN)");
-  assert.equal(signedIn.user.command, "Commander, Submarine Force Atlantic");
+  assert.equal(signedIn.user.unit, seededProfile.unit);
+  assert.equal(signedIn.user.command, seededProfile.command);
   const resumed = await (await fetch(`${base}/api/session`, { headers: { Cookie: sessionCookie } })).json();
   assert.equal(resumed.user.id, seededUser.id);
+  const workspacePage = await fetch(`${base}/templates`, { headers: { Cookie: sessionCookie } });
+  assert.equal(new URL(workspacePage.url).pathname, "/templates");
+  assert.ok((await workspacePage.text()).includes("Plaintext template"), "Signed-in workspace must render its page on the server");
   const definition = {
     name: "API test template", description: "Isolated test", text: "TO {{ Recipients }}\n{{ Status }}\n{{ Remarks }}",
     fields: [
@@ -203,8 +207,10 @@ try {
   assert.equal(logout.status, 200);
   assert.equal((await preview(automatic)).status, 401);
   assert.equal((await (await fetch(`${base}/api/session`, { headers: { Cookie: sessionCookie } })).json()).user, null);
-  const html = await (await fetch(`${base}/templates`)).text();
-  assert.ok(html.includes("Loading demo session"));
+  const signedOutPage = await fetch(`${base}/templates`);
+  assert.equal(new URL(signedOutPage.url).pathname, "/login");
+  const html = await signedOutPage.text();
+  assert.ok(html.includes("ANCHOR") && html.includes("Demo sign in"));
   console.log("API integration tests passed: user seed, sessions, rotation/logout/expiry, per-user originators, Zulu outputs, and template persistence.");
 } finally {
   if (app && app.exitCode === null) {

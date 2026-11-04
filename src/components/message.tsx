@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -20,13 +20,27 @@ import { useStore } from "@/lib/store";
 import type { Attachment, Message } from "@/lib/types";
 import { Button, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tabs, cx, td, th, tableWrap, theadRow, tbodyRow } from "./ui";
 
+/** When provided, message links open in the existing reader instead of navigating. */
+export const MessageReaderNavigation = createContext<((id: string) => void) | null>(null);
+
+function MessageLink({ id, className, children }: { id: string; className?: string; children: ReactNode }) {
+  const open = useContext(MessageReaderNavigation);
+  return (
+    <Link href={`/messages/${id}`} className={className} onNavigate={(e) => {
+      if (open) { e.preventDefault(); open(id); }
+    }}>
+      {children}
+    </Link>
+  );
+}
+
 export function RefLink({ to: r }: { to: string }) {
   const m = messageByRef(r);
   if (!m) return <span>{r}</span>;
   return (
-    <Link href={`/messages/${m.id}`} className="font-semibold text-link hover:underline">
+    <MessageLink id={m.id} className="font-semibold text-link hover:underline">
       {r}
-    </Link>
+    </MessageLink>
   );
 }
 
@@ -269,7 +283,7 @@ export function MessageList({ items }: { items: Message[] }) {
       {items.map((r) => (
         <li key={r.id} className="flex items-center gap-3 px-3 py-2 text-sm">
           <FileText className="size-4 text-muted" aria-hidden />
-          <Link href={`/messages/${r.id}`} className="font-medium text-link hover:underline">{r.subject}</Link>
+          <MessageLink id={r.id} className="font-medium text-link hover:underline">{r.subject}</MessageLink>
           <span className="text-muted">{r.reference}</span>
           <LifecycleBadge l={r.lifecycle} />
           <span className="ml-auto text-muted">{r.dtg}</span>

@@ -1,16 +1,15 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo, useState } from "react";
-import { CheckCheck, Download, Filter, Link2, Mail, Maximize2, Paperclip, Printer, Search, Star } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CheckCheck, Download, Filter, Mail, Paperclip, Search, Star } from "lucide-react";
 import { MESSAGES } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import type { Lifecycle, Message, MessageType, ReadState } from "@/lib/types";
-import { AckPanel, Attachments, LifecycleNotice, MessageTabs, StarButton } from "@/components/message";
+import { MessageReaderNavigation, StarButton } from "@/components/message";
+import { MessageDetail } from "./[id]/detail";
 import {
   Button,
   Check,
-  ClassBadge,
   LifecycleBadge,
   Panel,
   PrecedenceBadge,
@@ -28,7 +27,7 @@ const count = <K extends keyof Message>(k: K, v: Message[K]) => MESSAGES.filter(
 const RETIRED: Lifecycle[] = ["SUPERSEDED", "CANCELLED", "EXPIRED"];
 
 export default function MessagesPage() {
-  const { userState, markRead, markAllRead, log, notify } = useStore();
+  const { userState, markAllRead, log, notify } = useStore();
   const [q, setQ] = useState("");
   const [sources, setSources] = useState<string[]>([]);
   const [types, setTypes] = useState<MessageType[]>([]);
@@ -37,7 +36,8 @@ export default function MessagesPage() {
   const [ackOnly, setAckOnly] = useState(false);
   const [showRetired, setShowRetired] = useState(true);
   const [range, setRange] = useState("Last 30 days");
-  const [selected, setSelected] = useState<string>(MESSAGES[0].id);
+  const [selected, setSelected] = useState<string | null>(null);
+  const reader = useRef<HTMLDialogElement>(null);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [showFilters, setShowFilters] = useState(true);
 
@@ -58,12 +58,34 @@ export default function MessagesPage() {
     });
   }, [q, sources, types, states, starredOnly, ackOnly, showRetired, userState]);
 
-  const current = MESSAGES.find((m) => m.id === selected) ?? rows[0];
+  // Keep the list mounted and its scroll containers untouched beneath the reader.
+  // A same-document history entry also makes browser Back/Forward work.
+  useEffect(() => {
+    const sync = () => {
+      const id = window.history.state?.messageReader;
+      setSelected(MESSAGES.some((m) => m.id === id) ? id : null);
+    };
+    sync();
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+
+  useEffect(() => {
+    const dialog = reader.current;
+    if (!dialog) return;
+    if (selected && !dialog.open) dialog.showModal();
+    if (!selected && dialog.open) dialog.close();
+  }, [selected]);
 
   const open = (id: string) => {
+    const state = { ...window.history.state, messageReader: id };
+    // Related messages stay in this reader; Back still returns to the list.
+    if (selected) window.history.replaceState(state, "");
+    else window.history.pushState(state, "");
     setSelected(id);
-    markRead(id);
+    reader.current?.scrollTo(0, 0);
   };
+  const close = () => window.history.back();
 
   const clearAll = () => {
     setSources([]);
@@ -75,6 +97,7 @@ export default function MessagesPage() {
   };
 
   return (
+    <>
     <div className="flex flex-col gap-4 xl:flex-row">
       <div className="min-w-0 flex-1 space-y-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -136,8 +159,7 @@ export default function MessagesPage() {
                       key={m.id}
                       onClick={() => open(m.id)}
                       className={cx(
-                        "cursor-pointer border-b border-line/70 last:border-0",
-                        current?.id === m.id ? "bg-navy-100/70" : "hover:bg-navy-50",
+                        "cursor-pointer border-b border-line/70 last:border-0 hover:bg-navy-50",
                         retired && "text-muted",
                       )}
                     >
@@ -154,7 +176,7 @@ export default function MessagesPage() {
                       <td className={td}>{m.attachments.length > 0 && <Paperclip className="size-4 text-muted" aria-label="Has attachments" />}</td>
                       <td className={cx(td, st.read !== "read" && "font-semibold")}>
                         <span className="flex items-center gap-2">
-                          <span className={cx(retired && "line-through decoration-slate-400")}>{m.subject}</span>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); open(m.id); }} className={cx("text-left hover:underline", retired && "line-through decoration-slate-400")}>{m.subject}</button>
                           <LifecycleBadge l={m.lifecycle} />
                           {m.ackRequired && !st.acknowledgedAt && <span className="rounded bg-red-600 px-1.5 text-[10px] font-bold text-white">ACK</span>}
                         </span>
@@ -176,8 +198,6 @@ export default function MessagesPage() {
             </table>
           </div>
         </Panel>
-
-        {current && <Preview m={current} />}
       </div>
 
       {showFilters && (
@@ -207,43 +227,18 @@ export default function MessagesPage() {
         </aside>
       )}
     </div>
-  );
-}
-
-function Preview({ m }: { m: Message }) {
-  const { log, notify } = useStore();
-  return (
-    <Panel>
-      <div className="mb-3 flex flex-wrap items-start gap-3">
-        <StarButton id={m.id} />
-        <div className="min-w-0 flex-1">
-          <h2 className="text-xl font-bold">{m.subject}</h2>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
-            <span>{m.reference}</span>
-            <ClassBadge c={m.classification} />
-            <PrecedenceBadge p={m.precedence} />
-            <LifecycleBadge l={m.lifecycle} />
-          </div>
-        </div>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-2 text-xs">
-          <dt className="text-muted">From:</dt><dd>{m.originator}</dd>
-          <dt className="text-muted">DTG:</dt><dd>{m.dtg}</dd>
-          <dt className="text-muted">Source:</dt><dd>{m.source}</dd>
-        </dl>
-        <div className="flex gap-2">
-          <Button size="sm" icon={Link2} onClick={() => { log("Share Link", m.reference); notify("Link to official record copied"); }}>Share Link</Button>
-          <Button size="sm" icon={Printer} href={`/messages/${m.id}/print`}>Print</Button>
-          <Link href={`/messages/${m.id}`} className="inline-flex items-center gap-1 rounded-md border border-line px-2.5 py-1.5 text-[13px] font-semibold hover:bg-navy-50">
-            <Maximize2 className="size-4" /> Open
-          </Link>
-        </div>
-      </div>
-      <LifecycleNotice m={m} />
-      <div className="mb-3"><AckPanel m={m} compact /></div>
-      <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-        <div className="min-w-0"><MessageTabs m={m} /></div>
-        <div><Attachments items={m.attachments} /></div>
-      </div>
-    </Panel>
+    <dialog
+      ref={reader}
+      aria-label="Message reader"
+      onCancel={(e) => { e.preventDefault(); close(); }}
+      className="m-auto h-[calc(100dvh-2rem)] max-h-none w-[calc(100%-2rem)] max-w-none overflow-y-auto overscroll-contain rounded-lg border border-line bg-white p-4 text-ink shadow-2xl backdrop:bg-black/40 sm:p-6"
+    >
+      {selected && (
+        <MessageReaderNavigation value={open}>
+          <MessageDetail key={selected} id={selected} onBack={close} />
+        </MessageReaderNavigation>
+      )}
+    </dialog>
+    </>
   );
 }

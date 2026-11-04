@@ -38,9 +38,13 @@ npm run dev
 | `/briefings` | Tailored Briefing Builder with live preview |
 | `/briefings/generated` | Generated briefing |
 | `/watch-turnover` | Watch Turnover with notes and checklist |
+| `/drafting` | Drafting & Release: draft outgoing traffic, route it through the chain, release it ("Acting as" plays each person) |
+| `/admin/routing` | Routing workflows, release authority and command transmission settings |
+| `/simulators` | Server Simulators: the external C2OIX server and the local ANCHOR server |
+| `/topology` | Network Topology: two servers, three workstations; break and restore any link |
 | `/offline` | Offline / EMCON mode with sync queue (toggle "Simulate EMCON") |
 | `/reports` | Acknowledgement accountability and traffic measures |
-| `/audit` | Audit & Integrity log (append-only) |
+| `/audit` | Audit & Integrity: append-only, hash-chained log with a recompute check |
 | `/admin` | Subscription approval queue, mandatory alert rules, access groups |
 | `/profile` | Profile & Settings |
 
@@ -56,8 +60,10 @@ The UI follows the mockups. Where they differ from the ANCHOR requirements packa
 - **Integrity.** Each message shows its C2OIX ID and SHA-256 from ingestion, and the print rendition carries the same block.
 - **AI summaries** are dashed, purple, labeled "Not authoritative", and never mixed into the official text.
 - **Disconnected / EMCON.** Actions taken offline are queued and replicate on sync, with bandwidth-aware priority.
-- **Audit.** Every action in the prototype is written to the audit log.
+- **Audit.** Every action in the prototype is written to the audit log. Each event is chained to the one before it by SHA-256, and Audit & Integrity recomputes the chain and names the first break.
 - **No Reply / Forward.** The mockups show them, but releasing traffic stays with Designated Release Authorities, so the prototype offers Share Link instead.
+- **Routing and release.** Outgoing traffic follows an admin-defined chain matched by message type and originator. Steps are held by people on the roster; only a designated release authority can release, and the DTG and serial are assigned at release.
+- **Circuit = EMCON.** Breaking the C2OIX circuit on Network Topology or Server Simulators is the same switch as offline mode. Releases are held at the ANCHOR server and C2OIX defers inbound traffic until it returns.
 
 ## Stack
 

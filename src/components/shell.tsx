@@ -21,6 +21,7 @@ import {
   Settings,
   ShieldCheck,
   UserCog,
+  Waypoints,
   WifiOff,
   ClipboardList,
   X,
@@ -44,6 +45,7 @@ const NAV = [
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/audit", label: "Audit & Integrity", icon: ShieldCheck },
   { href: "/simulators", label: "Server Simulators", icon: Server },
+  { href: "/topology", label: "Network Topology", icon: Waypoints },
   { href: "/admin", label: "Admin", icon: UserCog, badge: "approvals" as const },
   { href: "/profile", label: "Profile & Settings", icon: Settings },
 ];

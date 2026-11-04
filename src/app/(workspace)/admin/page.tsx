@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BellRing, Check as CheckIcon, GitBranch, Lock, ShieldCheck, UserCog, Users, X } from "lucide-react";
+import { BellRing, Check as CheckIcon, Lock, ShieldCheck, UserCog, Users, X } from "lucide-react";
 import { useCurrentUser } from "@/lib/current-user";
 import { useStore } from "@/lib/store";
 import { Button, EmptyState, PageHeader, Panel, Pill, PrecedenceBadge, Tabs, tableWrap, td, th, theadRow, tbodyRow } from "@/components/ui";
+import { RoutingAdminPanel } from "@/components/routing-admin";
 import { UserAdminPanel } from "@/components/user-admin";
 
 // Business rules that make delivery mandatory (ANCHOR.txt section 6).
@@ -22,35 +23,36 @@ const ACCESS = [
   { group: "SUBRON Staff", basis: "Group", members: 38, scope: "Squadron traffic" },
 ];
 
-type AdminTab = "overview" | "users";
+type AdminTab = "overview" | "users" | "routing";
 const TABS: { id: AdminTab; label: string }[] = [
   { id: "overview", label: "Approvals & Access" },
   { id: "users", label: "Users" },
+  { id: "routing", label: "Routing & Release" },
 ];
+const tabFromHash = (hash: string): AdminTab => TABS.find((t) => t.id !== "overview" && `#${t.id}` === hash)?.id ?? "overview";
 
 export default function AdminPage() {
   const [tab, setTab] = useState<AdminTab>("overview");
-  // The tab lives in the URL hash so /admin#users links straight to it.
+  // The tab lives in the URL hash so /admin#users or /admin#routing links straight to it.
   useEffect(() => {
-    const sync = () => setTab(window.location.hash === "#users" ? "users" : "overview");
+    const sync = () => setTab(tabFromHash(window.location.hash));
     sync();
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
   }, []);
   const choose = (next: AdminTab) => {
     setTab(next);
-    window.history.replaceState(null, "", next === "users" ? "#users" : window.location.pathname);
+    window.history.replaceState(null, "", next === "overview" ? window.location.pathname : `#${next}`);
   };
   return (
     <>
       <PageHeader
         icon={UserCog}
         title="Admin"
-        subtitle="Approve subscriptions, review mandatory alert rules, and manage users and command access."
-        actions={<Button href="/admin/routing" icon={GitBranch}>Routing & Release</Button>}
+        subtitle="Approve subscriptions, review mandatory alert rules, manage users and command access, and set routing and release."
       />
       <Tabs tabs={TABS} active={tab} onChange={choose} />
-      {tab === "users" ? <UserAdminPanel /> : <Overview />}
+      {tab === "users" ? <UserAdminPanel /> : tab === "routing" ? <RoutingAdminPanel /> : <Overview />}
     </>
   );
 }

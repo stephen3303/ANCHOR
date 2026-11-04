@@ -382,13 +382,12 @@ remaining application-level validation, and rollback-only schema tests.
 | `/briefings/generated` | Generated briefing |
 | `/watch-turnover` | Watch Turnover with notes and checklist |
 | `/drafting` | Drafting & Release: draft outgoing traffic, route it through the chain, release it ("Acting as" plays each person) |
-| `/admin/routing` | Routing workflows, release authority and command transmission settings |
 | `/simulators` | Server Simulators: the external C2OIX server and the local ANCHOR server |
 | `/topology` | Network Topology: two servers, three workstations; break and restore any link |
 | `/offline` | Offline / EMCON mode with sync queue (toggle "Simulate EMCON") |
 | `/reports` | Acknowledgement accountability and traffic measures |
 | `/audit` | Audit & Integrity: append-only, hash-chained log with a recompute check |
-| `/admin` | Subscription approval queue, mandatory alert rules, access groups |
+| `/admin` | Tabs: subscription approval queue, alert rules and access groups; Users; Routing & Release (workflows, release authority, transmission settings at `/admin#routing`; the old `/admin/routing` redirects there) |
 | `/profile` | Profile & Settings |
 
 ## How the requirements show up

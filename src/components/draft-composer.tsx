@@ -49,8 +49,9 @@ export function DraftComposer({ draft, onSaved }: { draft?: ApiDraft; onSaved: (
     return () => controller.abort();
   }, [selected, retry, draft]);
 
-  // A template with a "Msg Type" field writes MSGID field 2 (TYPE or TYPE:SUBTAG) itself, and that value decides the type.
-  const typeFromTemplate = !!definition?.fields.some((field) => field.name === "Msg Type");
+  // A template's Type field writes MSGID field 2 (TYPE or TYPE:SUBTAG), and the rendered line decides the type.
+  const typeField = definition?.fields.find((field) => field.name === "Type" || field.name === "Msg Type");
+  const typeFromTemplate = !!typeField;
   const save = async (raw: TemplateValues) => {
     if (!definition || busy) return;
     setError(""); setFieldErrors({});
@@ -94,7 +95,7 @@ export function DraftComposer({ draft, onSaved }: { draft?: ApiDraft; onSaved: (
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
         <label className="block space-y-1 text-sm font-semibold">Message subject<input className={templateInputClass} maxLength={200} value={subject} disabled={busy} onChange={(event) => setSubject(event.target.value)} />{fieldErrors._subject && <span role="alert" className="text-red-700">{fieldErrors._subject}</span>}</label>
         {typeFromTemplate
-          ? <p className="space-y-1 text-sm"><span className="block font-semibold">Message type</span><span className="text-muted">Set by the template&apos;s Msg Type field, which writes the MSGID line.</span></p>
+          ? <p className="space-y-1 text-sm"><span className="block font-semibold">Message type</span>{typeField?.fixedValue ? <span className="block font-mono">{typeField.fixedValue}</span> : null}<span className="text-muted">Set by the template&apos;s Type field, which writes MSGID field 2.</span></p>
           : <label className="block space-y-1 text-sm font-semibold">Message type<select className={templateInputClass} value={messageType} disabled={busy} onChange={(event) => setMessageType(event.target.value)}>{DRAFT_KEYS.map((key) => <option key={key} value={key}>{splitKey(key)[1] ? "\u00a0\u00a0" : ""}{keyOption(key)}</option>)}</select></label>}
         <label className="block space-y-1 text-sm font-semibold">Precedence<select className={templateInputClass} value={precedence} disabled={busy} onChange={(event) => setPrecedence(event.target.value as Precedence)}>{PRECEDENCES.map((value) => <option key={value}>{value}</option>)}</select></label>
       </div>

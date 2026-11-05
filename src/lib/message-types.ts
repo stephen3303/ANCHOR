@@ -167,16 +167,6 @@ export function precedenceAdvisory(type: MessageType, precedence: Precedence): s
   return null;
 }
 
-/**
- * The draftable key a "Msg Type" template value names, from either its option
- * label ("SAFETY:ELECTRICAL - Electrical Safety") or the bare key.
- */
-export function draftKeyFrom(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const key = value.split(" - ")[0].trim().toUpperCase();
-  return DRAFT_KEYS.includes(key) ? key : undefined;
-}
-
 /** A key's type and subtag, for writing onto a message record. */
 export function keyParts(key: string): { type: MessageType; subtag?: string } {
   const [type, subtag] = splitKey(key);

@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
 import { MESSAGES, resolveAckStatus } from "./data";
 import { messageFromParsed } from "./ingest-record";
-import { categoryOf, DRAFT_KEYS, draftKeyFrom, isKnownKey, keyOf, keyOption, matchesKeys, precedenceAdvisory, PRECEDENCE_OBJECTIVE } from "./message-types";
-import { fromDtg, NavalParseError, normRef, ownLifecycle, parseNavalMessage, targetLifecycle, toDtg } from "./naval";
+import { categoryOf, DRAFT_KEYS, isKnownKey, keyOf, keyOption, matchesKeys, precedenceAdvisory, PRECEDENCE_OBJECTIVE } from "./message-types";
+import { fromDtg, msgidKey, NavalParseError, normRef, ownLifecycle, parseNavalMessage, targetLifecycle, toDtg } from "./naval";
 
 const SAMPLE = `O 041530Z NOV 26
 FM COMSUBFOR N3
@@ -148,18 +147,12 @@ test("a subscription to a type catches every subtag; a subtag catches only itsel
   for (const m of MESSAGES) assert.ok(isKnownKey(keyOf(m)), `${m.reference}: ${keyOf(m)}`);
 });
 
-test("the template Msg Type picker offers every draftable key and maps back to it", () => {
+test("a draft takes its type from the MSGID line its template renders", () => {
   assert.ok(DRAFT_KEYS.includes("SAFETY:ELECTRICAL") && DRAFT_KEYS.includes("GENADMIN") && !DRAFT_KEYS.includes("NAVADMIN"));
   assert.equal(keyOption("SAFETY:ELECTRICAL"), "SAFETY:ELECTRICAL - Electrical Safety");
-  assert.equal(draftKeyFrom(keyOption("SAFETY:ELECTRICAL")), "SAFETY:ELECTRICAL");
-  assert.equal(draftKeyFrom("casrep"), "CASREP");
-  assert.equal(draftKeyFrom("NAVADMIN"), undefined);
-  assert.equal(draftKeyFrom("COMSUBLANT MSG"), undefined);
-});
-
-test("migration 009's Standard Message pick list offers exactly the draftable keys", () => {
-  const sql = readFileSync(new URL("../../database/migrations/009-message-types.sql", import.meta.url), "utf8");
-  const ui = JSON.parse(/select_field jsonb := '(.*)'::jsonb;/.exec(sql)![1].replaceAll("''", "'"));
-  assert.deepEqual(ui.options, DRAFT_KEYS.map(keyOption));
-  assert.deepEqual(Object.entries(ui.optionOutputs), DRAFT_KEYS.map((k) => [keyOption(k), k]));
+  assert.equal(msgidKey("BT\nUNCLAS//\nMSGID/SAFETY:ELECTRICAL/COMSUBLANT NORFOLK VA//\nSUBJ/X//"), "SAFETY:ELECTRICAL");
+  assert.equal(msgidKey("MSGID/casrep/USS STONEFISH//"), "CASREP");
+  assert.equal(msgidKey("MSGID/READINESS REPORT/COMSUBLANT//"), undefined, "free text the catalog does not know");
+  assert.equal(msgidKey("MSGID/NAVADMIN/CNO//"), undefined, "receive-only types are not drafted here");
+  assert.equal(msgidKey("SUBJ/NO MSGID//"), undefined);
 });

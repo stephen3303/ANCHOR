@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 import { database } from "@/lib/server/db";
-import { reviseTemplate } from "@/lib/server/template-versions";
+import { deleteTemplate, reviseTemplate } from "@/lib/server/template-versions";
 import { ApiError, apiFailure, templateAuthorUser, readTemplatePayload } from "@/lib/server/template-api";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -18,6 +18,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     `, [id]);
     if (!template) throw new ApiError(404, "Template not found.");
     return Response.json({ template }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) { return apiFailure(error); }
+}
+
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await templateAuthorUser(request);
+    const { id } = await params;
+    await deleteTemplate(id, user);
+    return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
   } catch (error) { return apiFailure(error); }
 }
 

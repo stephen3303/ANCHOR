@@ -129,6 +129,19 @@ export function splitMsgid(fields: string[]) {
   return { field2, subtag: sub?.code, originator: (fields[1] ?? "").trim(), serial: fields.slice(2).join("/").trim() };
 }
 
+/**
+ * The subscription key a rendered message's MSGID line names ("SAFETY:ELECTRICAL"),
+ * or undefined when it has no MSGID line or field 2 is not a type this command drafts.
+ * Drafts take their type from this, so the stored type always matches the text.
+ */
+export function msgidKey(text: string): string | undefined {
+  const line = /^MSGID\/(.*?)(?:\/\/)?\s*$/m.exec(text);
+  if (!line) return undefined;
+  const { field2, subtag } = splitMsgid(line[1].split("/"));
+  if (!isMessageType(field2) || MESSAGE_TYPE_INFO[field2].receiveOnly) return undefined;
+  return subtag ? `${field2}:${subtag}` : field2;
+}
+
 /** The lifecycle a new message carries itself, from its directive. */
 export function ownLifecycle(p: Pick<ParsedMessage, "directive">): Lifecycle {
   if (p.directive?.kind === "CORRECTS") return "CORRECTED";

@@ -44,11 +44,10 @@ command using the same application validator/compiler. Matching by the stable
 UI-created template without duplicating it, rewriting its UUID or republishing
 its versions. Archived templates stay archived. No messages are created by seeding.
 
-Migration `009-message-types.sql` publishes a further version whose **Msg Type**
-is a pick list of every draftable MSGID type and subtag (`SAFETY:ELECTRICAL -
-Electrical Safety` prints `SAFETY:ELECTRICAL`). The list comes from
-`DRAFT_KEYS` in `src/lib/message-types.ts`; `npm run test:messages` fails if the
-two drift. This JSON stays the frozen migration 006 snapshot.
+The **Type** value is MSGID field 2 and the message's subscription key. Use a
+catalog type from `src/lib/message-types.ts`, with a subtag after a colon
+where the type has them (`SAFETY:ELECTRICAL`); drafts take their type from the
+rendered MSGID line.
 
 Changes to the JSON do not alter published versions. Publish a new version
 explicitly; do not regenerate/edit an already-applied SQL migration.

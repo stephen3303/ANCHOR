@@ -50,7 +50,7 @@ export default function AdminPage() {
       <PageHeader
         icon={UserCog}
         title="Admin"
-        subtitle="Approve subscriptions, review mandatory alert rules, manage users and command access, and set routing and release."
+        subtitle="Review legacy approval demos and alert rules, manage users and command access, and set routing and release. Message-type subscriptions need no approval."
       />
       <Tabs tabs={TABS} active={tab} onChange={choose} />
       {tab === "users" ? <UserAdminPanel /> : tab === "routing" ? <RoutingAdminPanel /> : <Overview />}
@@ -64,7 +64,7 @@ function Overview() {
   const approver = hasRole(CURRENT_USER, SUBSCRIPTION_APPROVER);
   return (
     <>
-      <Panel title={`Subscription Approval Queue (${approvals.length})`} icon={CheckIcon} className="mb-4">
+      <Panel title={`Legacy Subscription Approval Demo (${approvals.length})`} icon={CheckIcon} className="mb-4">
         <p className="mb-3 text-sm text-muted">{approver ? "You hold the Subscription Approver role for this command." : "Only a Subscription Approver can decide these requests."} Requests are not active until approved.</p>
         {approvals.length ? (
           <div className={tableWrap}>

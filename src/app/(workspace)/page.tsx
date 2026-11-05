@@ -15,7 +15,7 @@ import { Button, LifecycleBadge, PageHeader, Panel, PrecedenceBadge, StatCard, t
 export default function HomePage() {
   const CURRENT_USER = useCurrentUser();
   const canAck = hasRole(CURRENT_USER, MESSAGE_ADMIN);
-  const { userState, acknowledge, subscriptions, syncQueue, offline, approvals, messages } = useStore();
+  const { userState, acknowledge, messageTopics, topicsLoaded, syncQueue, offline, approvals, messages } = useStore();
   const needAck = messages.filter(needsOwnAck);
   const pending = needAck.filter((m) => !userState[m.id].acknowledgedAt);
   const unread = messages.filter((m) => userState[m.id].read !== "read").length;
@@ -56,9 +56,9 @@ export default function HomePage() {
       <PageHeader icon={Home} title={`Welcome back, ${CURRENT_USER.name}`} subtitle={`${CURRENT_USER.billet} · ${CURRENT_USER.unit}`} />
 
       <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={Mail} value={unread} label="Unread Messages" note="From your approved subscriptions" />
+        <StatCard icon={Mail} value={unread} label="Unread Messages" note="Across all published messages" />
         <StatCard icon={BellRing} value={pending.length} label="Awaiting Acknowledgement" tone="red" note="Mandatory by precedence or command rule" />
-        <StatCard icon={ClipboardList} value={subscriptions.filter((s) => s.status === "Active").length} label="Active Subscriptions" tone="green" note={`${subscriptions.filter((s) => s.status === "Pending Approval").length} pending approval`} />
+        <StatCard icon={ClipboardList} value={messageTopics.filter((topic) => topic.subscribed).length} label="Active Subscriptions" tone="green" note={topicsLoaded ? "Personal message-type subscriptions" : "Loading saved subscriptions"} />
         <StatCard icon={offline ? WifiOff : ShieldCheck} value={offline ? syncQueue.length : "100%"} label={offline ? "Items Queued for Sync" : "Records Validated"} tone={offline ? "amber" : "green"} note={offline ? "EMCON: local store active" : "No tampering detected"} />
       </div>
 

@@ -15,9 +15,13 @@ export function apiFailure(error: unknown): Response {
 
 // Passwordless demo sessions are not proof of identity or production authorization.
 export async function templateAuthor(request: Request): Promise<string> {
+  return (await templateAuthorUser(request)).id;
+}
+
+export async function templateAuthorUser(request: Request) {
   if (process.env.ENABLE_TEMPLATE_AUTHORING !== "true") throw new ApiError(403, "Template authoring is disabled on this server.");
   assertSameOrigin(request);
-  return (await requireSessionUser()).id;
+  return requireSessionUser();
 }
 
 export function assertSameOrigin(request: Request): void {

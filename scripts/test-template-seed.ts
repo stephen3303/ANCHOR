@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -58,6 +59,25 @@ try {
   const migration = readFileSync(`${root}database/migrations/006-standard-message-template.sql`, "utf8");
   sql(migration);
   assert.equal(snapshot(), archived, "The automatic migration must also preserve an existing customized template");
+  const upgrade = readFileSync(`${root}database/migrations/008-standard-message-body-textarea.sql`, "utf8");
+  const legacyVersion = (number: number) => sql(`INSERT INTO message_template_versions (template_id,version,input_schema,ui_schema,output_definition,formatting_profile,renderer_version,created_by,published_at)
+    SELECT template_id,${number},input_schema,ui_schema || jsonb_build_object('keepThis',true,'fields',
+      (SELECT jsonb_agg(CASE WHEN field->>'name'='Body' THEN jsonb_set(field,'{control}','"text"') ELSE field END ORDER BY position)
+       FROM jsonb_array_elements(ui_schema->'fields') WITH ORDINALITY fields(field,position))),
+      jsonb_set(output_definition,'{body}',to_jsonb('CUSTOM HEADER ' || (output_definition->>'body'))),formatting_profile,renderer_version,created_by,now()
+    FROM message_template_versions WHERE version=1 RETURNING id;`);
+  const oldVersionId = legacyVersion(3);
+  const oldVersion = JSON.parse(sql(`SELECT row_to_json(v) FROM message_template_versions v WHERE id='${oldVersionId}';`));
+  const pin = sql(`INSERT INTO message_drafts(template_version_id,created_by) SELECT id,created_by FROM message_template_versions WHERE id='${oldVersionId}' RETURNING id;`);
+  sql(upgrade);
+  const upgraded = JSON.parse(sql("SELECT row_to_json(v) FROM message_template_versions v ORDER BY version DESC LIMIT 1;"));
+  assert.equal(upgraded.version, 4);
+  assert.deepEqual(upgraded.ui_schema, { ...oldVersion.ui_schema, fields: oldVersion.ui_schema.fields.map((field: { name: string; control: string }) => field.name === "Body" ? { ...field, control: "textarea" } : field) });
+  for (const key of ["input_schema","output_definition","formatting_profile","renderer_version","created_by"]) assert.deepEqual(upgraded[key], oldVersion[key]);
+  assert.deepEqual(JSON.parse(sql(`SELECT row_to_json(v) FROM message_template_versions v WHERE id='${oldVersionId}';`)), oldVersion);
+  assert.equal(sql(`SELECT template_version_id FROM message_drafts WHERE id='${pin}';`), oldVersionId);
+  assert.equal(sql("SELECT active FROM message_templates;"), "f");
+  const afterUpgrade = snapshot(); sql(upgrade); assert.equal(snapshot(), afterUpgrade);
   // A disposable fixture only: exercise migration bootstrap without seed users.
   sql("TRUNCATE message_templates CASCADE; DELETE FROM users; DELETE FROM commands;");
   sql(migration);
@@ -69,9 +89,26 @@ try {
   assert.equal(automatic.created_by, sql("SELECT id FROM users WHERE login='LTaylor';"));
   assert.equal(sql("SELECT count(*) FROM users;"), "1", "Only the missing seed creator is bootstrapped");
   const migrated = snapshot();
-  sql(migration); sql(seed);
-  assert.equal(snapshot(), migrated);
-  console.log("Template seed tests passed: validated publication, prerequisites, reruns, existing/archived versions, and automatic migration on a database without seed users.");
+  sql(migration); sql(seed); sql(upgrade);
+  assert.equal(snapshot(), migrated, "Fresh textarea seeds do not need another version");
+  assert.equal(automatic.ui_schema.fields.find((field: { name: string }) => field.name === "Body").control, "textarea");
+  // Exercise the real checksum runner on an existing ledger, including its
+  // narrowly allowed 006 amendment and rejection of any unrecognized checksum.
+  legacyVersion(2);
+  const appliedFiles = ["database/init/001-commands.sql", "database/migrations/002-message-templates.sql", "database/migrations/003-users-and-sessions.sql"];
+  sql("CREATE TABLE schema_migrations(name text PRIMARY KEY,sha256 text NOT NULL,applied_at timestamptz NOT NULL DEFAULT now());");
+  for (const path of appliedFiles) sql(`INSERT INTO schema_migrations(name,sha256) VALUES ('${path.split("/").at(-1)}','${createHash("sha256").update(readFileSync(`${root}${path}`)).digest("hex")}');`);
+  sql("INSERT INTO schema_migrations(name,sha256) VALUES ('006-standard-message-template.sql','8db320b28a498319d703d22373749f81e45d03d0db1f3b688a2fc4d78b1c1d4f');");
+  const batchResult = spawnSync(process.execPath, ["scripts/migrate-db.mjs", "--sql"], { cwd: root, encoding: "utf8" });
+  assert.equal(batchResult.status, 0, batchResult.stderr);
+  sql(batchResult.stdout);
+  assert.equal(sql("SELECT count(*) FROM schema_migration_amendments;"), "1");
+  assert.equal(sql("SELECT ui_schema->'fields' FROM message_template_versions ORDER BY version DESC LIMIT 1;").includes('"textarea"'), true);
+  assert.equal(sql("SELECT sha256 FROM schema_migrations WHERE name='006-standard-message-template.sql';"), createHash("sha256").update(migration).digest("hex"));
+  const completed = snapshot(); sql(batchResult.stdout); assert.equal(snapshot(), completed);
+  sql(`UPDATE schema_migrations SET sha256='${"f".repeat(64)}' WHERE name='006-standard-message-template.sql';`);
+  assert.throws(() => sql(batchResult.stdout), /An applied migration has changed/);
+  console.log("Template seed tests passed: fresh textarea seeds, immutable version upgrade, draft pins, customizations, reruns, audited checksum amendment and strict checksum rejection.");
 } finally {
   if (created) docker(["sh", "-c", `dropdb --force -U "$POSTGRES_USER" ${name}`]);
 }

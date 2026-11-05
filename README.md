@@ -350,10 +350,23 @@ Open **Message Templates** in the sidebar (`/templates`) to:
 
 Publishing validates the entire definition server-side and atomically saves a
 new template plus immutable version 1. The published library survives reloads
-and supports read-only form previews. Repeated placeholders share one input;
+and supports form previews. Template creators and their command's System Admins
+also get an **Edit template** button. This reopens the existing plaintext and all
+field settings in the wizard; **Publish new version** appends an immutable version
+under the same template ID. Existing draft version pins and saved message text
+are not retargeted. Concurrent/stale edits are rejected without clearing the
+editor's inputs. Repeated placeholders share one input;
 variable names are case-sensitive. Only named substitution is supported—no
 executable helpers, conditions, or HTML rendering. Preview values are not saved;
 use Drafting & Release to create a message from a published template.
+
+The bundled Standard Message now uses a **textarea** for Body. Fresh databases
+receive this in migration 006; migration 008 appends a corrected version for
+existing Standard Message templates whose latest Body control is still a textbox.
+It preserves other customizations and all older versions/draft pins. Run
+`npm run db:migrate` to apply the upgrade. The original 006 checksum amendment is
+explicitly allowlisted and recorded in `schema_migration_amendments`; other
+applied-file checksum changes remain errors.
 
 ### Generated message line length and command search
 
@@ -473,6 +486,7 @@ REST endpoints:
 | `POST /api/message-templates` | Validate and publish `{ name, description, text, fields }` |
 | `POST /api/message-templates/preview-generated` | Resolve automatic fields for a validated definition; no persistence |
 | `GET /api/message-templates/:id` | Read the latest published template definition |
+| `PATCH /api/message-templates/:id` | Publish a new version with `{ expectedVersionId, definition }`; creator or same-command admin only |
 | `GET /api/reference-data/commands?q=...&cursor=...` | Search command names, 50 results per page |
 
 Each field supplies `name`, `control`, `required`, and `options` (an empty array

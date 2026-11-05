@@ -67,7 +67,14 @@ volume or delete old ledger entries.
 The migration runner uses the container's configured credentials, serializes
 concurrent runs with a transaction-scoped advisory lock, and applies all pending
 SQL in a transaction. `schema_migrations` records filenames and SHA-256 checksums.
-Applied files must not be edited; add a new numbered migration instead.
+Applied files normally must not be edited; add a new numbered migration instead.
+One explicitly supported exception is the requested 006 Standard Message seed
+amendment (Body textbox to textarea). The runner accepts only the exact original
+and revised SHA-256 pair, records both in `schema_migration_amendments`, and
+updates the ledger in the same transaction as migration 008. Unknown checksum
+changes still abort the transaction. Migration 008 appends a new published
+version for existing Standard Message templates that need the fix; it never
+updates existing published definitions or retargets message drafts.
 
 `database/init/001-commands.sql` bootstraps the original directory on an empty
 Docker volume. The migration runner also records/applies it safely on existing
@@ -92,6 +99,7 @@ automatically migrate an existing database.
 | `command_routing` | Persisted per-command workflows, designations, settings and serialized release counter. |
 | `messages` / `message_artifacts` | Main's published message records and immutable text artifacts; drafts are absent until release. |
 | `schema_migrations` | Applied migration ledger. |
+| `schema_migration_amendments` | Audited, exact-hash amendments to applied seed files; currently only the 006 Body textarea correction. |
 
 All domain tables have generated UUID keys. Timestamps use `timestamptz`.
 New `created_by` values are server-resolved user UUIDs stored as text, not a caller's
@@ -192,6 +200,17 @@ identifiers and real text hashes, not fabricated external receipts. No live
 C2OIX transmission is implemented by this workflow. Command configuration changes
 are admin-only and revision-checked; in-flight route snapshots are not rewritten.
 Do not resolve outputs when publishing templates or on every draft read.
+
+## Editing published templates
+
+`PATCH /api/message-templates/:id` accepts `{expectedVersionId, definition}`.
+The feature flag, signed-in creator or same-command System Admin, same origin,
+definition validation and command-directory availability are checked on the
+server. A parent-row lock serializes publishers; stale version IDs return 409.
+The next version number accounts for unpublished versions as well. Publication
+inserts a new immutable definition and updates parent display metadata in one
+transaction. Existing message version pins and rendered snapshots are untouched.
+The library returns a request-specific `canEdit` flag and must not be cached.
 
 ## Saving messages
 

@@ -40,6 +40,7 @@ export interface TemplateSummary {
   version: number;
   publishedAt: string;
   variableCount: number;
+  canEdit?: boolean;
 }
 export type TemplateValues = Record<string, string | string[] | boolean>;
 export class TemplateValidationError extends Error {}

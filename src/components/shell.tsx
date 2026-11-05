@@ -32,6 +32,7 @@ import { fmtDate, fmtDateTime, fmtTime } from "@/lib/format";
 import { useSim } from "@/lib/sim-store";
 import { NODES, STATIONS } from "@/lib/sim";
 import { useNow } from "@/lib/use-now";
+import { SLOGAN } from "@/lib/brand";
 import { cx } from "./ui";
 
 const NAV: { href: string; label: string; icon: typeof Home; badge?: "unread" | "routing" | "sync" | "approvals"; role?: RoleName }[] = [
@@ -69,7 +70,10 @@ function Header({ onMenu }: { onMenu: () => void }) {
       </button>
       <Link href="/" className="flex items-center gap-2">
         <Anchor className="size-8 text-gold" strokeWidth={2.25} aria-hidden />
-        <span className="text-2xl font-extrabold tracking-wide sm:text-[34px]">ANCHOR</span>
+        <span className="flex flex-col leading-none">
+          <span className="text-2xl font-extrabold tracking-wide sm:text-[34px]">ANCHOR</span>
+          <span className="mt-1 hidden whitespace-nowrap text-[11px] font-medium italic tracking-wide text-gold 2xl:block">{SLOGAN}</span>
+        </span>
       </Link>
       <div className="hidden border-l-2 border-gold pl-3 text-[13px] leading-tight tracking-wide md:block xl:text-[15px]">
         AUTHORITATIVE NAVAL COMMUNICATIONS HUB

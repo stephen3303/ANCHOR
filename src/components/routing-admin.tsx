@@ -6,8 +6,9 @@ import { useState } from "react";
 import { ArrowRight, GitBranch, Pencil, Plus, Save, Settings2, ShieldCheck, Trash2 } from "lucide-react";
 import { HolderNote, PersonSelect, fieldCls } from "./routing";
 import { Button, EmptyState, Panel, Pill, TextInput, Toggle, cx, tableWrap, td, th, theadRow, tbodyRow } from "./ui";
-import { DRAFT_TYPES, OWN_ORIGINATOR, ROSTER_STATE, nextAssignment, personById, personName } from "@/lib/routing";
+import { DRAFT_TYPES, OWN_ORIGINATOR, ROSTER_STATE, nextAssignment } from "@/lib/routing";
 import { useRouting } from "@/lib/routing-store";
+import { useCurrentUser } from "@/lib/current-user";
 import type { CommandSettings, MessageType, RoutingWorkflow, WorkflowStep } from "@/lib/types";
 
 const blankWorkflow = (): RoutingWorkflow => ({
@@ -24,14 +25,19 @@ const blankWorkflow = (): RoutingWorkflow => ({
 });
 
 export function RoutingAdminPanel() {
-  const { workflows, toggleWorkflow } = useRouting();
+  const { workflows, toggleWorkflow, personById, personName, loading, busy, error, revision } = useRouting();
   const [editing, setEditing] = useState<RoutingWorkflow | null>(null);
+  const canManage = useCurrentUser().roles.some((role) => role.name === "System Admin" && role.granted);
 
   return (
     <>
+      {error && <p role="alert" className="mb-4 rounded bg-red-50 p-3 text-red-800">{error}</p>}
+      {loading && <p role="status">Loading persisted command routing…</p>}
+      {!canManage && <p className="mb-4 text-sm text-muted">Routing is read-only. Changes require System Admin.</p>}
+      <fieldset disabled={loading || busy || !canManage}>
       <div className="mb-4 grid gap-4 xl:grid-cols-2">
         <AuthorityPanel />
-        <SettingsPanel />
+        <SettingsPanel key={revision} />
       </div>
 
       <Panel
@@ -91,12 +97,14 @@ export function RoutingAdminPanel() {
           </div>
         )}
       </Panel>
+      </fieldset>
     </>
   );
 }
 
 function WorkflowEditor({ initial, onDone }: { initial: RoutingWorkflow; onDone: () => void }) {
-  const { saveWorkflow } = useRouting();
+  const { saveWorkflow, revision } = useRouting();
+  const [expectedRevision] = useState(revision);
   const [w, setW] = useState(initial);
   const [originators, setOriginators] = useState(initial.matchOriginators.join(", "));
   const set = (p: Partial<RoutingWorkflow>) => setW((x) => ({ ...x, ...p }));
@@ -165,9 +173,9 @@ function WorkflowEditor({ initial, onDone }: { initial: RoutingWorkflow; onDone:
           variant="primary"
           icon={Save}
           disabled={!canSave}
-          onClick={() => {
-            saveWorkflow({ ...w, name: w.name.trim(), matchOriginators: originators.split(",").map((o) => o.trim().toUpperCase()).filter(Boolean) });
-            onDone();
+          onClick={async () => {
+            const result = await saveWorkflow({ ...w, name: w.name.trim(), matchOriginators: originators.split(",").map((o) => o.trim().toUpperCase()).filter(Boolean) }, expectedRevision);
+            if (result.ok) onDone();
           }}
         >
           Save workflow
@@ -180,21 +188,20 @@ function WorkflowEditor({ initial, onDone }: { initial: RoutingWorkflow; onDone:
 }
 
 function AuthorityPanel() {
-  const { authorities, addAuthority, removeAuthority } = useRouting();
+  const { authorities, addAuthority, removeAuthority, personById, personName } = useRouting();
   const [personId, setPersonId] = useState("");
   const [scope, setScope] = useState<"all" | MessageType>("all");
   const [error, setError] = useState("");
 
-  const add = () => {
+  const add = async () => {
     const p = personById(personId);
     if (!p) return setError("Pick a person from the roster.");
-    if (p.status === "detached") return setError(`${p.rank} ${p.name} is detached from the command. Designate their relief.`);
+    if (p.status === "detached") return setError(`${p.name}'s account is inactive. Designate an active account.`);
     if (authorities.some((a) => a.personId === p.id && (scope === "all" ? !a.scope.length : a.scope.includes(scope))))
-      return setError(`${p.rank} ${p.name} already holds that designation.`);
+      return setError(`${p.name} already holds that designation.`);
     setError("");
-    addAuthority({ personId: p.id, designation: p.position, isCommandingOfficer: /^commander$/i.test(p.position), scope: scope === "all" ? [] : [scope] });
-    setPersonId("");
-    setScope("all");
+    const result = await addAuthority({ personId: p.id, designation: p.position, isCommandingOfficer: /^commander$/i.test(p.position), scope: scope === "all" ? [] : [scope] });
+    if (result.ok) { setPersonId(""); setScope("all"); }
   };
 
   return (
@@ -246,15 +253,9 @@ function SettingsPanel() {
   const next = nextAssignment(s);
   return (
     <Panel title="Command Transmission Settings" icon={Settings2}>
-      <p className="mb-3 text-sm text-muted">One record governs every message the command transmits. The sequence is assigned once, at release, in release order.</p>
+      <p className="mb-3 text-sm text-muted">Persisted release sequence settings. Approved template text is preserved exactly; release does not perform external transmission.</p>
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block text-sm">
-          <span className="mb-1 block font-semibold">Text case</span>
-          <select className={fieldCls} value={s.textCase} onChange={(e) => setS({ ...s, textCase: e.target.value as CommandSettings["textCase"] })}>
-            <option value="upper">Capitals: every message set in capitals</option>
-            <option value="mixed">As typed: capitalisation transmits unchanged</option>
-          </select>
-        </label>
+        <p className="text-sm text-muted">Text case and formatting come from the published template and approved inputs, not release-time rewrites.</p>
         <TextInput label="Sequence prefix" value={s.sequencePrefix} maxLength={4} onChange={(e) => setS({ ...s, sequencePrefix: e.target.value })} />
         <TextInput label="Sequence digits" type="number" min={1} max={8} value={s.sequenceDigits} onChange={(e) => setS({ ...s, sequenceDigits: Number(e.target.value) })} />
         <TextInput label="Next sequence number" type="number" min={1} value={s.nextSequence} onChange={(e) => setS({ ...s, nextSequence: Number(e.target.value) })} />

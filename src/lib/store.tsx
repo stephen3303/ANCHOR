@@ -196,6 +196,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void refreshMessages();
   }, [refreshMessages, CURRENT_USER.id]);
 
+  useEffect(() => {
+    const refresh = () => { if (!offline && document.visibilityState === "visible") void refreshMessages(); };
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(refresh, 15000);
+    return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
+  }, [refreshMessages, offline]);
+
   const online = messageSource === "server" && !offline;
   /** Write reading state through to the server; a failure only costs the server copy, so say so and carry on. */
   const saveState = useCallback(

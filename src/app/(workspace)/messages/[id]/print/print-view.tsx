@@ -8,6 +8,7 @@ import { fmtDateTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { MissingMessage } from "@/components/message";
 import { Button } from "@/components/ui";
+import { DraftMessage } from "@/components/draft-message";
 import type { Message } from "@/lib/types";
 
 /** Official printable / PDF rendition with integrity information on the page. */
@@ -15,6 +16,7 @@ export function PrintView({ id }: { id: string }) {
   const { messageById, messageSource } = useStore();
   const m = messageById(id);
   if (!m) return <MissingMessage loading={messageSource === "loading"} />;
+  if (m.kind === "released") return <DraftMessage message={m} print />;
   return <Rendition m={m} />;
 }
 

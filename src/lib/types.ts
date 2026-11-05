@@ -56,6 +56,16 @@ export interface MessageSection {
 
 export interface Message {
   id: string;
+  /** Local template draft/release, not an external C2OIX receipt. */
+  kind?: "draft" | "released";
+  draftId?: string;
+  renderedText?: string;
+  templateName?: string;
+  releasedAt?: string;
+  releasedBy?: string;
+  releaseDesignation?: string;
+  localSequence?: string;
+  msn?: string;
   /** Date-time group, e.g. 151830Z OCT 26 */
   dtg: string;
   /** ISO timestamp for sorting and relative display */
@@ -79,8 +89,8 @@ export interface Message {
   attachments: Attachment[];
   sections: MessageSection[];
   /**
-   * The message text exactly as it arrived from C2OIX, before ANCHOR parsed it
-   * into sections. Shown verbatim (monospace, whitespace preserved) so readers
+   * Text exactly as received from C2OIX, or the approved local snapshot for
+   * kind "released", before any presentation formatting. Shown verbatim (monospace, whitespace preserved) so readers
    * can check the formatted view against the original.
    */
   rawText: string;
@@ -88,7 +98,7 @@ export interface Message {
   ackRequired: boolean;
   ackDue?: string;
   actionItem?: { text: string; suspense: string; assignedTo: string };
-  /** Integrity data recorded at C2OIX ingestion */
+  /** Artifact identity/hash; local releases use ANCHOR- IDs, not external receipts. */
   c2oixId: string;
   sha256: string;
   sizeKb: number;
@@ -266,7 +276,7 @@ export interface Draft {
   releasedAt?: string;
   releasedBy?: string;
   releaseDesignation?: string;
-  /** The transmitted text, frozen at release. */
+  /** Approved text frozen at release. External transmission is separate. */
   renderedText?: string;
 }
 

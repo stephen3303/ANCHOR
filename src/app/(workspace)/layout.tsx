@@ -21,7 +21,7 @@ async function SessionWorkspace({ children }: { children: ReactNode }) {
   const user = await currentSessionUser();
   if (!user) redirect("/login");
   return (
-    <UserProvider initialUser={user}>
+    <UserProvider key={user.id} initialUser={user}>
       <StoreProvider>
         <RoutingProvider>
           <SimProvider>

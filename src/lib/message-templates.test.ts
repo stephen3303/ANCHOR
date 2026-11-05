@@ -206,6 +206,10 @@ test("missing sending command remains unresolved without breaking time generator
   assert.equal(renderTemplatePreview("{{ sending-command }}", result.values), "{{ sending-command }}");
 });
 
+test("bounded server rendering stops repeated-placeholder output expansion", () => {
+  assert.throws(() => renderTemplatePreview("{{ Value }}".repeat(1000), { Value: "x".repeat(5000) }, [], 1000000), /too large/);
+});
+
 test("preview is single-pass plaintext substitution, not code or HTML evaluation", () => {
   assert.equal(renderTemplatePreview("{{ Name }} {{ List }} {{ Flag }} {{ Missing }}", { Name: "{{ Flag }} <b>text</b>", List: ["A", "B"], Flag: false }), "{{ Flag }} <b>text</b> A; B NO {{ Missing }}");
   assert.equal(renderTemplatePreview("{{ constructor }}", {}), "{{ constructor }}");

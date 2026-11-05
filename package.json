@@ -10,12 +10,17 @@
     "db:seed:commands": "node scripts/seed-commands.mjs",
     "db:migrate": "node scripts/migrate-db.mjs",
     "db:seed:users": "tsx scripts/seed-users.ts",
+    "db:seed:routing": "tsx scripts/seed-routing.ts",
+    "db:seed:templates": "tsx scripts/seed-templates.ts",
     "db:seed:messages": "tsx scripts/seed-messages.ts",
-    "test:templates": "tsx --test src/lib/message-templates.test.ts",
+    "test:templates": "tsx --test src/lib/message-templates.test.ts src/lib/message-inputs.test.ts",
     "test:columns": "tsx --test src/lib/message-columns.test.ts",
     "test:templates:api": "node scripts/test-template-api.mjs",
     "test:messages": "tsx --test src/lib/naval.test.ts",
     "test:messages:api": "node scripts/test-message-api.mjs",
+    "test:drafting:api": "node scripts/test-drafting-api.mjs",
+    "test:drafting:browser": "node scripts/test-drafting-api.mjs --browser",
+    "test:templates:seed": "tsx scripts/test-template-seed.ts",
     "test:navigation": "playwright test"
   },
   "dependencies": {

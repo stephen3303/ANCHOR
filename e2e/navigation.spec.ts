@@ -26,7 +26,7 @@ async function signIn(page: Page) {
 
 test("signed-out deep links redirect to the login route without dropped segments", async ({ page }) => {
   const errors = collectRenderErrors(page);
-  for (const route of ["/templates", "/messages", "/profile"]) {
+  for (const route of ["/templates", "/messages", "/drafting", "/messages/create", "/profile"]) {
     await page.goto(route);
     await expect(page).toHaveURL(/\/login$/);
     await expect(page.getByRole("heading", { name: "ANCHOR — Demo sign in" })).toBeVisible();
@@ -53,6 +53,10 @@ test("login, hard refresh, client navigation and logout render the workspace cor
     await navigation.locator('a[href="/messages"]').click();
     await expect(page).toHaveURL(/\/messages$/);
     await expect(page.getByRole("heading", { name: /^Messages/ })).toBeVisible();
+    await navigation.locator('a[href="/drafting"]').click();
+    await expect(page.getByRole("heading", { name: "Drafting & Release", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "New Draft", exact: true }).click();
+    await expect(page.getByRole("combobox", { name: "Message template", exact: true })).toBeVisible();
     await navigation.locator('a[href="/profile"]').click();
     await expect(page.getByRole("heading", { name: "Profile & Settings" })).toBeVisible();
 

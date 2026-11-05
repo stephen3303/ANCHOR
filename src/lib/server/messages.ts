@@ -76,7 +76,7 @@ export async function messageSnapshot(user: AppUser): Promise<MessageSnapshot> {
   return { messages, userState, ackReceipts };
 }
 
-async function requireMessage(id: string): Promise<Message> {
+export async function requireMessage(id: string): Promise<Message> {
   if (!/^[a-z0-9-]{1,120}$/.test(id)) throw new ApiError(400, "Invalid message ID.");
   const { rows: [row] } = await database().query<MessageRow>(`${MESSAGE_SELECT} WHERE m.id = $1`, [id]);
   if (!row) throw new ApiError(404, "Message not found.");

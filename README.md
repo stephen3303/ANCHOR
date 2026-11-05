@@ -26,13 +26,18 @@ docker compose up -d --wait postgres
 npm run db:migrate
 npm run db:seed:commands
 npm run db:seed:users
+npm run db:seed:routing
 npm run db:seed:messages
 ```
 
 `db:migrate` applies SQL from `database/init/` and `database/migrations/`.
 `db:seed:commands` imports `database/seeds/PLADS.txt` into the `commands` table;
 **no Downloads file or manual file copy is needed**. `db:seed:users` imports
-the ten demo accounts and links each one to its command. `db:seed:messages` loads the
+the ten demo accounts and links each one to its command. `db:seed:routing`
+initializes the command's workflows using those real accounts; reruns preserve
+administrative changes and sequence counters. Migration 006 automatically
+publishes the bundled **Standard Message** template on a fresh database; an
+existing template with that name or seed key is never overwritten. `db:seed:messages` loads the
 demo traffic into the message store through the C2OIX parser, plus acknowledgements
 received from other commands. Until it runs, the app shows bundled demo messages and
 says reads and acknowledgements are not saved. Seed commands are safe to rerun,
@@ -229,6 +234,48 @@ are development-only. The tests cover signed-out deep links, login, hard refresh
 client navigation, logout, and revoked cookies, and fail on navigation-validation
 errors. They revoke their own test sessions without modifying users or templates.
 
+## Template-driven drafting and release
+
+`/drafting` is the single message composer. Select a published template, fill its
+fields, and save through `POST /api/messages`. Private drafts and approval history
+survive reloads; they do not enter the ordinary Messages feed until release.
+Reviewers must sign in as the actual account holding the current step. Returning
+for correction unlocks the owner's template fields; resubmission resets approvals.
+The server enforces ownership, roles, step order and expected revisions.
+
+Final release atomically freezes the approved text, allocates the command serial,
+and publishes the same message ID into main's artifact-backed message store.
+Existing ingestion, acknowledgements, per-user read state and shared column order
+are preserved. Local releases use `ANCHOR-…` artifact identifiers, not invented
+C2OIX receipt numbers. **Publishing locally does not perform external transmission**;
+the network simulator is still separate.
+
+For an existing checkout, run:
+
+```sh
+npm run db:migrate
+npm run db:seed:users
+npm run db:seed:routing
+npm run db:seed:messages
+```
+
+Migration 003a preserves the first creation branch's incompatible `messages`
+table as `legacy_message_creation_records` before main's schema is installed.
+Migration 005 imports its saved drafts/history and any published records with
+exact stored text. Legacy demo records without raw text remain archived; the
+normal message seed supplies main's artifact-backed demo records without deleting
+the archive. No database reset or volume deletion is necessary.
+
+Migration 006 carries a frozen snapshot of the authored **Standard Message**
+template, including its existing header TODO and manual fields. It preserves any
+existing matching template and its versions. The optional
+`npm run db:seed:templates` command is also safe to rerun; changing the bundled
+JSON does not rewrite published versions.
+
+Tests: `npm run test:drafting:api`, `npm run test:templates:seed`, and
+`E2E_BROWSER_CHANNEL=chrome npm run test:drafting:browser` (after a production
+build). Main's `test:messages:api` regression suite remains available.
+
 ## Message templates and drafts
 
 Open **Message Templates** in the sidebar (`/templates`) to:
@@ -385,7 +432,7 @@ remaining application-level validation, and rollback-only schema tests.
 | `/briefings` | Tailored Briefing Builder with live preview |
 | `/briefings/generated` | Generated briefing |
 | `/watch-turnover` | Watch Turnover with notes and checklist |
-| `/drafting` | Drafting & Release: draft outgoing traffic, route it through the chain, release it ("Acting as" plays each person) |
+| `/drafting` | Drafting & Release: fill a published template, save a private draft, and approve each step as its signed-in holder; only released messages enter the Messages list |
 | `/simulators` | Server Simulators: the external C2OIX server and the local ANCHOR server |
 | `/topology` | Network Topology: two servers, three workstations; break and restore any link |
 | `/offline` | Offline / EMCON mode with sync queue (toggle "Simulate EMCON") |
@@ -413,4 +460,4 @@ The UI follows the mockups. Where they differ from the ANCHOR requirements packa
 
 ## Stack
 
-Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, lucide-react icons. Legacy frontend state is in memory (`src/lib/store.tsx`) and resets on reload. Mock data lives in `src/lib/data.ts`. PostgreSQL 17 persists commands and message templates; TypeScript REST endpoints use `pg` on the Node server.
+Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, lucide-react icons. PostgreSQL 17 persists commands, templates, users/sessions, drafts, approvals, routing configuration, message artifacts, read state and command acknowledgements; REST endpoints use `pg`. Other prototype preferences and the network simulator remain in memory. Fictional seed data lives in `src/lib/data.ts`.

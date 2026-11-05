@@ -2,6 +2,7 @@
 import { isSupportedGenerator, type GeneratorBinding } from "./generated-inputs";
 import { ZULU_DATETIME_PATTERN } from "./format";
 import { wrapMessageText } from "./message-format";
+import { LEGACY_STANDARD_NAMES, STANDARD_FIELD_NAMES, standardField } from "./standard-template";
 
 export const INPUT_TYPES = [
   ["text", "Textbox"], ["textarea", "Multiline text"], ["select", "Dropdown"],
@@ -26,6 +27,8 @@ export interface TemplateField {
   optionOutputs?: Record<string, string>;
   generator?: GeneratorBinding;
   separator?: CommandSeparator;
+  /** Author-defined constant, currently reserved for Type. */
+  fixedValue?: string;
 }
 export interface TemplateDefinition {
   name: string;
@@ -97,6 +100,13 @@ export function validateTemplateDefinition(value: unknown): TemplateDefinition {
     if (!INPUT_TYPES.some(([type]) => type === field.control)) invalid(`Choose a supported input for ${fieldName}.`);
     if (typeof field.required !== "boolean") invalid(`Specify whether ${fieldName} is required.`);
     const control = field.control as InputType;
+    let fixedValue: string | undefined;
+    if (field.fixedValue !== undefined) {
+      // Keep historical pinned versions readable; new publications use Type.
+      if (!["Type", "Msg Type"].includes(fieldName) || control !== "text" || !field.required) invalid("Type must be a required text field with an author-defined value.");
+      fixedValue = boundedString(field.fixedValue, "Type value", 200);
+      if (/[\r\n]/.test(fixedValue)) invalid("Type value must be a single line.");
+    }
     if (!Array.isArray(field.options) || field.options.length > 100) invalid(`Options for ${fieldName} must be a list of at most 100 choices.`);
     const options = (field.options as unknown[]).map((option) => boundedString(option, `Option for ${fieldName}`, 200));
     if (isStaticChoice(control)) {
@@ -133,16 +143,57 @@ export function validateTemplateDefinition(value: unknown): TemplateDefinition {
       if (control !== "command-multiple") invalid(`${fieldName} only accepts a separator for a multiple-command picker.`);
       if (!COMMAND_SEPARATORS.some(({ key }) => key === field.separator)) invalid(`Choose semicolon, space, or newline separation for ${fieldName}.`);
     }
-    return { name: fieldName, control, required: field.required as boolean, options, ...(optionOutputs ? { optionOutputs } : {}), ...(generator ? { generator } : {}), ...(field.separator !== undefined ? { separator: field.separator as CommandSeparator } : {}) };
+    return { name: fieldName, control, required: field.required as boolean, options, ...(fixedValue !== undefined ? { fixedValue } : {}), ...(optionOutputs ? { optionOutputs } : {}), ...(generator ? { generator } : {}), ...(field.separator !== undefined ? { separator: field.separator as CommandSeparator } : {}) };
   });
   // Stable first-occurrence order, independent of client submission order.
   return { name, description, text, fields: variables.map((variable) => fields.find((field) => field.name === variable)!) };
 }
 
+/** Publication-only checks: pinned historical definitions remain readable. */
+export function validateStandardTemplateText(text: string): string[] {
+  const normalized = text.replace(/\r\n?/g, "\n");
+  const variables = extractVariables(normalized);
+  for (const name of ["Type", ...STANDARD_FIELD_NAMES]) {
+    if (!variables.includes(name)) invalid(`Every template must include {{ ${name} }} (case-sensitive).`);
+  }
+  for (const [oldName, name] of Object.entries(LEGACY_STANDARD_NAMES)) {
+    if (variables.includes(oldName)) invalid(`Rename {{ ${oldName} }} to {{ ${name} }} before publishing.`);
+  }
+  const lines = normalized.trimEnd().split("\n");
+  const breaks = lines.flatMap((line, index) => line === "BT" ? [index] : []);
+  if (breaks.length !== 2) invalid("Every template must contain exactly two standalone plaintext BT lines.");
+  if (lines.at(-1) !== "NNNN") invalid("Every template must end with a standalone plaintext NNNN line.");
+  const firstLine = (name: string) => lines.findIndex((line) => [...line.matchAll(/{{([^{}]*)}}/g)].some((match) => match[1].trim() === name));
+  const header = ["Precedence", "DateTime", "Origin", "Recipients", "Info"].map(firstLine);
+  const body = ["Classification", "Subject", "POC"].map(firstLine);
+  const number = firstLine("Message Number");
+  const ordered = (positions: number[]) => positions.every((position, index) => index === 0 || position >= positions[index - 1]);
+  if (!ordered(header) || header.some((line) => line >= breaks[0]) || !ordered(body) || body.some((line) => line <= breaks[0] || line >= breaks[1]) || number <= breaks[1] || number >= lines.length - 1) {
+    invalid("Use standard field order: Precedence, DateTime, Origin, Recipients, Info, BT, Classification, Subject, POC, BT, Message Number, NNNN.");
+  }
+  return variables;
+}
+
+const canonicalJson = (value: unknown): string => JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+
+/** New publications require the standard contract; old versions are not rewritten. */
+export function validateTemplateForPublication(value: unknown): TemplateDefinition {
+  const definition = validateTemplateDefinition(value);
+  const topic = definition.fields.find((field) => field.name === "Type");
+  if (!topic) invalid('Every template must include {{ Type }} (case-sensitive).');
+  if (topic?.fixedValue === undefined) invalid("Define a non-empty Type text value when creating or updating the template.");
+  validateStandardTemplateText(definition.text);
+  for (const name of STANDARD_FIELD_NAMES) {
+    const field = definition.fields.find((item) => item.name === name);
+    if (canonicalJson(field) !== canonicalJson(standardField(name))) invalid(`${name} must use the standard template configuration; its behavior cannot be changed.`);
+  }
+  return definition;
+}
+
 export function compileTemplate(definition: TemplateDefinition) {
   // Only user-entered values belong in the client input schema. With
   // additionalProperties:false, a supplied autogenerated value is invalid.
-  const manualFields = definition.fields.filter((field) => field.control !== "autogenerated");
+  const manualFields = definition.fields.filter((field) => field.control !== "autogenerated" && field.fixedValue === undefined);
   const properties = Object.fromEntries(manualFields.map((field) => {
     let schema: Record<string, unknown> = { type: "string", maxLength: 5000 };
     if (field.required) schema.minLength = 1;
@@ -180,9 +231,9 @@ export function renderTemplatePreview(text: string, values: TemplateValues, fiel
   const separators = new Map(fields.filter((field) => field.control === "command-multiple").map((field) => [field.name, COMMAND_SEPARATORS.find(({ key }) => key === field.separator)?.value ?? "; "]));
   return text.replace(/{{([^{}]*)}}/g, (placeholder, raw: string) => {
     const name = raw.trim();
-    if (!Object.hasOwn(values, name)) return placeholder;
-    const value = values[name];
     const field = configurations.get(name);
+    if (field?.fixedValue === undefined && !Object.hasOwn(values, name)) return placeholder;
+    const value = field?.fixedValue ?? values[name];
     if (field?.control === "datetime-local" && value && (typeof value !== "string" || !zuluDateTime.test(value))) return placeholder;
     const outputFor = (label: string) => {
       const overrides = field?.optionOutputs;

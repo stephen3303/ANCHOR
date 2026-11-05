@@ -40,7 +40,7 @@ try {
   assert.deepEqual(version.input_schema, compiled.inputSchema);
   assert.deepEqual(version.ui_schema, compiled.uiSchema);
   assert.deepEqual(version.output_definition, compiled.outputDefinition);
-  assert.ok(!Object.hasOwn(version.input_schema.properties, "Origin Command"));
+  assert.ok(!Object.hasOwn(version.input_schema.properties, "Origin"));
   const snapshot = () => sql("SELECT jsonb_build_object('templates',(SELECT jsonb_agg(t ORDER BY id) FROM message_templates t),'versions',(SELECT jsonb_agg(v ORDER BY id) FROM message_template_versions v));");
   const first = snapshot();
   sql(seed);
@@ -82,9 +82,16 @@ try {
   sql("TRUNCATE message_templates CASCADE; DELETE FROM users; DELETE FROM commands;");
   sql(migration);
   const automatic = JSON.parse(sql("SELECT row_to_json(v) FROM message_template_versions v;"));
-  assert.deepEqual(automatic.input_schema, compiled.inputSchema);
-  assert.deepEqual(automatic.ui_schema, compiled.uiSchema);
-  assert.deepEqual(automatic.output_definition, compiled.outputDefinition);
+  // Applied migrations retain the historical variable spelling; the seed
+  // source uses Type for newly seeded definitions.
+  const historicalNames: Record<string, string> = { Type: "Msg Type", Origin: "Origin Command", DateTime: "Message DateTime", Recipients: "Recipient Commands", Info: "Info Commands", POC: "Point of Contact" };
+  const historical = compileTemplate({ ...definition,
+    text: "TODO: figure out header\n" + definition.text.replace(/{{([^{}]*)}}/g, (placeholder, raw: string) => historicalNames[raw.trim()] ? `{{ ${historicalNames[raw.trim()]} }}` : placeholder),
+    fields: definition.fields.map((field) => ({ ...field, name: historicalNames[field.name] ?? field.name })),
+  });
+  assert.deepEqual(automatic.input_schema, historical.inputSchema);
+  assert.deepEqual(automatic.ui_schema, historical.uiSchema);
+  assert.deepEqual(automatic.output_definition, historical.outputDefinition);
   assert.ok(automatic.published_at);
   assert.equal(automatic.created_by, sql("SELECT id FROM users WHERE login='LTaylor';"));
   assert.equal(sql("SELECT count(*) FROM users;"), "1", "Only the missing seed creator is bootstrapped");

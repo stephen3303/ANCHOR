@@ -333,3 +333,21 @@ E2E_BROWSER_CHANNEL=chrome npm run test:navigation
 More detail: `README.md`, `database/README.md`, `database/seeds/README.md`, and
 `docs/plans/server-message-store.md`. Update this handoff when core workflows or
 permissions change; do not turn it into a log of unverified test results.
+
+### Watch Summary and action notes
+
+- `src/components/watch-summary.tsx` adds compact/expanded Watch Officer Home
+  reporting; `src/lib/watch-summary.ts` computes receipt counts and current
+  outstanding/overdue/upcoming work. Reporting start/end and forward horizon are
+  separate. Label the demo reporting clock and current-state/historical limits.
+- Migration 014 adds persistent personal/team action notes and append-only revision
+  snapshots. `src/lib/server/watch-actions.ts` uses station authorization, active
+  assigned officers for shared writes, creator-only personal access (including
+  against administrators), strict input, and optimistic revisions. Personal notes
+  must never leak into another user's list/history or an admin's team view.
+- Watch-reported completion is separate from canonical message requirements,
+  receipt acknowledgements, and actual response transmission. Only explicit user
+  response-follow-up notes are classified as responses; never infer them by text.
+- Tang, Wahoo, and Bowfin are explicit admin-created rotating teams at one station.
+  Creation is atomic and requires deliberate same-command officer selections for
+  every team. Do not seed assignments or replace existing teams automatically.

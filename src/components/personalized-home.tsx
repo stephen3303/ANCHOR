@@ -36,7 +36,7 @@ function readPreferences(key: string): Preferences {
   } catch { return { defaultId: "watch", personal: [] }; }
 }
 
-export function PersonalizedHomePreview() {
+export function PersonalizedHome() {
   const user = useCurrentUser();
   const { messages, messageSource, userState, acknowledge, offline, syncQueue } = useStore();
   const [preferences, setPreferences] = useState<Preferences>({ defaultId: "watch", personal: [] });
@@ -95,7 +95,7 @@ export function PersonalizedHomePreview() {
   const defaultName = views.find((v) => v.id === preferences.defaultId)?.name || "Watch Officer";
 
   return <div className="mx-auto max-w-[1500px] space-y-5 pb-4">
-    <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted"><span className="flex items-center gap-2"><Home className="size-3.5" aria-hidden /> Home <ChevronRight className="size-3" aria-hidden /> My Briefing</span><span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 font-semibold text-amber-900">INTERACTIVE DESIGN PREVIEW</span></div>
+    <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted"><span className="flex items-center gap-2"><Home className="size-3.5" aria-hidden /> Home <ChevronRight className="size-3" aria-hidden /> My Briefing</span><span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 font-semibold text-amber-900">SAMPLE DUTY VIEWS</span></div>
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><p className="mb-1 text-sm text-muted">Welcome back, {user.name}</p><h1 className="text-3xl font-bold tracking-tight text-navy-950">My Briefing</h1><p className="mt-1.5 text-sm text-muted">Your responsibilities. The messages that matter.</p></div>
       <div className="text-xs leading-relaxed text-muted sm:text-right"><span className="font-semibold text-ink">Demo reporting clock</span><br />{fmtDateTime(MOCK_NOW)}<br /><span>{offline ? "Offline · cached traffic" : messageSource === "server" ? "Local message store" : "Bundled demo traffic"}</span></div>
@@ -127,7 +127,7 @@ export function PersonalizedHomePreview() {
 
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="min-w-0 space-y-4">
-        <div ref={attention} className="scroll-mt-4"><Panel title="Needs my attention" action={<span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-900">Always visible</span>}>
+        <div id="acknowledge" ref={attention} className="scroll-mt-4"><Panel title="Needs my attention" action={<span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-900">Always visible</span>}>
           {pending.map((m) => <article key={m.id} className="border-b border-line pb-3 last:border-0 last:pb-0"><div className="mb-1 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-amber-900">Acknowledgement required</span><span className="text-muted">Command-wide · {m.reference}</span></div><button className={`${textLink} text-sm font-semibold`} onClick={() => open(m.id)}>{m.subject}</button><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-muted">{m.ackDue ? `Due ${fmtDateTime(m.ackDue)}` : "No deadline recorded"} · Receipt only</span>{canAck ? <Button size="sm" onClick={() => acknowledge(m.id)}>Acknowledge receipt</Button> : <span className="text-xs text-muted">Awaiting Message Admin</span>}</div></article>)}
           {overdueMine.map((d) => <article key={d.message.id} className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-sm"><strong className="text-xs text-red-800">OVERDUE · MINE</strong><button className={`mt-1 block ${textLink}`} onClick={() => open(d.message.id)}>{d.text}</button><p className="mt-1 text-xs">{remaining(d.due,end)} · Completion not verified</p></article>)}
           {!pending.length && !overdueMine.length && <p className="text-sm text-muted">No recorded mandatory acknowledgements or overdue tasks assigned to you. This is not a live operational all-clear.</p>}
@@ -150,7 +150,7 @@ export function PersonalizedHomePreview() {
         <div className="rounded-xl border border-line bg-navy-950 p-4 text-white"><p className="font-semibold">Taking the watch?</p><p className="mt-1 text-xs leading-relaxed text-white/75">Use Watch Turnover for handoff notes, carryover, and the turnover checklist.</p><Link href="/watch-turnover" className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-gold">Open Watch Turnover <ArrowRight className="size-3.5" aria-hidden/></Link></div>
       </aside>
     </div>
-    <details className="rounded-md border border-line bg-white px-3 py-2 text-xs text-muted"><summary className="cursor-pointer">About this preview</summary><p className="mt-2">This is a design preview of the future Home page. Duty choices are examples, not official assignments. Personal views/defaults are browser-local and account-specific. Department mappings and command alert rules are not yet connected. Existing access and acknowledgement permissions are unchanged. Message data is fictional; no AI narrative is generated. {offline?"Offline mode is active.":"Live external ingestion is not verified."} {syncQueue.filter(q=>q.status==="Pending").length} items await sync.</p></details>
+    <details className="rounded-md border border-line bg-white px-3 py-2 text-xs text-muted"><summary className="cursor-pointer">About your personalized Home</summary><p className="mt-2">This is your personalized Home page. Duty choices are examples, not official assignments. Personal views/defaults are browser-local and account-specific. Department mappings and command alert rules are not yet connected. Existing access and acknowledgement permissions are unchanged. Message data is fictional; no AI narrative is generated. {offline?"Offline mode is active.":"Live external ingestion is not verified."} {syncQueue.filter(q=>q.status==="Pending").length} items await sync.</p></details>
     <dialog ref={drawer} aria-label="Personalized message reader" onCancel={(e)=>{e.preventDefault();setSelected(null);}} className="fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-none w-full max-w-[1100px] overflow-y-auto border-l border-line bg-white p-4 text-ink shadow-2xl backdrop:bg-black/40 sm:p-6">{selected&&<MessageReaderNavigation value={open}><div className="mb-4 flex justify-end"><Button icon={X} onClick={()=>setSelected(null)}>Close message</Button></div><MessageDetail key={selected} id={selected} onBack={()=>setSelected(null)} backLabel="Back to My Briefing"/></MessageReaderNavigation>}</dialog>
   </div>;
 }

@@ -20,5 +20,5 @@ export async function proxy(request: NextRequest) {
 
 // Page requests only: never intercept the public login page, APIs, or assets.
 export const config = {
-  matcher: ["/", "/messages/:path*", "/templates/:path*", "/subscriptions/:path*", "/briefings/:path*", "/watch-turnover/:path*", "/reports/:path*", "/audit/:path*", "/drafting/:path*", "/network/:path*", "/admin/:path*", "/profile/:path*"],
+  matcher: ["/", "/messages/:path*", "/templates/:path*", "/subscriptions/:path*", "/briefings/:path*", "/watch-turnover/:path*", "/transmissions/:path*", "/audit/:path*", "/drafting/:path*", "/network/:path*", "/admin/:path*", "/profile/:path*"],
 };

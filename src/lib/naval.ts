@@ -15,8 +15,9 @@
 //   UNCLAS                           classification line
 //   SUBJ/SUBMARINE DEPLOYMENT .../   sets may wrap; each ends with //
 //   MSGID/GENADMIN/COMSUBLANT N3/COMSUBLANT 078/26//   originator / serial
-//   REF/A/MSG/COMSUBLANT 061/26//
-//   NARR/THIS MSG SUPERSEDES REF A.//                   optional lifecycle directive
+//   REF/A/GENADMIN/COMSUBLANT N3/021430ZOCT26/COMSUBLANT 061/26//
+//   REF/B/DOC/COMSUBLANT/01OCT26//                     REF sets per NTP 3(J) (see references.ts)
+//   NARR/THIS MSG SUPERSEDES REF A. REF B IS ...//     AMPN (one REF) or NARR (several); may carry a lifecycle directive
 //   ACK/261830Z OCT 26//                                optional: acknowledgement due
 //   POC/...//
 //   RMKS/1. PURPOSE. TEXT ...
@@ -26,6 +27,7 @@
 //   BT
 //   #1001                            optional channel serial
 //   NNNN                             optional end of message
+import { parseReferenceSet, splitAmplification, validateReferences, type MessageReference } from "./references";
 import type { Classification, Lifecycle, MessageSection, MessageType, Precedence } from "./types";
 
 const PROSIGN: Record<string, Precedence> = { Z: "FLASH", O: "IMMEDIATE", P: "PRIORITY", R: "ROUTINE" };
@@ -62,8 +64,15 @@ export interface ParsedMessage {
   reference: string;
   type: MessageType;
   subject: string;
+  /** Each REF set's label: its serial, or "SENDER DTG" when it has none */
   references: string[];
-  directive?: { kind: Directive; target: string };
+  /** Each REF set in full, with its part of the AMPN or NARR text */
+  refs: MessageReference[];
+  /** The AMPN or NARR text as sent */
+  amplification?: string;
+  /** NTP 3(J) reference rules this message breaks. Reported, never refused. */
+  referenceIssues: string[];
+  directive?: { kind: Directive; target: string; letter: string };
   ackDue?: string;
   poc?: string;
   sections: MessageSection[];
@@ -113,6 +122,9 @@ export function typeOf(reference: string, originator = ""): MessageType {
   for (const [re, t] of known) if (re.test(reference.toUpperCase())) return t;
   return "FLEET MSG";
 }
+
+/** How a reference is named in lists and lifecycle links: its serial, else sender and DTG. */
+export const referenceLabel = (r: MessageReference) => r.serial ? normRef(r.serial) : normRef(`${r.originator} ${r.dtg}`);
 
 /** The lifecycle a new message carries itself, from its directive. */
 export function ownLifecycle(p: Pick<ParsedMessage, "directive">): Lifecycle {
@@ -189,32 +201,48 @@ export function parseNavalMessage(raw: string): ParsedMessage {
   let originator = header.FM;
   let serial = "";
   let narr = "";
+  let ampn = "";
+  const counts = { ampn: 0, narr: 0, ampnMisplaced: false };
   let ackDue: string | undefined;
   let poc: string | undefined;
-  const refs: { letter: string; ref: string }[] = [];
+  const refs: MessageReference[] = [];
+  let previous = "";
   for (const set of sets) {
     const body = set.slice(0, -2);
     let m: RegExpExecArray | null;
+    let ref: MessageReference | null;
     if ((m = /^SUBJ\/(.*)$/.exec(body))) subject = m[1].trim();
     // The serial itself may contain a slash ("COMSUBLANT 078/26"), so it takes the rest of the set.
     else if ((m = /^MSGID\/[^/]*\/([^/]*)\/(.*)$/.exec(body))) {
       originator = m[1].trim() || originator;
       serial = m[2].trim();
-    } else if ((m = /^REF\/([A-Z])\/[^/]*\/(.*)$/.exec(body))) refs.push({ letter: m[1], ref: normRef(m[2]) });
-    else if ((m = /^NARR\/(.*)$/.exec(body))) narr = m[1];
+    } else if ((ref = parseReferenceSet(body))) refs.push(ref);
+    else if ((m = /^NARR\/(.*)$/.exec(body))) { narr = m[1].trim(); counts.narr++; }
+    else if ((m = /^AMPN\/(.*)$/.exec(body))) {
+      ampn = m[1].trim();
+      counts.ampn++;
+      if (!/^REF\//.test(previous)) counts.ampnMisplaced = true;
+    }
     else if ((m = /^ACK\/(.*)$/.exec(body))) ackDue = fromDtg(m[1]) ?? fail(`ACK due "${m[1]}" is not a valid date-time group.`);
     else if ((m = /^POC\/(.*)$/.exec(body))) poc = m[1].trim();
+    previous = body;
   }
   if (!subject) fail("Missing the SUBJ/ set.");
   if (!serial) fail('Missing the message serial in MSGID, e.g. "MSGID/GENADMIN/COMSUBLANT N3/COMSUBLANT 078/26//".');
   if (!/^[A-Z][A-Z .]* [\d.-]+(\/\d{2})?$/i.test(serial)) fail(`"${serial}" is not a message serial like "NAVADMIN 236/26".`);
   if (!rmks) fail("Missing the RMKS/ remarks.");
 
+  // One amplification set serves all references; each keeps its own part of it.
+  const amplification = [ampn, narr].filter(Boolean).join(" ");
+  const parts = splitAmplification(amplification, refs.map((r) => r.letter));
+  for (const r of refs) if (parts[r.letter]) r.amplification = parts[r.letter];
+  const referenceIssues = validateReferences(refs, counts);
+
   let directive: ParsedMessage["directive"];
-  const d = /THIS MSG (SUPERSEDES|CANCELS|CORRECTS|AMENDS) REF ([A-Z])\b/i.exec(narr);
+  const d = /THIS MSG (SUPERSEDES|CANCELS|CORRECTS|AMENDS) REF ([A-Z])\b/i.exec(amplification);
   if (d) {
-    const target = refs.find((r) => r.letter === d[2].toUpperCase()) ?? fail(`NARR names REF ${d[2]} but there is no REF/${d[2]}/ set.`);
-    directive = { kind: d[1].toUpperCase() as Directive, target: target.ref };
+    const target = refs.find((r) => r.letter === d[2].toUpperCase()) ?? fail(`${ampn ? "AMPN" : "NARR"} names REF ${d[2]} but there is no REF/${d[2]}/ set.`);
+    directive = { kind: d[1].toUpperCase() as Directive, target: referenceLabel(target), letter: target.letter };
   }
 
   // Remarks: "N. HEADING. TEXT" paragraphs, continuation lines, and "A. ITEM" sub-items.
@@ -250,7 +278,10 @@ export function parseNavalMessage(raw: string): ParsedMessage {
     reference,
     type: typeOf(reference, originator),
     subject,
-    references: refs.map((r) => r.ref),
+    references: refs.map(referenceLabel),
+    refs,
+    ...(amplification ? { amplification } : {}),
+    referenceIssues,
     directive,
     ackDue,
     poc,

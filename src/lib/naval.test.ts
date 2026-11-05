@@ -43,7 +43,7 @@ test("NARR, ACK, wrapped remarks and lettered items are read", () => {
   const p = parseNavalMessage(SAMPLE);
   assert.equal(p.reference, "COMSUBFOR INST 3500.2");
   assert.equal(p.type, "COMSUBFOR INST");
-  assert.deepEqual(p.directive, { kind: "SUPERSEDES", target: "COMSUBFOR INST 3500.1" });
+  assert.deepEqual(p.directive, { kind: "SUPERSEDES", target: "COMSUBFOR INST 3500.1", letter: "A" });
   assert.equal(p.ackDue, "2026-11-06T12:00:00.000Z");
   assert.deepEqual(p.sections, [
     { heading: "Purpose", body: ["TO REISSUE THE WATCH TEAM QUALIFICATION STANDARDS WITH CHANGE 1 INCORPORATED."] },

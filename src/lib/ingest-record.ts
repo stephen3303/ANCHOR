@@ -54,5 +54,7 @@ export function messageFromParsed(p: ParsedMessage, raw: string, integrity: Inte
     distribution: [],
     addressees: toAddressees(p.addressees),
     related: p.references.map(idFor),
+    refs: p.refs,
+    ...(p.referenceIssues.length ? { referenceIssues: p.referenceIssues } : {}),
   };
 }

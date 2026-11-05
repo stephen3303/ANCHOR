@@ -1,16 +1,14 @@
 "use client";
 
-import { RequireRole } from "@/components/require-role";
-import { REPORT_VIEWER } from "@/lib/roles";
 import Link from "next/link";
 import { useState } from "react";
-import { AlertTriangle, BarChart3, BellRing, CheckCircle2, Database, Download, HardDrive, Mail, Send } from "lucide-react";
+import { AlertTriangle, BellRing, CheckCircle2, Send } from "lucide-react";
 import { CURRENT_USER, resolveAckStatus, sentByOwnCommand } from "@/lib/data";
 import { fmtDateTime, MOCK_NOW } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import type { Message } from "@/lib/types";
 import { MessageCellsRow, MessageHeaderRow, messageColumns } from "@/components/message-columns";
-import { Bar, Button, cx, PageHeader, Panel, StatCard, StatusDot, tableWrap, td, th, theadRow, tbodyRow, type DotTone } from "@/components/ui";
+import { Bar, Button, cx, EmptyState, Panel, StatCard, StatusDot, tableWrap, td, th, theadRow, tbodyRow, type DotTone } from "@/components/ui";
 
 type SentStatus = "Complete" | "In Progress" | "Overdue";
 const statusTone: Record<SentStatus, DotTone> = { Complete: "green", "In Progress": "amber", Overdue: "red" };
@@ -20,12 +18,13 @@ function sentStatus(m: Message, acked: number, total: number): SentStatus {
   return m.ackDue && new Date(m.ackDue) < MOCK_NOW ? "Overdue" : "In Progress";
 }
 
-export default function ReportsPage() {
-  return <RequireRole role={REPORT_VIEWER}><ReportsPageContent /></RequireRole>;
-}
-
-function ReportsPageContent() {
-  const { log, notify, messages, ackReceipts } = useStore();
+/**
+ * Acknowledgement status of traffic this command sent: summary cards, the
+ * sent-message table and per-command detail. Shown on Transmission &
+ * Acknowledge to the Message Admin and to Report Viewers.
+ */
+export function AckStatusSection() {
+  const { notify, messages, ackReceipts } = useStore();
   const [selected, setSelected] = useState<string | null>(null);
 
   // Messages this command originated that addressees must acknowledge.
@@ -40,7 +39,12 @@ function ReportsPageContent() {
   const current = rows.find((r) => r.m.id === selected) ?? rows[0];
   const ackedAll = rows.reduce((n, r) => n + r.acked, 0);
   const totalAll = rows.reduce((n, r) => n + r.total, 0);
-  if (!current) return <p className="text-sm text-muted">No traffic sent by this command is waiting on acknowledgements.</p>;
+  if (!current)
+    return (
+      <Panel title="Acknowledgement Status" icon={BellRing} className="mb-4">
+        <EmptyState>No traffic sent by this command is waiting on acknowledgements.</EmptyState>
+      </Panel>
+    );
 
   const sentCols = messageColumns<(typeof rows)[number]>({
     subject: (r) => r.m.subject,
@@ -55,19 +59,12 @@ function ReportsPageContent() {
   });
 
   return (
-    <>
-      <PageHeader
-        icon={BarChart3}
-        title="Reports"
-        subtitle={`Acknowledgement of traffic sent by ${CURRENT_USER.commandSource}, and traffic measures.`}
-        actions={<Button variant="primary" icon={Download} onClick={() => { log("Generate Report", "Acknowledgement Report (sent messages)"); notify("Report exported"); }}>Export Report</Button>}
-      />
-
-      <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <section aria-labelledby="ack-status-heading" className="mb-4">
+      <h2 id="ack-status-heading" className="mb-1 text-lg font-bold">Acknowledgement Status</h2>
+      <p className="mb-3 text-sm text-muted">Acknowledgement of traffic sent by {CURRENT_USER.commandSource}.</p>
+      <div className="mb-4 grid gap-4 sm:grid-cols-2">
         <StatCard icon={BellRing} value={`${Math.round((ackedAll / totalAll) * 100)}%`} label="Acknowledged" note={`${ackedAll} of ${totalAll} command acknowledgements across ${rows.length} sent messages`} tone="green" />
         <StatCard icon={AlertTriangle} value={totalAll - ackedAll} label="Outstanding" tone="red" note="Escalate at due time" />
-        <StatCard icon={Mail} value="−82%" label="Duplicate Email Copies" note="Illustrative. Baseline set in discovery" tone="navy" />
-        <StatCard icon={HardDrive} value="1.4 TB" label="Mailbox Storage Avoided" note="Illustrative. Baseline set in discovery" tone="amber" />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_400px]">
@@ -143,15 +140,6 @@ function ReportsPageContent() {
         </div>
 
         <div className="space-y-4">
-          <Panel title="Traffic by Source (30 days)" icon={Database}>
-            {[["OPNAV", 78], ["COMSUBLANT", 64], ["SECNAV", 31], ["COMSUBFOR", 22], ["NAVSEA", 18], ["USFF", 12]].map(([k, v]) => (
-              <div key={k} className="mb-2 grid grid-cols-[100px_1fr_36px] items-center gap-2 text-sm">
-                <span>{k}</span>
-                <Bar value={v as number} max={78} />
-                <span className="text-right">{v}</span>
-              </div>
-            ))}
-          </Panel>
           <Panel title="Command Acknowledgement Rate by Message">
             {rows.map((r) => (
               <div key={r.m.id} className="mb-2 grid grid-cols-[140px_1fr_40px] items-center gap-2 text-sm">
@@ -163,6 +151,6 @@ function ReportsPageContent() {
           </Panel>
         </div>
       </div>
-    </>
+    </section>
   );
 }

@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import {
   Anchor,
-  BarChart3,
   BellRing,
   ChevronDown,
   FilePenLine,
@@ -24,7 +23,7 @@ import {
   RadioTower,
   X,
 } from "lucide-react";
-import { AUDITOR, hasRole, MESSAGE_ADMIN, REPORT_VIEWER, SUBSCRIPTION_APPROVER, type RoleName } from "@/lib/roles";
+import { AUDITOR, hasRole, MESSAGE_ADMIN, SUBSCRIPTION_APPROVER, type RoleName } from "@/lib/roles";
 import { useStore } from "@/lib/store";
 import { useRouting } from "@/lib/routing-store";
 import { needsOwnAck } from "@/lib/data";
@@ -41,8 +40,7 @@ const NAV: { href: string; label: string; icon: typeof Home; badge?: "unread" | 
   { href: "/subscriptions", label: "Subscriptions", icon: Network },
   { href: "/templates", label: "Message Templates", icon: FilePlus2 },
   { href: "/drafting", label: "Drafting & Release", icon: FilePenLine, badge: "routing" as const },
-  { href: "/transmissions", label: "Transmission Queue", icon: RadioTower },
-  { href: "/reports", label: "Reports", icon: BarChart3, role: REPORT_VIEWER },
+  { href: "/transmissions", label: "Transmission & Acknowledge", icon: RadioTower },
   { href: "/audit", label: "Audit & Integrity", icon: ShieldCheck, role: AUDITOR },
   { href: "/network", label: "Comms & Network", icon: Waypoints, badge: "sync" as const },
   { href: "/admin", label: "Admin", icon: UserCog, badge: "approvals" as const },

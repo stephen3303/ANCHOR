@@ -32,7 +32,7 @@ export default function DraftingPage() {
     {routing.loading && <p role="status">Loading persisted drafts and command routing…</p>}
     <div className="grid gap-4 xl:grid-cols-[340px_1fr]">
       <Panel title={`Drafts (${rows.length})`} bodyClassName="p-0">
-        <div className="px-3 pt-2"><Tabs tabs={[{id:"all",label:"All"},{id:"waiting",label:`Waiting on me (${drafts.filter(waiting).length})`},{id:"mine",label:"My drafts"},{id:"released",label:"Released"}]} active={filter} onChange={(value) => {setFilter(value);setCreating(false);}} /></div>
+        <div className="px-3 pt-2"><Tabs tabs={[{id:"all",label:"All"},{id:"waiting",label:`Waiting on me\u00a0(${drafts.filter(waiting).length})`},{id:"mine",label:"My drafts"},{id:"released",label:"Released"}]} active={filter} fit onChange={(value) => {setFilter(value);setCreating(false);}} /></div>
         {rows.length ? <ul className="max-h-[720px] divide-y divide-line/70 overflow-y-auto">{rows.map((item) => <li key={item.id}>
           <button type="button" onClick={() => {setSelected(item.id);setCreating(false);}} className={cx("block w-full px-4 py-3 text-left",!creating && draft?.id === item.id ? "bg-navy-100/70":"hover:bg-navy-50")}>
             <div className="flex flex-wrap gap-1.5"><Pill className={DRAFT_STATUS[item.status].className}>{DRAFT_STATUS[item.status].label}</Pill><PrecedenceBadge p={item.precedence} />{waiting(item) && <Pill className="bg-navy-700 text-white">Your action</Pill>}</div>

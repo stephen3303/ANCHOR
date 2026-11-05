@@ -121,7 +121,10 @@ docker compose -f docker-compose.yml -f docker-compose.https.yml up -d --build a
 The pinned Caddy proxy serves TLS on port 3443, forwards the original Host and
 HTTPS scheme to Next, and preserves streaming. The app's plaintext port is
 **unpublished**, Secure session cookies are forced on, and only the leaf cert/key
-are mounted read-only into the proxy—not the app image or the CA key. PostgreSQL
+are mounted read-only into the proxy—not the app image or the CA key. For plain
+HTTP LAN sharing without TLS, set `ANCHOR_HTTP_BIND=0.0.0.0` (or the private LAN
+IP) in `.env` instead; it defaults to loopback, and every `docker compose` run
+(including `npm run app:update`) reads it. PostgreSQL
 and existing database volumes are unchanged. Allow the chosen TLS port only from
 trusted LAN clients in the host firewall. Keep the same `-f` options for restarts:
 

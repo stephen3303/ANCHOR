@@ -4,7 +4,8 @@ services:
     image: anchor-prototype
     container_name: anchor-prototype
     ports:
-      - "127.0.0.1:3000:3000"
+      # Loopback by default; set ANCHOR_HTTP_BIND=0.0.0.0 in .env to serve the LAN.
+      - "${ANCHOR_HTTP_BIND:-127.0.0.1}:3000:3000"
     environment:
       PGHOST: postgres
       PGPORT: 5432

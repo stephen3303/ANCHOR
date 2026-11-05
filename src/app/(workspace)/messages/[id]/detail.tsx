@@ -6,6 +6,7 @@ import { ArrowLeft, Bell, Clock, Copy, Download, FileText, Link2, Mail, Plus, Pr
 import { useStore } from "@/lib/store";
 import { AckPanel, Attachments, LifecycleNotice, MessageList, MessageTabs, MetadataTable, MissingMessage } from "@/components/message";
 import { Button, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tag } from "@/components/ui";
+import { DraftMessage } from "@/components/draft-message";
 import type { Message } from "@/lib/types";
 
 export function MessageDetail({ id, onBack }: { id: string; onBack?: () => void }) {
@@ -40,6 +41,7 @@ function LoadedDetail({ m, onBack }: { m: Message; onBack?: () => void }) {
     { icon: Copy, label: "Copy Reference", run: () => { navigator.clipboard?.writeText(m.reference); notify(`Copied ${m.reference}`); } },
   ];
 
+  if (m.kind === "released") return <DraftMessage message={m} onBack={onBack} />;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">

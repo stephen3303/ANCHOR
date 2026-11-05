@@ -111,7 +111,8 @@ export default function TemplatesPage() {
         <div role="status" className="space-y-3">
           <p><strong>{saved.name}</strong> version {saved.version} is saved in PostgreSQL and available for future message drafting.</p>
           <p className="text-sm text-muted">Published versions cannot be edited. Message creation is not part of this screen yet.</p>
-          <Button variant="primary" onClick={reset}>Create another template</Button>
+          <Button variant="primary" href="/drafting">Drafting &amp; Release</Button>
+          <Button onClick={reset}>Create another template</Button>
         </div>
       </Panel> : <Panel title={`Create a template — Step ${step} of 3`}>
         <ol aria-label="Template creation steps" className="mb-5 flex flex-wrap gap-4 text-sm">

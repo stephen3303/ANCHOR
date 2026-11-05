@@ -2,22 +2,23 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ArrowUpDown, Bookmark, BookmarkPlus, Building2, CalendarDays, FileText, HelpCircle, Lock, Search, Sparkles, Tags, Users, X } from "lucide-react";
+import { ArrowUpDown, Bookmark, BookmarkPlus, Building2, CalendarDays, FileText, HelpCircle, Lock, Search, Sparkles, Tags, X } from "lucide-react";
 import { useStore } from "@/lib/store";
-import type { Community, Message, MessageType, Precedence } from "@/lib/types";
+import { MESSAGE_CATEGORIES, MESSAGE_TYPES, categoryOf, countUnder, keyOf, keyPath, matchesKeys } from "@/lib/message-types";
+import { MessageTypePicker } from "@/components/message-type-picker";
+import type { Message, MessageCategory, Precedence } from "@/lib/types";
 import { Button, Check, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Select, Tabs, Tag, cx } from "@/components/ui";
 
-const TYPES: MessageType[] = ["NAVADMIN", "ALNAV", "OPNAVINST", "COMSUBLANT MSG", "COMSUBFOR INST", "NAVSEAINST", "FLEET MSG", "SAFETY MSG"];
-const COMMUNITIES: Community[] = ["Submarine Warfare", "Readiness", "Cybersecurity", "Personnel", "Maintenance", "Training & Education", "Safety", "Policy"];
 const PRECEDENCE: Precedence[] = ["FLASH", "IMMEDIATE", "PRIORITY", "ROUTINE"];
 
 const SAVED = [
-  { name: "Readiness reporting (COMSUBLANT)", query: "readiness", types: ["COMSUBLANT MSG"] as MessageType[] },
-  { name: "Cyber controls, last 30 days", query: "cybersecurity", types: [] as MessageType[] },
-  { name: "Safety traffic", query: "safety", types: ["SAFETY MSG"] as MessageType[] },
-  { name: "Personnel policy", query: "personnel", types: ["NAVADMIN", "ALNAV"] as MessageType[] },
-  { name: "Training pipeline", query: "training", types: [] as MessageType[] },
-  { name: "Port visits", query: "port visit", types: [] as MessageType[] },
+  { name: "Readiness reporting (COMSUBLANT)", query: "readiness", types: ["READINESS:REPORTING"] },
+  { name: "Cyber controls, last 30 days", query: "cybersecurity", types: [] as string[] },
+  { name: "Safety traffic", query: "", types: ["SAFETY"] },
+  { name: "Equipment casualties", query: "", types: ["CASREP"] },
+  { name: "Personnel policy", query: "personnel", types: ["PERSONNEL", "NAVADMIN", "ALNAV"] },
+  { name: "Training pipeline", query: "training", types: ["TRAINING"] },
+  { name: "Port visits", query: "", types: ["SUBMARINE:PORT-VISITS", "LOGREQ"] },
 ];
 
 type Mode = "basic" | "advanced" | "natural" | "saved";
@@ -28,9 +29,10 @@ export default function SearchPage() {
   const [mode, setMode] = useState<Mode>("advanced");
   const [q, setQ] = useState("deployment readiness");
   const [nl, setNl] = useState("Show me readiness messages from COMSUBLANT that need acknowledgement");
-  const [types, setTypes] = useState<MessageType[]>(["COMSUBLANT MSG", "NAVADMIN"]);
+  const [cats, setCats] = useState<MessageCategory[]>([]);
+  /** Subscription keys: MSGID type, or type/subtag. */
+  const [types, setTypes] = useState<string[]>(["READINESS", "NAVADMIN"]);
   const [sources, setSources] = useState<string[]>([]);
-  const [comms, setComms] = useState<Community[]>(["Readiness"]);
   const [prec, setPrec] = useState<Precedence[]>([]);
   const [range, setRange] = useState("Last 12 months");
   const [includeRetired, setIncludeRetired] = useState(false);
@@ -42,15 +44,15 @@ export default function SearchPage() {
   const results = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     const scored = messages.map((m) => {
-      const hay = [m.subject, m.reference, m.originator, ...m.communities, ...m.sections.flatMap((s) => s.body)].join(" ").toLowerCase();
+      const hay = [m.subject, m.reference, m.originator, keyOf(m), keyPath(keyOf(m)), ...m.sections.flatMap((s) => s.body)].join(" ").toLowerCase();
       const score = words.reduce((a, w) => a + (m.subject.toLowerCase().includes(w) ? 3 : 0) + (hay.includes(w) ? 1 : 0), 0);
       return { m, score };
     }).filter(({ m, score }) => {
       if (words.length && score === 0) return false;
       if (mode !== "basic") {
-        if (types.length && !types.includes(m.type)) return false;
+        if (cats.length && !cats.includes(categoryOf(m.type))) return false;
+        if (!matchesKeys(keyOf(m), types)) return false;
         if (sources.length && !sources.includes(m.source)) return false;
-        if (comms.length && !m.communities.some((c) => comms.includes(c))) return false;
         if (prec.length && !prec.includes(m.precedence)) return false;
       }
       if (!includeRetired && ["SUPERSEDED", "CANCELLED", "EXPIRED"].includes(m.lifecycle)) return false;
@@ -60,7 +62,7 @@ export default function SearchPage() {
     else if (sort === "Oldest") scored.sort((a, b) => a.m.received.localeCompare(b.m.received));
     else scored.sort((a, b) => b.score - a.score);
     return scored.map((s) => s.m);
-  }, [messages, q, types, sources, comms, prec, includeRetired, sort, mode]);
+  }, [messages, q, cats, types, sources, prec, includeRetired, sort, mode]);
 
   const runSearch = () => log("Search", `Keyword: “${q}”`, `Search returned ${results.length} results.`);
 
@@ -70,8 +72,7 @@ export default function SearchPage() {
     const kw = ["readiness", "cyber", "safety", "training", "personnel", "maintenance", "port"].filter((k) => t.includes(k));
     setQ(kw.join(" "));
     setSources(SOURCES.filter((s) => t.includes(s.toLowerCase())));
-    setTypes(TYPES.filter((ty) => t.includes(ty.toLowerCase())));
-    setComms([]);
+    setTypes(MESSAGE_TYPES.filter((ty) => t.includes(ty.toLowerCase())));
     setPrec(t.includes("immediate") ? ["IMMEDIATE"] : []);
     setNlApplied(`Keywords: ${kw.join(", ") || "none"} · Sources: ${SOURCES.filter((s) => t.includes(s.toLowerCase())).join(", ") || "any"}`);
     setMode("advanced");
@@ -144,7 +145,7 @@ export default function SearchPage() {
                 <Bookmark className="size-4 text-navy-700" />
                 <span className="font-medium">{s.name}</span>
                 <span className="text-muted">&ldquo;{s.query}&rdquo;</span>
-                <Button size="sm" className="ml-auto" onClick={() => { setQ(s.query); setTypes(s.types); setComms([]); setSources([]); setMode("advanced"); }}>Run</Button>
+                <Button size="sm" className="ml-auto" onClick={() => { setQ(s.query); setCats([]); setTypes(s.types); setSources([]); setMode("advanced"); }}>Run</Button>
               </li>
             ))}
           </ul>
@@ -163,9 +164,15 @@ export default function SearchPage() {
             <FilterGroup icon={CalendarDays} title="Date Range">
               <Select value={range} onChange={setRange} options={["Last 30 days", "Last 90 days", "Last 12 months", "All dates"]} />
             </FilterGroup>
-            <FilterGroup icon={FileText} title="Message Type">
+            <FilterGroup icon={Tags} title="Category">
               <div className="grid grid-cols-2 gap-x-2">
-                {TYPES.map((t) => <Check key={t} label={t} checked={types.includes(t)} onChange={() => toggle(types, t, setTypes)} />)}
+                {MESSAGE_CATEGORIES.map((c) => <Check key={c} label={c} checked={cats.includes(c)} onChange={() => toggle(cats, c, setCats)} />)}
+              </div>
+            </FilterGroup>
+            <FilterGroup icon={FileText} title="Message Type">
+              <p className="mb-1 text-xs text-muted">MSGID field 2: TYPE, or TYPE:SUBTAG. A type covers all its subtags.</p>
+              <div className="max-h-96 overflow-y-auto pr-1">
+                <MessageTypePicker value={types} onChange={setTypes} counts={(k) => countUnder(k, messages)} />
               </div>
             </FilterGroup>
             <FilterGroup icon={Building2} title="Source">
@@ -180,11 +187,6 @@ export default function SearchPage() {
             </FilterGroup>
             <FilterGroup icon={Lock} title="Classification">
               <Check label="Unclassified" checked onChange={() => notify("Higher classifications are not available on this network")} />
-            </FilterGroup>
-            <FilterGroup icon={Users} title="Communities / Topics">
-              <div className="grid grid-cols-2 gap-x-2">
-                {COMMUNITIES.map((c) => <Check key={c} label={c} checked={comms.includes(c)} onChange={() => toggle(comms, c, setComms)} />)}
-              </div>
             </FilterGroup>
             <Check label="Include superseded, cancelled & expired" checked={includeRetired} onChange={setIncludeRetired} />
           </Panel>
@@ -208,12 +210,6 @@ export default function SearchPage() {
             {results.map((m) => <ResultRow key={m.id} m={m} />)}
           </ul>
           {!results.length && <p className="py-10 text-center text-sm text-muted">No results. Try fewer filters.</p>}
-          {results.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3 text-sm">
-              <span className="text-muted">Turn this search into a subscription so new matches reach you automatically.</span>
-              <Button size="sm" variant="primary" className="ml-auto" href="/subscriptions">Manage type subscriptions</Button>
-            </div>
-          )}
         </Panel>
       </div>
     </>
@@ -247,7 +243,7 @@ function ResultRow({ m }: { m: Message }) {
         </div>
         <p className="mt-1 text-[13px] text-ink">{m.sections[0].body[0]}</p>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {m.communities.map((c) => <Tag key={c}>{c}</Tag>)}
+          <Tag title={keyPath(keyOf(m))}>{keyOf(m)}</Tag>
         </div>
       </div>
     </li>

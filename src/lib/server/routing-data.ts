@@ -22,7 +22,7 @@ export async function listDrafts(user: AppUser, id?: string): Promise<{ drafts: 
     WHERE ${DRAFT_ACCESS} AND ($4::text IS NULL OR m.id = $4::text) ORDER BY m.updated_at DESC, m.id`, [...accessArgs(user), id ?? null]);
   const { rows: references } = await database().query(`SELECT draft_id, field_key, command_id, snapshot FROM message_draft_references WHERE draft_id = ANY($1::uuid[]) ORDER BY position`, [rows.map((row) => row.draft_id)]);
   const drafts: ApiDraft[] = rows.map((row) => ({
-    id: row.id, subject: row.record.subject, type: row.record.type, originator: row.record.originator, precedence: row.record.precedence,
+    id: row.id, subject: row.record.subject, type: row.record.type, subtag: row.record.subtag, originator: row.record.originator, precedence: row.record.precedence,
     classification: row.record.classification, to: [], info: [], paragraphs: [row.rendered_text], drafterId: row.created_by,
     drafterName: row.drafter_name, status: row.workflow_status, route: row.routing_route, workflowId: row.workflow_id ?? undefined,
     created: row.created_at.toISOString(), updated: row.updated_at.toISOString(), revision: row.routing_revision, customRoute: row.route_custom,

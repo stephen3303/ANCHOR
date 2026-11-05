@@ -1,3 +1,4 @@
+import { keyCovers } from "./message-types";
 import type { Message } from "./types";
 
 /** Topic names are exact, author-defined Type values, not workflow categories. */
@@ -8,7 +9,19 @@ export interface MessageTopic {
   subscribed: boolean;
 }
 
+/**
+ * A message is in the feed when its own topic is subscribed, or when a
+ * subscribed topic is its type alone: SAFETY catches SAFETY:ELECTRICAL
+ * (MSGID field 2, type:subtag). Names compare exactly, so case still matters.
+ */
 export function subscribedMessages(messages: Message[], topics: readonly MessageTopic[]): Message[] {
-  const ids = new Set(topics.filter((topic) => topic.subscribed).map((topic) => topic.id));
-  return messages.filter((message) => !!message.subscriptionTopicId && ids.has(message.subscriptionTopicId));
+  const subscribed = topics.filter((topic) => topic.subscribed);
+  const ids = new Set(subscribed.map((topic) => topic.id));
+  const names = topics.reduce((map, topic) => map.set(topic.id, topic.name), new Map<string, string>());
+  return messages.filter((message) => {
+    if (!message.subscriptionTopicId) return false;
+    if (ids.has(message.subscriptionTopicId)) return true;
+    const name = names.get(message.subscriptionTopicId) ?? message.subscriptionType;
+    return !!name && subscribed.some((topic) => keyCovers(topic.name, name));
+  });
 }

@@ -1,4 +1,5 @@
 import "server-only";
+import { keyParts } from "@/lib/message-types";
 import type { AppUser } from "@/lib/users";
 import type { Message, RouteStep, RoutingEventType, WorkflowStep } from "@/lib/types";
 import { selectWorkflow, nextAssignment } from "@/lib/routing";
@@ -62,9 +63,9 @@ export async function updateMessage(id: string, payload: unknown, user: AppUser)
       const input = parseMessageInputs({ templateVersionId: row.template_version_id, subject: body.subject, precedence: body.precedence, messageType: body.messageType, values: body.values });
       const snapshot = await renderSnapshot(client,input,user,true);
       await client.query(`UPDATE message_drafts SET subject=$2,message_type=$3,precedence=$4,input_values=$5::jsonb,rendered_document=$6::jsonb,rendered_text=$7,render_metadata=$8::jsonb,originator=$9 WHERE id=$1`,
-        [row.draft_id,input.subject,input.messageType,input.precedence,JSON.stringify(snapshot.values),JSON.stringify({sections:snapshot.sections,body:snapshot.text}),snapshot.text,JSON.stringify(snapshot.metadata),user.commandName]);
+        [row.draft_id,input.subject,snapshot.messageKey,input.precedence,JSON.stringify(snapshot.values),JSON.stringify({sections:snapshot.sections,body:snapshot.text}),snapshot.text,JSON.stringify(snapshot.metadata),user.commandName]);
       await saveReferences(client,row.draft_id,snapshot);
-      message = {...message,subject:input.subject,type:input.messageType,precedence:input.precedence,originator:user.commandName,renderedText:snapshot.text,rawText:snapshot.text,sections:snapshot.sections,sizeKb:Buffer.byteLength(snapshot.text)/1024};
+      message = {...message,subject:input.subject,subtag:undefined,...keyParts(snapshot.messageKey),precedence:input.precedence,originator:user.commandName,renderedText:snapshot.text,rawText:snapshot.text,sections:snapshot.sections,sizeKb:Buffer.byteLength(snapshot.text)/1024};
       status="drafting"; route=pendingRoute(route);
       event="revised"; eventComment="Template inputs revised. Routing stopped and all approvals cleared; resubmit for fresh review.";
     } else if (action === "route") {

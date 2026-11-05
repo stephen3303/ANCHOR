@@ -4,6 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:https": "node scripts/dev-https.mjs",
+    "https:certs": "node scripts/create-https-certs.mjs",
+    "test:https:config": "node --test scripts/https-config.test.mjs",
+    "test:https": "node scripts/test-https.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

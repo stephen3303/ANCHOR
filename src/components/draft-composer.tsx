@@ -5,8 +5,8 @@ import { Button, Panel } from "@/components/ui";
 import { TemplateForm, templateInputClass } from "@/components/template-preview";
 import type { TemplateDefinition, TemplateSummary, TemplateValues } from "@/lib/message-templates";
 import { MessageInputError, PRECEDENCES, validateMessageInputs } from "@/lib/message-inputs";
-import { DRAFT_TYPES } from "@/lib/routing";
-import type { MessageType, Precedence } from "@/lib/types";
+import { DRAFT_KEYS, keyOption, messageKey, splitKey } from "@/lib/message-types";
+import type { Precedence } from "@/lib/types";
 import type { ApiDraft } from "@/lib/routing-api";
 import { useRouting } from "@/lib/routing-store";
 import { useStore } from "@/lib/store";
@@ -20,7 +20,7 @@ export function DraftComposer({ draft, onSaved }: { draft?: ApiDraft; onSaved: (
   const [definition, setDefinition] = useState<PublishedTemplate | null>(draft ? { ...draft.definition, id: draft.templateVersionId, versionId: draft.templateVersionId, version: draft.templateVersion } : null);
   const [subject, setSubject] = useState(draft?.subject ?? "");
   const [precedence, setPrecedence] = useState<Precedence>(draft?.precedence ?? "ROUTINE");
-  const [messageType, setMessageType] = useState<MessageType>(draft?.type ?? "COMSUBLANT MSG");
+  const [messageType, setMessageType] = useState(draft ? messageKey(draft.type, draft.subtag) : "GENADMIN");
   const [listLoading, setListLoading] = useState(!draft);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -49,6 +49,9 @@ export function DraftComposer({ draft, onSaved }: { draft?: ApiDraft; onSaved: (
     return () => controller.abort();
   }, [selected, retry, draft]);
 
+  // A template's Type field writes MSGID field 2 (TYPE or TYPE:SUBTAG), and the rendered line decides the type.
+  const typeField = definition?.fields.find((field) => field.name === "Type" || field.name === "Msg Type");
+  const typeFromTemplate = !!typeField;
   const save = async (raw: TemplateValues) => {
     if (!definition || busy) return;
     setError(""); setFieldErrors({});
@@ -91,7 +94,9 @@ export function DraftComposer({ draft, onSaved }: { draft?: ApiDraft; onSaved: (
     {definition && <Panel title={`${draft ? "Edit pinned template:" : "2. Fill in"} ${definition.name} (version ${definition.version})`}>
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
         <label className="block space-y-1 text-sm font-semibold">Message subject<input className={templateInputClass} maxLength={200} value={subject} disabled={busy} onChange={(event) => setSubject(event.target.value)} />{fieldErrors._subject && <span role="alert" className="text-red-700">{fieldErrors._subject}</span>}</label>
-        <label className="block space-y-1 text-sm font-semibold">Message type<select className={templateInputClass} value={messageType} disabled={busy} onChange={(event) => setMessageType(event.target.value as MessageType)}>{DRAFT_TYPES.map((value) => <option key={value}>{value}</option>)}</select></label>
+        {typeFromTemplate
+          ? <p className="space-y-1 text-sm"><span className="block font-semibold">Message type</span>{typeField?.fixedValue ? <span className="block font-mono">{typeField.fixedValue}</span> : null}<span className="text-muted">Set by the template&apos;s Type field, which writes MSGID field 2.</span></p>
+          : <label className="block space-y-1 text-sm font-semibold">Message type<select className={templateInputClass} value={messageType} disabled={busy} onChange={(event) => setMessageType(event.target.value)}>{DRAFT_KEYS.map((key) => <option key={key} value={key}>{splitKey(key)[1] ? "\u00a0\u00a0" : ""}{keyOption(key)}</option>)}</select></label>}
         <label className="block space-y-1 text-sm font-semibold">Precedence<select className={templateInputClass} value={precedence} disabled={busy} onChange={(event) => setPrecedence(event.target.value as Precedence)}>{PRECEDENCES.map((value) => <option key={value}>{value}</option>)}</select></label>
       </div>
       <TemplateForm key={definition.versionId} definition={definition} initialValues={draft?.inputValues} initialCommands={draft?.commandSelections} onSubmit={save} disabled={busy || routing.busy} fieldErrors={fieldErrors} submitLabel={draft ? "Save corrections" : "Save draft"} />

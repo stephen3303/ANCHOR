@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { MESSAGE_COLUMN_LABELS, MESSAGE_COLUMN_ORDER, orderMessageColumns } from "./message-columns";
 
 test("the Messages page columns come first, in the Messages page order", () => {
-  const messagesPage = ["select", "attachments", "subject", "reference", "from", "dtg", "precedence", "status"] as const;
+  const messagesPage = ["select", "attachments", "subject", "reference", "from", "dtg", "precedence", "category", "type", "status"] as const;
   assert.deepEqual(MESSAGE_COLUMN_ORDER.filter((c) => (messagesPage as readonly string[]).includes(c)), [...messagesPage]);
 });
 

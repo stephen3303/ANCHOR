@@ -89,7 +89,20 @@ and published-message/topic mapping, plus mutable per-user subscriptions. An
 AFTER INSERT trigger on `messages` registers its Type atomically with publication.
 Local traffic resolves Type from the draft's pinned version (or legacy saved
 manual Type), not a mutable template or a wrapped preview. Received traffic falls
-back to MSGID. No topics are created by draft creation or queued releases.
+back to MSGID. Draft creation and queued releases do not add published-message
+mappings or increase message counts.
+
+Migration `010-template-message-topics.sql` adds the other registration path:
+a published template version advertises its fixed Type immediately, even with
+zero messages. The catalog query includes these types so users can subscribe in
+advance. Both paths use the unique topic name with `ON CONFLICT DO NOTHING`,
+preserving existing topic IDs and user memberships. No user is auto-subscribed.
+The template trigger is transactional with creation/revision; unpublished
+versions do not advertise types. Type changes advertise an additional topic,
+never rename historical topics. Backfill covers only the latest published fixed
+Type of active templates (including legacy Msg Type); skip archived templates,
+unpublished versions and templates with no fixed Type. No applied migration is
+edited and no canonical template/message data is rewritten.
 
 The migration backfills derived metadata only; canonical messages, artifacts and
 message pins are unchanged. Topic names are trimmed, case-sensitive and unique.
@@ -113,7 +126,7 @@ their own memberships; this does not change message access permissions.
 | `outgoing_message_events` | Append-only approval history with authenticated actor and approved snapshot hash. |
 | `command_routing` | Persisted per-command workflows, designations, settings and serialized release counter. |
 | `messages` / `message_artifacts` | Published message records and immutable text artifacts; local drafts are absent until transmission. |
-| `message_topics` | Immutable Type/MSGID names discovered from published traffic. |
+| `message_topics` | Immutable Type/MSGID names advertised by published templates or traffic, including zero-message types. |
 | `message_topic_messages` | Immutable published-message to topic mapping. |
 | `message_topic_subscriptions` | Personal, freely managed memberships keyed by session user and topic. |
 | `schema_migrations` | Applied migration ledger. |

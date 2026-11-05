@@ -162,7 +162,7 @@ const SIM_ID_PREFIX = "sim-";
 export const isSimMessageId = (id: string) => id.startsWith(SIM_ID_PREFIX);
 export const simMessageId = (m: Pick<SimMessage, "seq">) => `${SIM_ID_PREFIX}${m.seq}`;
 
-const TYPE_BY_ORIGINATOR: [string, MessageType][] = [["CNO", "ALNAV"], ["COMSUBLANT", "COMSUBLANT MSG"]];
+const TYPE_BY_ORIGINATOR: [string, MessageType][] = [["CNO", "ALNAV"], ["COMSUBLANT", "GENADMIN"]];
 const IMPORTANCE: Record<Precedence, Message["importance"]> = { FLASH: "High", IMMEDIATE: "High", PRIORITY: "Medium", ROUTINE: "Low" };
 
 /** The inbox copy of a simulated message once a workstation has been handed it. */
@@ -175,7 +175,7 @@ export function toInboxMessage(m: SimMessage, at: string): Message {
     received: at,
     subject: m.subject,
     reference: m.reference,
-    type: TYPE_BY_ORIGINATOR.find(([k]) => m.originator.startsWith(k))?.[1] ?? "FLEET MSG",
+    type: TYPE_BY_ORIGINATOR.find(([k]) => m.originator.startsWith(k))?.[1] ?? "GENADMIN",
     originator: m.originator,
     source: m.originator.split(" ")[0],
     to: m.to,
@@ -184,7 +184,6 @@ export function toInboxMessage(m: SimMessage, at: string): Message {
     classification: m.classification,
     importance: IMPORTANCE[m.precedence],
     lifecycle: "ACTIVE",
-    communities: ["Submarine Warfare"],
     attachments: [],
     sections: [{ heading: "Text", body: paragraphs }],
     rawText: raw,

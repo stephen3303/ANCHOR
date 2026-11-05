@@ -25,3 +25,18 @@ test("no subscriptions, unknown topics and untyped/demo messages never fall back
 test("unsubscribe removes prior matching messages; subscribing includes older messages", () => {
   assert.deepEqual(subscribedMessages(messages, topics.map((topic) => ({ ...topic, subscribed: topic.id === "beta" }))).map((message) => message.id), ["second"]);
 });
+test("subscribing to a type catches its subtags, but a subtag does not catch its type", () => {
+  const typed: MessageTopic[] = [
+    { id: "safety", name: "SAFETY", subscribed: true, messageCount: 1 },
+    { id: "electrical", name: "SAFETY:ELECTRICAL", subscribed: false, messageCount: 1 },
+    { id: "safetyish", name: "SAFETYGRAM", subscribed: false, messageCount: 1 },
+  ];
+  const traffic = [
+    { id: "s", type: "SAFETY", subscriptionTopicId: "safety" },
+    { id: "e", type: "SAFETY", subscriptionTopicId: "electrical" },
+    { id: "g", type: "SAFETY", subscriptionTopicId: "safetyish" },
+  ] as Message[];
+  assert.deepEqual(subscribedMessages(traffic, typed).map((m) => m.id), ["s", "e"]);
+  const subOnly = typed.map((t) => ({ ...t, subscribed: t.id === "electrical" }));
+  assert.deepEqual(subscribedMessages(traffic, subOnly).map((m) => m.id), ["e"]);
+});

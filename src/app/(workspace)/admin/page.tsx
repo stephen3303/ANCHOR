@@ -4,7 +4,9 @@ import { hasRole, SUBSCRIPTION_APPROVER } from "@/lib/roles";
 import { useEffect, useState } from "react";
 import { BellRing, Check as CheckIcon, Lock, ShieldCheck, UserCog, Users, X } from "lucide-react";
 import { useCurrentUser } from "@/lib/current-user";
+import { PRECEDENCE_OBJECTIVE } from "@/lib/message-types";
 import { useStore } from "@/lib/store";
+import type { Precedence } from "@/lib/types";
 import { Button, EmptyState, PageHeader, Panel, Pill, PrecedenceBadge, Tabs, tableWrap, td, th, theadRow, tbodyRow } from "@/components/ui";
 import { RoutingAdminPanel } from "@/components/routing-admin";
 import { UserAdminPanel } from "@/components/user-admin";
@@ -12,7 +14,7 @@ import { UserAdminPanel } from "@/components/user-admin";
 // Business rules that make delivery mandatory (ANCHOR.txt section 6).
 const ALERT_RULES = [
   { rule: "Precedence", match: <><PrecedenceBadge p="FLASH" /> <PrecedenceBadge p="IMMEDIATE" /></>, audience: "All addressed units", ack: "Required, 2h", escalate: "Department Head → XO" },
-  { rule: "Message type", match: "SAFETY MSG", audience: "All personnel", ack: "Required, 24h", escalate: "Safety Officer" },
+  { rule: "Message type", match: "SAFETY (all subtags)", audience: "All personnel", ack: "Required, 24h", escalate: "Safety Officer" },
   { rule: "Command applicability", match: "COMSUBLANT action messages", audience: "Commanding Officers, XOs", ack: "Required, 48h", escalate: "SUBRON Commander" },
   { rule: "Role", match: "Cybersecurity directives", audience: "ISSM, IT Chief", ack: "Required, 72h", escalate: "Comms Officer" },
 ];
@@ -126,6 +128,32 @@ function Overview() {
                     <td className={td}>{r.audience}</td>
                     <td className={td}>{r.ack}</td>
                     <td className={td}>{r.escalate}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+
+        <Panel title="Precedence Objectives" icon={BellRing}>
+          <p className="mb-3 text-sm text-muted">Speed-of-service objectives from NTP 3(J): handling time from time of file at the originator&apos;s communications center to receipt at the addressee&apos;s.</p>
+          <div className={tableWrap}>
+            <table className="w-full min-w-[420px]">
+              <thead>
+                <tr className={theadRow}>
+                  <th className={th}>Precedence</th>
+                  <th className={th}>Prosign</th>
+                  <th className={th}>Objective</th>
+                  <th className={th}>Use for</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(Object.keys(PRECEDENCE_OBJECTIVE) as Precedence[]).map((p) => (
+                  <tr key={p} className={tbodyRow}>
+                    <td className={td}><PrecedenceBadge p={p} /></td>
+                    <td className={`${td} font-mono`}>{PRECEDENCE_OBJECTIVE[p].prosign}</td>
+                    <td className={td}>{PRECEDENCE_OBJECTIVE[p].label}</td>
+                    <td className={td}>{PRECEDENCE_OBJECTIVE[p].use}</td>
                   </tr>
                 ))}
               </tbody>

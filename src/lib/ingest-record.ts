@@ -14,8 +14,11 @@ export function toAddressees(parsed: ParsedMessage["addressees"]): Addressee[] {
   });
 }
 
-/** The originating command's source code: "COMSUBLANT N3" -> "COMSUBLANT". */
-export const sourceOf = (originator: string) => originator.trim().split(/\s+/)[0].toUpperCase();
+/** The originating command's source code: "COMSUBLANT N3" -> "COMSUBLANT", "USS Ironfin" -> "USS IRONFIN". */
+export function sourceOf(originator: string) {
+  const words = originator.trim().toUpperCase().split(/\s+/);
+  return /^(USS|USNS)$/.test(words[0]) && words[1] ? `${words[0]} ${words[1]}` : words[0];
+}
 
 export interface Integrity {
   c2oixId: string;
@@ -32,6 +35,7 @@ export function messageFromParsed(p: ParsedMessage, raw: string, integrity: Inte
     subject: p.subject,
     reference: p.reference,
     type: p.type,
+    ...(p.subtag ? { subtag: p.subtag } : {}),
     originator: p.originator,
     source: sourceOf(p.originator),
     to: p.to,
@@ -41,7 +45,6 @@ export function messageFromParsed(p: ParsedMessage, raw: string, integrity: Inte
     importance: IMPORTANCE[p.precedence],
     lifecycle: ownLifecycle(p),
     relatesTo: p.directive?.target,
-    communities: [],
     attachments: [],
     sections: p.poc ? [...p.sections, { heading: "Point of Contact", body: [p.poc] }] : p.sections,
     rawText: raw,

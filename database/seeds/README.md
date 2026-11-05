@@ -44,6 +44,11 @@ command using the same application validator/compiler. Matching by the stable
 UI-created template without duplicating it, rewriting its UUID or republishing
 its versions. Archived templates stay archived. No messages are created by seeding.
 
+The **Type** value is MSGID field 2 and the message's subscription key. Use a
+catalog type from `src/lib/message-types.ts`, with a subtag after a colon
+where the type has them (`SAFETY:ELECTRICAL`); drafts take their type from the
+rendered MSGID line.
+
 Changes to the JSON do not alter published versions. Publish a new version
 explicitly; do not regenerate/edit an already-applied SQL migration.
 `npm run test:templates:seed` checks both the script and the automatic migration

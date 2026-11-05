@@ -6,6 +6,7 @@ import { ArrowLeft, Bell, Clock, Copy, Download, FileText, Link2, Mail, Plus, Pr
 import { useStore } from "@/lib/store";
 import { AckPanel, Attachments, LifecycleNotice, MessageList, MessageTabs, MetadataTable, MissingMessage } from "@/components/message";
 import { Button, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tag } from "@/components/ui";
+import { keyOf, keyPath, matchesKeys } from "@/lib/message-types";
 import { DraftMessage } from "@/components/draft-message";
 import type { Message } from "@/lib/types";
 
@@ -36,9 +37,9 @@ function LoadedDetail({ m, onBack, backLabel }: { m: Message; onBack?: () => voi
   };
 
   const addToBriefing = () => {
-    const extra = m.communities.filter((c) => !briefing.communities.includes(c));
-    setBriefing({ ...briefing, communities: [...briefing.communities, ...extra] });
-    notify(`Added ${m.reference} topics to your briefing`);
+    const key = keyOf(m);
+    if (briefing.messageTypes.length && !matchesKeys(key, briefing.messageTypes)) setBriefing({ ...briefing, messageTypes: [...briefing.messageTypes, key] });
+    notify(`Added ${key} to your briefing`);
   };
 
   const actions: { icon: typeof Mail; label: string; run: () => void }[] = [
@@ -87,7 +88,7 @@ function LoadedDetail({ m, onBack, backLabel }: { m: Message; onBack?: () => voi
                 <LifecycleBadge l={m.lifecycle} />
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
-                {m.communities.map((c) => <Tag key={c}>{c}</Tag>)}
+                <Tag title={`MSGID type: ${keyPath(keyOf(m))}`}>{keyOf(m)}</Tag>
                 <button type="button" className="flex items-center gap-1 rounded border border-line px-2 py-0.5 text-xs text-link" onClick={() => notify("Personal tags are visible only to you")}>
                   <Plus className="size-3" /> Add Tag
                 </button>

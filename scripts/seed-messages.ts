@@ -14,8 +14,8 @@ const problems: string[] = [];
 for (const m of MESSAGES) {
   try {
     const p = parseNavalMessage(m.rawText);
-    const expected = { reference: normRef(m.reference), dtg: m.dtg, precedence: m.precedence, classification: m.classification, originator: m.originator.toUpperCase() };
-    const actual = { reference: p.reference, dtg: p.dtg, precedence: p.precedence, classification: p.classification, originator: p.originator.toUpperCase() };
+    const expected = { reference: normRef(m.reference), dtg: m.dtg, precedence: m.precedence, classification: m.classification, originator: m.originator.toUpperCase(), type: m.type, subtag: m.subtag };
+    const actual = { reference: p.reference, dtg: p.dtg, precedence: p.precedence, classification: p.classification, originator: p.originator.toUpperCase(), type: p.type, subtag: p.subtag };
     for (const key of Object.keys(expected) as (keyof typeof expected)[]) {
       if (expected[key] !== actual[key]) problems.push(`${m.reference}: ${key} reads "${actual[key]}", record says "${expected[key]}"`);
     }

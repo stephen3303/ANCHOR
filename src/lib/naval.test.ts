@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { MESSAGES, resolveAckStatus } from "./data";
 import { messageFromParsed } from "./ingest-record";
-import { fromDtg, NavalParseError, normRef, ownLifecycle, parseNavalMessage, targetLifecycle, toDtg } from "./naval";
+import { categoryOf, DRAFT_KEYS, isKnownKey, keyOf, keyOption, matchesKeys, precedenceAdvisory, PRECEDENCE_OBJECTIVE } from "./message-types";
+import { fromDtg, msgidKey, NavalParseError, normRef, ownLifecycle, parseNavalMessage, targetLifecycle, toDtg } from "./naval";
 
 const SAMPLE = `O 041530Z NOV 26
 FM COMSUBFOR N3
@@ -35,6 +36,7 @@ test("every demo message's raw text parses back to its record", () => {
     assert.equal(p.classification, m.classification, m.reference);
     assert.equal(p.originator.toUpperCase(), m.originator.toUpperCase(), m.reference);
     assert.equal(p.subject, m.subject.toUpperCase(), m.reference);
+    assert.equal(p.type, m.type, m.reference);
     assert.ok(p.sections.length > 0, m.reference);
   }
 });
@@ -94,4 +96,63 @@ test("sent-traffic status counts only the receipts it is given", () => {
   assert.equal(resolveAckStatus(m, []).commands.filter((c) => c.receipts.length).length, 0);
   const { commands } = resolveAckStatus(m, [{ command: "SUBRON 4", at: "2026-10-24T05:40:00Z" }]);
   assert.deepEqual(commands.filter((c) => c.receipts.length).map((c) => c.command), ["SUBRON 4"]);
+});
+
+test("the MSGID message identifier sets the type, and general messages go by title", () => {
+  const withMsgid = (msgid: string) => parseNavalMessage(SAMPLE.replace(/MSGID\/.*\n/, `${msgid}\n`)).type;
+  assert.equal(withMsgid("MSGID/CASREP/USS STONEFISH/STONEFISH CASREP 26-004//"), "CASREP");
+  assert.equal(withMsgid("MSGID/OPREP-3/USS STONEFISH/STONEFISH SITREP 003/26//"), "OPREP-3");
+  assert.equal(withMsgid("MSGID/MOVREP/USS STONEFISH/STONEFISH MOVREP 012/26//"), "MOVREP");
+  assert.equal(withMsgid("MSGID/LOGREQ/USS STONEFISH/STONEFISH LOGREQ 007/26//"), "LOGREQ");
+  assert.equal(withMsgid("MSGID/GENADMIN/COMSUBLANT N3/COMSUBLANT 090/26//"), "GENADMIN");
+  assert.equal(withMsgid("MSGID/GENADMIN/CNO WASHINGTON DC/NAVADMIN 240/26//"), "NAVADMIN");
+  assert.equal(withMsgid("MSGID/GENADMIN/CMC WASHINGTON DC/ALMAR 012/26//"), "ALMAR");
+  assert.equal(withMsgid("MSGID/SOMEMTF/USFF N7/USFF 2026-12//"), "GENADMIN");
+});
+
+test("categories follow NTP 3(J): operational reports versus administrative traffic", () => {
+  for (const t of ["MOVREP", "LOGREQ", "OPREP-3", "OPREP-5", "CASREP", "INDIGO"] as const) assert.equal(categoryOf(t), "Operational", t);
+  for (const t of ["GENADMIN", "NAVADMIN", "ALNAV", "ALMAR", "MARADMIN"] as const) assert.equal(categoryOf(t), "Administrative", t);
+  assert.equal(categoryOf("SAFETY"), "Administrative");
+  assert.equal(categoryOf("SUBMARINE"), "Operational");
+});
+
+test("precedence objectives and the administrative precedence ceiling", () => {
+  assert.deepEqual(Object.values(PRECEDENCE_OBJECTIVE).map((o) => [o.prosign, o.minutes]), [["Z", 10], ["O", 30], ["P", 180], ["R", 360]]);
+  assert.equal(precedenceAdvisory("GENADMIN", "PRIORITY"), null);
+  assert.match(precedenceAdvisory("GENADMIN", "IMMEDIATE") ?? "", /death, serious illness/);
+  assert.equal(precedenceAdvisory("OPREP-3", "FLASH"), null);
+});
+
+test("MSGID field 2 carries TYPE:SUBTAG as one field", () => {
+  const parse = (msgid: string) => parseNavalMessage(SAMPLE.replace(/MSGID\/.*\n/, `${msgid}\n`));
+  const safety = parse("MSGID/SAFETY:ELECTRICAL/COMSUBLANT N3/COMSUBLANT 091/26//");
+  assert.deepEqual([safety.type, safety.subtag, safety.originator, safety.reference], ["SAFETY", "ELECTRICAL", "COMSUBLANT N3", "COMSUBLANT 091/26"]);
+  // No subtag: the type alone.
+  const whole = parse("MSGID/SAFETY/COMSUBLANT N3/COMSUBLANT 092/26//");
+  assert.deepEqual([whole.type, whole.subtag, whole.originator], ["SAFETY", undefined, "COMSUBLANT N3"]);
+  // A subtag the type does not define is dropped; field 3 is always the originator.
+  assert.deepEqual([parse("MSGID/safety:bogus/COMSUBLANT N3/COMSUBLANT 094/26//")].map((p) => [p.type, p.subtag, p.originator])[0], ["SAFETY", undefined, "COMSUBLANT N3"]);
+  const genadmin = parse("MSGID/GENADMIN/COMSUBLANT N3/COMSUBLANT 093/26//");
+  assert.deepEqual([genadmin.type, genadmin.subtag, genadmin.originator], ["GENADMIN", undefined, "COMSUBLANT N3"]);
+  assert.equal(messageFromParsed(safety, "x", { c2oixId: "C2OIX-26-060001", sha256: "b".repeat(64), sizeBytes: 1 }).subtag, "ELECTRICAL");
+});
+
+test("a subscription to a type catches every subtag; a subtag catches only itself", () => {
+  assert.equal(matchesKeys("SAFETY:ELECTRICAL", ["SAFETY"]), true);
+  assert.equal(matchesKeys("SAFETY:ELECTRICAL", ["SAFETY:MOTORCYCLE"]), false);
+  assert.equal(matchesKeys("SAFETY", ["SAFETY:ELECTRICAL"]), false);
+  assert.equal(matchesKeys("CASREP", ["CASREP"]), true);
+  assert.equal(matchesKeys("POLICY:RECORDS", []), true);
+  for (const m of MESSAGES) assert.ok(isKnownKey(keyOf(m)), `${m.reference}: ${keyOf(m)}`);
+});
+
+test("a draft takes its type from the MSGID line its template renders", () => {
+  assert.ok(DRAFT_KEYS.includes("SAFETY:ELECTRICAL") && DRAFT_KEYS.includes("GENADMIN") && !DRAFT_KEYS.includes("NAVADMIN"));
+  assert.equal(keyOption("SAFETY:ELECTRICAL"), "SAFETY:ELECTRICAL - Electrical Safety");
+  assert.equal(msgidKey("BT\nUNCLAS//\nMSGID/SAFETY:ELECTRICAL/COMSUBLANT NORFOLK VA//\nSUBJ/X//"), "SAFETY:ELECTRICAL");
+  assert.equal(msgidKey("MSGID/casrep/USS STONEFISH//"), "CASREP");
+  assert.equal(msgidKey("MSGID/READINESS REPORT/COMSUBLANT//"), undefined, "free text the catalog does not know");
+  assert.equal(msgidKey("MSGID/NAVADMIN/CNO//"), undefined, "receive-only types are not drafted here");
+  assert.equal(msgidKey("SUBJ/NO MSGID//"), undefined);
 });

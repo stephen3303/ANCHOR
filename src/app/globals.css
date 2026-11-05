@@ -31,12 +31,22 @@ body {
   color: var(--color-ink);
 }
 
-/* Print: drop the app chrome so a message prints as an official rendition. */
+/* The viewport belongs to the application shell. Scrolling is handled by its
+ * main pane, sidebar, dialogs, and the sign-in pane, not the document itself. */
+
+/* Printing must release both root and content-pane viewport constraints. */
 @media print {
   .no-print {
     display: none !important;
   }
+  html,
   body {
+    height: auto !important;
+    overflow: visible !important;
+    overscroll-behavior: auto;
+  }
+  body {
+    display: block !important;
     background: white;
   }
   .print-full {

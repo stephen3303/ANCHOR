@@ -40,8 +40,8 @@ export function DemoSignIn({ onSignIn }: { onSignIn: (user: AppUser) => void }) 
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Sign-in failed."); }
     finally { setBusy(false); }
   };
-  return <div className="flex min-h-screen items-center justify-center bg-navy-50 p-5">
-    <section className="w-full max-w-lg space-y-4 rounded-lg border border-line bg-white p-6 shadow-sm">
+  return <div data-testid="sign-in-pane" className="flex min-h-0 flex-1 overflow-y-auto overscroll-contain bg-navy-50 p-5">
+    <section className="m-auto w-full max-w-lg shrink-0 space-y-4 rounded-lg border border-line bg-white p-6 shadow-sm">
       <h1 className="text-2xl font-bold">ANCHOR — Demo sign in</h1>
       <p className="text-sm text-muted">Select an account for this browser. This passwordless hackathon login does not verify identity. Do not use operational or classified data.</p>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
@@ -83,7 +83,7 @@ export function UserProvider({ initialUser, children }: { initialUser: AppUser; 
   };
   // Always render the route slot. Sign-in lives on /login; session transitions
   // navigate there rather than dropping the workspace's children from rendering.
-  return <Context.Provider key={user.id} value={{ user, signOut }}>{error && <p role="alert" className="bg-red-50 p-2 text-red-800">{error}</p>}{children}</Context.Provider>;
+  return <Context.Provider key={user.id} value={{ user, signOut }}>{error && <p role="alert" className="no-print max-h-[25dvh] shrink-0 overflow-y-auto overscroll-contain bg-red-50 p-2 text-red-800">{error}</p>}{children}</Context.Provider>;
 }
 export function useCurrentUser(): AppUser {
   const value = useContext(Context);

@@ -34,6 +34,7 @@ const nextConfig: NextConfig = {
     return [
       ...["/simulators", "/topology", "/offline"].map((source) => ({ source, destination: "/network", permanent: true })),
       { source: "/personalized-preview", destination: "/", permanent: false },
+      { source: "/watch-turnover", destination: "/?view=watch&handoff=open#watch-handoff", permanent: false },
     ];
   },
   cacheComponents: true,

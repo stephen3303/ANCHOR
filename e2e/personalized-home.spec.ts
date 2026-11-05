@@ -105,3 +105,24 @@ test('creation preserves the warning when browser storage is blocked', async ({ 
   await expect(page.getByRole('combobox', { name: 'Viewing as' })).toContainText('Session-only view');
   await expect(page.getByRole('status').filter({ hasText: 'Browser storage is unavailable' })).toBeVisible();
 });
+
+
+test('legacy turnover URL opens Watch Officer handoff without changing the saved default', async ({ page }) => {
+  // The server-rendered heading precedes hydration; wait for the client-only
+  // handoff request before changing a native select on this fresh page.
+  await Promise.all([
+    page.waitForResponse(response => response.url().endsWith('/api/watch-handoffs') && response.request().method() === 'GET'),
+    page.reload(),
+  ]);
+  await page.getByRole('combobox', { name: 'Viewing as', exact: true }).selectOption('safety');
+  await page.getByRole('button', { name: 'Set as default', exact: true }).click();
+  await page.goto('/watch-turnover');
+  await expect(page).toHaveURL(/\/\?view=watch&handoff=open#watch-handoff$/);
+  await expect(page.getByRole('combobox', { name: 'Viewing as', exact: true })).toHaveValue('watch');
+  await expect(page.getByRole('region', { name: 'View controls', exact: true })).toContainText('Default: Safety Officer');
+  const handoff = page.getByRole('region', { name: 'Watch Handoff', exact: true });
+  await expect(handoff.getByRole('button', { name: 'Refresh handoff', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Main', exact: true }).getByRole('link', { name: 'Watch Turnover', exact: true })).toHaveCount(0);
+  await page.getByRole('combobox', { name: 'Viewing as', exact: true }).selectOption('training');
+  await expect(handoff).toBeHidden();
+});

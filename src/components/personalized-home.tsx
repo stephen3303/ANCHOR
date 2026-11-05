@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowRight, BellRing, CalendarClock, Check, ChevronRight, Mail, Plus, Settings2, Star, X } from "lucide-react";
+import { BellRing, CalendarClock, Check, ChevronRight, Mail, Plus, Settings2, Star, X } from "lucide-react";
 import { useCurrentUser } from "@/lib/current-user";
 import { useStore } from "@/lib/store";
 import { hasRole, MESSAGE_ADMIN } from "@/lib/roles";
@@ -11,6 +10,7 @@ import { MOCK_NOW, fmtDateTime, fmtTime } from "@/lib/format";
 import { currentMessage, actionDeadline, remaining } from "@/lib/watch-workspace";
 import { Button, Panel, PrecedenceBadge } from "@/components/ui";
 import { MessageReaderNavigation } from "@/components/message";
+import { WatchHandoff } from "@/components/watch-handoff";
 import { MessageDetail } from "@/app/(workspace)/messages/[id]/detail";
 import { MESSAGE_TYPE_INFO } from "@/lib/message-types";
 import type { Message, MessageType } from "@/lib/types";
@@ -65,6 +65,7 @@ export function PersonalizedHome() {
   const [topics, setTopics] = useState<MessageType[]>([]);
   const [notice, setNotice] = useState("");
   const [noticeTone, setNoticeTone] = useState<"success" | "warning">("success");
+  const [openHandoffOnLoad, setOpenHandoffOnLoad] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const manager = useRef<HTMLDivElement>(null);
   const nameInput = useRef<HTMLInputElement>(null);
@@ -76,7 +77,7 @@ export function PersonalizedHome() {
   const deadlines = useRef<HTMLDivElement>(null);
   const key = `anchor:personalized-home-preview:${user.id}`;
   useEffect(() => {
-    const timer = setTimeout(() => { const saved = readPreferences(key); setPreferences(saved); setViewId(saved.defaultId); }, 0);
+    const timer = setTimeout(() => { const saved = readPreferences(key); const query = new URLSearchParams(window.location.search); setPreferences(saved); setViewId(query.get("view") === "watch" ? "watch" : saved.defaultId); setOpenHandoffOnLoad(query.get("handoff") === "open"); }, 0);
     return () => clearTimeout(timer);
   }, [key]);
   useEffect(() => {
@@ -147,6 +148,7 @@ export function PersonalizedHome() {
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-slate-50 px-4 py-2.5 text-xs text-muted"><span>Received {fmtDateTime(new Date(start))} → {fmtDateTime(MOCK_NOW)}</span><span>Default: <strong className="text-ink">{defaultName}</strong> · Switching views keeps your time period</span></div>
     </section>
+    <WatchHandoff active={view.id === "watch"} openOnLoad={openHandoffOnLoad} onOpenMessage={open} />
     {notice && <p role="status" className={`rounded-md border px-3 py-2 text-sm ${noticeTone === "warning" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-green-200 bg-green-50 text-green-900"}`}>{notice}</p>}
     {manage && <div ref={manager} className="scroll-mt-4"><Panel title="Manage my views" action={<button aria-label="Close view manager" onClick={() => setManage(false)}><X className="size-4" /></button>}>
       <p className="mb-3 text-sm text-muted">Official duty assignments will come from administrators. These three example duties demonstrate the design. Personal views and defaults below are saved only in this browser.</p>
@@ -187,7 +189,7 @@ export function PersonalizedHome() {
           {!upcoming.length&&<p className="text-sm text-muted">No upcoming deadlines recorded for this view. Review sources for untracked requirements.</p>}
         </Panel></div>
         <Panel title="Your responsibilities"><p className="mb-3 text-xs text-muted">Example duty switcher · official assignments will be administrator-managed.</p><div className="space-y-1">{EXAMPLES.map(v=><button key={v.id} className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm ${view.id===v.id?"bg-navy-50 font-semibold text-navy-900":"hover:bg-slate-50"}`} onClick={()=>setView(v.id)}><span>{v.name}</span>{view.id===v.id?<Check className="size-4" aria-hidden/>:<ChevronRight className="size-3.5 text-muted" aria-hidden/>}</button>)}</div><button className="mt-3 flex items-center gap-1 text-xs font-semibold text-link" onClick={openManager}><Plus className="size-3.5" aria-hidden/>Create a personal view</button></Panel>
-        <div className="rounded-xl border border-line bg-navy-950 p-4 text-white"><p className="font-semibold">Taking the watch?</p><p className="mt-1 text-xs leading-relaxed text-white/75">Use Watch Turnover for handoff notes, carryover, and the turnover checklist.</p><Link href="/watch-turnover" className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-gold">Open Watch Turnover <ArrowRight className="size-3.5" aria-hidden/></Link></div>
+
       </aside>
     </div>
     <details className="rounded-md border border-line bg-white px-3 py-2 text-xs text-muted"><summary className="cursor-pointer">About your personalized Home</summary><p className="mt-2">This is your personalized Home page. Duty choices are examples, not official assignments. Personal views/defaults are browser-local and account-specific. Department mappings and command alert rules are not yet connected. Existing access and acknowledgement permissions are unchanged. Message data is fictional; no AI narrative is generated. {offline?"Offline mode is active.":"Live external ingestion is not verified."} {syncQueue.filter(q=>q.status==="Pending").length} items await sync.</p></details>

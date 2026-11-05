@@ -13,6 +13,9 @@ import type {
   SyncItem,
 } from "./types";
 import { AUDITOR, REPORT_VIEWER, rolesFor, SUBSCRIPTION_APPROVER, SYSTEM_ADMIN } from "./roles";
+import { formatReferences, isSerialOnly, normDtg, type MessageReference } from "./references";
+import { buildExamples, type BuiltExample } from "./example-traffic";
+import { idFor, ownLifecycle, targetLifecycle } from "./naval";
 
 export const CURRENT_USER = {
   name: "LT Taylor",
@@ -112,7 +115,7 @@ function c2oixIdFor(id: string) {
  * message with prosigns, uppercase sets and fixed-width lines. Seeds can supply
  * their own rawText instead. Real ingest would store the received bytes here.
  */
-function rawMessage(s: Seed, serial: number): string {
+function rawMessage(s: Seed, serial: number, refs: MessageReference[]): string {
   const up = (t: string) => t.toUpperCase();
   const out: string[] = [
     `${PROSIGN[s.precedence]} ${s.dtg}`,
@@ -124,7 +127,11 @@ function rawMessage(s: Seed, serial: number): string {
     ...wrap(`SUBJ/${up(s.subject)}//`),
     `MSGID/${up(s.subtag ? `${s.type}:${s.subtag}` : s.type)}/${up(s.originator)}/${up(s.reference)}//`,
   ];
-  if (s.relatesTo) out.push(`REF/A/MSG/${up(s.relatesTo)}//`);
+  for (const r of refs) {
+    // Serial-only references are the older ANCHOR demo form, kept so that path stays tested.
+    if (isSerialOnly(r)) out.push(`REF/${r.letter}/${r.kind}/${r.serial}//`);
+  }
+  if (!refs.some(isSerialOnly)) formatReferences(refs).forEach((line) => out.push(...wrap(line)));
   const poc = s.sections.find((x) => x.heading === "Point of Contact");
   if (poc) out.push(...wrap(`POC/${up(poc.body.join(" "))}//`));
   s.sections
@@ -747,8 +754,91 @@ const seeds: Seed[] = [
   },
 ];
 
+// A message addressed to a group is tracked for acknowledgement from every
+// member command. Hull names and numbers are fictional.
+const SSNS_LANT = ["Pilot Unit (SSN)", "USS Stonefish (SSN-901)", "USS Ironfin (SSN-903)", "USS Lanternfish (SSN-905)"];
+const SSNS_PAC = ["USS Thornback (SSN-907)", "USS Ghostfin (SSN-909)"];
+
+export const COMMAND_GROUPS: AddressGroup[] = [
+  { id: "grp-alsubs", name: "ALSUBS", members: [...SSNS_LANT, ...SSNS_PAC] },
+  { id: "grp-comsublant-units", name: "All COMSUBLANT Units", members: [...SSNS_LANT, "SUBRON 4", "SUBRON 6"] },
+  { id: "grp-subron-cdrs", name: "SUBRON Commanders", members: ["SUBRON 4", "SUBRON 6"] },
+  { id: "grp-subfor-units", name: "All Submarine Force Units", members: [...SSNS_LANT, ...SSNS_PAC, "SUBRON 4", "SUBRON 6", "COMSUBLANT", "COMSUBPAC"] },
+];
+
+/* ---------- example traffic for each template ---------- */
+
+const IMPORTANCE: Record<Message["precedence"], Message["importance"]> = { FLASH: "High", IMMEDIATE: "High", PRIORITY: "Medium", ROUTINE: "Low" };
+
+/** Every example, built against the demo traffic it may cite. See example-traffic.ts. */
+const EXAMPLES: BuiltExample[] = buildExamples(seeds.map((s) => ({
+  reference: s.reference,
+  originator: s.originator,
+  dtg: s.dtg,
+  type: s.subtag ? `${s.type}:${s.subtag}` : s.type,
+  subject: s.subject,
+})));
+
+/** Example traffic the simulated C2OIX repository holds until the Message Admin releases it. */
+export const EXAMPLE_SIM_TRAFFIC = EXAMPLES.filter((e) => e.spec.sim);
+
+function exampleMessages(): Message[] {
+  const stored = EXAMPLES.filter((e) => !e.spec.sim);
+  const records = stored.map(({ spec, raw, parsed: p }, i): Message => ({
+    id: idFor(p.reference),
+    dtg: p.dtg,
+    received: p.received,
+    subject: spec.subj,
+    reference: p.reference,
+    type: p.type,
+    ...(p.subtag ? { subtag: p.subtag } : {}),
+    originator: p.originator,
+    source: sourceCode(p.originator),
+    to: p.to,
+    info: p.info,
+    precedence: p.precedence,
+    classification: p.classification,
+    importance: IMPORTANCE[p.precedence],
+    lifecycle: ownLifecycle(p),
+    ...(p.directive ? { relatesTo: p.directive.target } : {}),
+    attachments: [],
+    sections: [
+      ...spec.rmks.map(([heading, body]) => ({ heading, body: typeof body === "string" ? [body] : body })),
+      { heading: "Point of Contact", body: [spec.poc] },
+    ],
+    rawText: raw,
+    ackRequired: !!p.ackDue,
+    ...(p.ackDue ? { ackDue: p.ackDue } : {}),
+    c2oixId: `C2OIX-26-EX${String(i + 1).padStart(4, "0")}`,
+    sha256: mockSha(p.reference + p.dtg),
+    sizeKb: Math.max(1, Math.ceil(raw.length / 1024)),
+    retention: "Permanent",
+    distribution: ["COMSUBLANT N3", "COMSUBLANT N6", "COMSUBLANT Staff", "Comms Division"],
+    addressees: p.addressees.map(({ name, role }) => {
+      const group = COMMAND_GROUPS.find((g) => g.name.toUpperCase() === name.toUpperCase());
+      return group ? { name: group.name, role, kind: "group" as const } : { name, role, kind: "command" as const };
+    }),
+    related: p.references.map(idFor),
+    refs: p.refs,
+  }));
+  // A correction or supersession marks the example it replaces.
+  for (const m of records) {
+    const d = stored.find((e) => e.parsed.reference === m.reference)!.parsed.directive;
+    const effect = d && targetLifecycle(d.kind);
+    const target = d && records.find((t) => t.reference === d.target);
+    if (effect && target) Object.assign(target, { lifecycle: effect, replacedBy: m.reference });
+  }
+  return records;
+}
+
+/** "USS IRONFIN" for a ship, otherwise the first word: "COMSUBLANT N7" -> "COMSUBLANT". */
+const sourceCode = (originator: string) => {
+  const w = originator.toUpperCase().split(/\s+/);
+  return /^(USS|USNS)$/.test(w[0]) && w[1] ? `${w[0]} ${w[1]}` : w[0];
+};
+
 export const MESSAGES: Message[] = seeds
-  .map((s, i) => ({
+  .map((s, i): Message => ({
     distribution: [
       "COMSUBLANT N3",
       "COMSUBLANT N6",
@@ -759,11 +849,25 @@ export const MESSAGES: Message[] = seeds
     retention: s.lifecycle === "EXPIRED" ? "Permanent (expired)" : "Permanent",
     addressees: [],
     ...s,
-    rawText: s.rawText ?? rawMessage(s, 1001 + i),
+    refs: seedReferences(s),
+    rawText: s.rawText ?? rawMessage(s, 1001 + i, seedReferences(s)),
     c2oixId: c2oixIdFor(s.id),
     sha256: mockSha(s.id + s.dtg),
   }))
+  .concat(exampleMessages())
   .sort((a, b) => b.received.localeCompare(a.received));
+
+/**
+ * The demo message a seed changes, cited per NTP 3(J): its MSGID type, sender
+ * and DTG, with its subject in AMPN. A target the demo doesn't hold keeps the
+ * older serial-only form.
+ */
+function seedReferences(s: Seed): MessageReference[] {
+  if (!s.relatesTo) return [];
+  const target = seeds.find((t) => t.reference === s.relatesTo);
+  if (!target) return [{ letter: "A", kind: "MSG", originator: "", dtg: "", serial: s.relatesTo.toUpperCase(), notations: [] }];
+  return [{ letter: "A", kind: "GENADMIN", originator: target.originator.toUpperCase(), dtg: normDtg(target.dtg), serial: target.reference.toUpperCase(), notations: [], amplification: target.subject.toUpperCase() }];
+}
 
 export const messageById = (id: string) => MESSAGES.find((m) => m.id === id);
 export const messageByRef = (ref: string) => MESSAGES.find((m) => m.reference === ref);
@@ -1022,18 +1126,6 @@ export function actionItems(messages: Message[] = MESSAGES): ActionItem[] {
 }
 
 // Command-level pub/sub: which commands are subscribed to each address group.
-// A message addressed to a group is tracked for acknowledgement from every
-// member command. Hull names and numbers are fictional.
-const SSNS_LANT = ["Pilot Unit (SSN)", "USS Stonefish (SSN-901)", "USS Ironfin (SSN-903)", "USS Lanternfish (SSN-905)"];
-const SSNS_PAC = ["USS Thornback (SSN-907)", "USS Ghostfin (SSN-909)"];
-
-export const COMMAND_GROUPS: AddressGroup[] = [
-  { id: "grp-alsubs", name: "ALSUBS", members: [...SSNS_LANT, ...SSNS_PAC] },
-  { id: "grp-comsublant-units", name: "All COMSUBLANT Units", members: [...SSNS_LANT, "SUBRON 4", "SUBRON 6"] },
-  { id: "grp-subron-cdrs", name: "SUBRON Commanders", members: ["SUBRON 4", "SUBRON 6"] },
-  { id: "grp-subfor-units", name: "All Submarine Force Units", members: [...SSNS_LANT, ...SSNS_PAC, "SUBRON 4", "SUBRON 6", "COMSUBLANT", "COMSUBPAC"] },
-];
-
 /** True when this command originated the message (it tracks acknowledgements rather than giving one). */
 export const sentByOwnCommand = (m: Message) => m.source === CURRENT_USER.commandSource;
 

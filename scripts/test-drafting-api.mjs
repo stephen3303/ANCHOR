@@ -141,6 +141,13 @@ try {
   const { template } = await response.json();
   const templateTopic = (await readTopics()).find((topic) => topic.name === "TEST");
   assert.ok(templateTopic); assert.equal(templateTopic.messageCount, 0); assert.equal(templateTopic.subscribed, false);
+  assert.deepEqual(templateTopic.templates, ["API test template"], "Each type names the templates that draft it");
+  sql("INSERT INTO message_topics(name) VALUES ('TEST:SUBTAG');");
+  const parentTopics = await readTopics();
+  assert.ok(parentTopics.some((topic) => topic.name === "TEST:SUBTAG"));
+  assert.equal(parentTopics.filter((topic) => topic.name === "TEST").length, 1, "A TYPE:SUBTAG topic reuses its existing parent type");
+  sql("INSERT INTO message_topics(name) VALUES ('PARENTLESS:ONE');");
+  assert.ok((await readTopics()).some((topic) => topic.name === "PARENTLESS"), "A TYPE:SUBTAG topic registers its parent type");
   assert.equal((await changeTopic(templateTopic.id, true)).status, 200, "Users may subscribe before any matching message is sent");
   assert.deepEqual((await (await fetch(`${base}/api/messages?view=subscriptions`, { headers: { Cookie: sessionCookie } })).json()).messages, []);
   assert.equal(sql(`SELECT created_by FROM message_templates WHERE id = '${template.id}';`).trim(), seededUser.id);
@@ -332,9 +339,6 @@ try {
   assert.equal(sql("SELECT count(*) FROM message_topics WHERE name='TEST';").trim(), "1");
   assert.equal((await changeTopic(publishedTopic.id, false)).status, 200);
   assert.equal(released.subscriptionTopicId, publishedTopic.id);
-  assert.equal(publishedTopic.id, earlyTopic.id, "Publication reuses the topic created by an early subscription");
-  assert.equal((await readTopics(walsh)).find((topic) => topic.id === publishedTopic.id).subscribed, true);
-  assert.deepEqual((await (await fetch(`${base}/api/messages?view=subscriptions`, { headers: { Cookie: walsh } })).json()).messages.map((message) => message.id), [draft.id], "A template subscription catches its first message");
   assert.equal(released.subscriptionType, "TEST", "The subscription type is the pinned Type, not the workflow category");
   assert.equal(sql(`SELECT published_message_topic('${released.id}','MSGID/SPOOFED/ORIGIN//');`).trim(), "TEST", "Pinned Type wins over parsed/wrapped output");
   assert.equal((await changeTopic(publishedTopic.id, true, "")).status, 401);

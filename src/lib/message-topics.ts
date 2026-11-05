@@ -11,7 +11,7 @@ export interface MessageTopic {
   name: string;
   messageCount: number;
   subscribed: boolean;
-  /** Available templates whose Type this is; empty for traffic-only types. */
+  /** Active templates whose fixed Type is this topic. */
   templates?: string[];
 }
 

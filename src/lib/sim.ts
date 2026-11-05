@@ -8,6 +8,8 @@
 //
 // Traffic moves one hop at a time and waits at the last node it could reach.
 // Everything here is fictional example traffic.
+import { EXAMPLE_SIM_TRAFFIC } from "./data";
+import { idFor, parseNavalMessage } from "./naval";
 import type { Classification, Message, MessageType, Precedence } from "./types";
 
 export type Station = "ws1" | "ws2" | "ws3";
@@ -34,6 +36,8 @@ export interface SimMessage {
   subject: string;
   body: string;
   sizeKb: number;
+  /** Full text as it comes off the circuit, for example traffic written in a template's format. */
+  rawText?: string;
   /** queued and deferred are still at C2OIX; ingested is on the ANCHOR server. */
   status: "queued" | "deferred" | "ingested";
   attempts: number;
@@ -148,6 +152,21 @@ export const SIM_TRAFFIC: Omit<SimMessage, "seq" | "status" | "attempts" | "deli
   },
 ];
 
+// Example traffic for each template (example-traffic.ts), held at C2OIX until released.
+SIM_TRAFFIC.push(...EXAMPLE_SIM_TRAFFIC.map(({ spec, raw, parsed: p }) => ({
+  reference: p.reference,
+  dtg: p.dtg,
+  precedence: p.precedence,
+  classification: p.classification,
+  originator: p.originator,
+  to: p.to,
+  info: p.info,
+  sizeKb: Math.round((raw.length / 1024) * 10) / 10,
+  subject: spec.subj.toUpperCase(),
+  body: p.sections.map((x, i) => `${i + 1}. ${x.heading.toUpperCase()}. ${x.body.join(" ")}`).join("\n"),
+  rawText: raw,
+})));
+
 export const seedRepository = (): SimMessage[] =>
   SIM_TRAFFIC.map((m, i) => ({ ...m, seq: i + 1, status: "queued", attempts: 0, deliveries: {} }));
 
@@ -167,6 +186,7 @@ const IMPORTANCE: Record<Precedence, Message["importance"]> = { FLASH: "High", I
 
 /** The inbox copy of a simulated message once a workstation has been handed it. */
 export function toInboxMessage(m: SimMessage, at: string): Message {
+  if (m.rawText) return fromRawText(m, m.rawText, at);
   const paragraphs = m.body.split("\n").filter(Boolean);
   const raw = [`${m.precedence} ${m.dtg}`, `FM ${m.originator}`, `TO ${m.to}`, ...(m.info ? [`INFO ${m.info}`] : []), "BT", m.classification, `SUBJ/${m.subject}//`, ...paragraphs, "BT"].join("\n");
   return {
@@ -195,5 +215,21 @@ export function toInboxMessage(m: SimMessage, at: string): Message {
     distribution: [],
     addressees: [],
     related: [],
+  };
+}
+
+/** Inbox copy of example traffic: everything the screens show is read from its text. */
+function fromRawText(m: SimMessage, raw: string, at: string): Message {
+  const p = parseNavalMessage(raw);
+  return {
+    ...toInboxMessage({ ...m, rawText: undefined }, at),
+    type: p.type,
+    ...(p.subtag ? { subtag: p.subtag } : {}),
+    sections: p.poc ? [...p.sections, { heading: "Point of Contact", body: [p.poc] }] : p.sections,
+    rawText: raw,
+    ackRequired: !!p.ackDue,
+    ...(p.ackDue ? { ackDue: p.ackDue } : {}),
+    related: p.references.map(idFor),
+    refs: p.refs,
   };
 }

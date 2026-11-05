@@ -73,8 +73,9 @@ try {
       const archived = await addTemplate("topic-backfill-archived", false);
       await addVersion(archived, 1, "ARCHIVED-ONLY-TOPIC");
       await addVersion(await addTemplate("topic-backfill-legacy"), 1, "LEGACY-TOPIC", true, "Msg Type");
-      await addVersion(await addTemplate("topic-backfill-existing"), 1, "NAVADMIN");
-      const existing = (await db.query("SELECT id FROM message_topics WHERE name='NAVADMIN'")).rows[0].id;
+      // A topic migration 009 already backfilled from the seeded traffic.
+      const { id: existing, name: existingName } = (await db.query("SELECT id, name FROM message_topics ORDER BY name LIMIT 1")).rows[0];
+      await addVersion(await addTemplate("topic-backfill-existing"), 1, existingName);
       await db.query("INSERT INTO message_topic_subscriptions(user_id,topic_id) VALUES ($1,$2)", [author, existing]);
       const before = (await db.query("SELECT jsonb_agg(v ORDER BY id) AS snapshot FROM message_template_versions v")).rows[0].snapshot;
       await db.query(readFileSync(path, "utf8"));
@@ -83,7 +84,7 @@ try {
       assert.ok((await topics()).includes("BACKFILLED-TOPIC"));
       assert.ok((await topics()).includes("LEGACY-TOPIC"));
       for (const absent of ["EARLIER-ONLY", "ARCHIVED-ONLY-TOPIC", "DRAFT-ONLY-TOPIC"]) assert.ok(!(await topics()).includes(absent));
-      assert.equal((await db.query("SELECT id FROM message_topics WHERE name='NAVADMIN'")).rows[0].id, existing);
+      assert.equal((await db.query("SELECT id FROM message_topics WHERE name=$1", [existingName])).rows[0].id, existing);
       assert.equal(Number((await db.query("SELECT count(*) AS n FROM message_topic_subscriptions WHERE user_id=$1 AND topic_id=$2", [author, existing])).rows[0].n), 1);
       await db.query("UPDATE message_template_versions SET published_at=now() WHERE id=$1", [unpublished]);
       assert.ok((await topics()).includes("DRAFT-ONLY-TOPIC"), "An unpublished version advertises Type only once published");

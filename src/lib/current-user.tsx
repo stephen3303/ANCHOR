@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { AppUser, UserChoice } from "./users";
+import { SLOGAN } from "./brand";
 
 interface UserContext { user: AppUser; signOut: () => Promise<void> }
 const Context = createContext<UserContext | null>(null);
@@ -42,7 +43,10 @@ export function DemoSignIn({ onSignIn }: { onSignIn: (user: AppUser) => void }) 
   };
   return <div data-testid="sign-in-pane" className="flex min-h-0 flex-1 overflow-y-auto overscroll-contain bg-navy-50 p-5">
     <section className="m-auto w-full max-w-lg shrink-0 space-y-4 rounded-lg border border-line bg-white p-6 shadow-sm">
-      <h1 className="text-2xl font-bold">ANCHOR — Demo sign in</h1>
+      <div>
+        <h1 className="text-2xl font-bold">ANCHOR — Demo sign in</h1>
+        <p className="mt-1 text-sm font-medium italic text-navy-700">{SLOGAN}</p>
+      </div>
       <p className="text-sm text-muted">Select an account for this browser. This passwordless hackathon login does not verify identity. Do not use operational or classified data.</p>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       {loading ? <p role="status">Loading accounts…</p> : users.length ? <label className="block space-y-1 text-sm font-semibold">Account<select className={inputClass} value={selected} onChange={(event) => setSelected(event.target.value)}>{users.map((user) => <option key={user.id} value={user.id}>{user.name} ({user.login}) — {user.commandName}</option>)}</select></label> : <p className="text-sm text-muted">No accounts available. Enable demo login, run migrations, and run npm run db:seed:users.</p>}

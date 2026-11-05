@@ -44,6 +44,9 @@ export interface TemplateSummary {
   publishedAt: string;
   variableCount: number;
   canEdit?: boolean;
+  /** Why this account cannot edit, shown beside the disabled Edit button. */
+  editNote?: string;
+  createdByName?: string | null;
 }
 export type TemplateValues = Record<string, string | string[] | boolean>;
 

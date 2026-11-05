@@ -2,6 +2,7 @@ import "server-only";
 import type { AppUser } from "@/lib/users";
 import type { Message, RouteStep, RoutingEventType, WorkflowStep } from "@/lib/types";
 import { selectWorkflow, nextAssignment } from "@/lib/routing";
+import { hasOverlongMessageLine } from "@/lib/message-format";
 import { fmtDTG } from "@/lib/format";
 import { database } from "./db";
 import { ApiError } from "./api-error";
@@ -86,6 +87,7 @@ export async function updateMessage(id: string, payload: unknown, user: AppUser)
       if (!owner) throw new ApiError(403,"Only the drafter may submit this draft.");
       if (!editable) throw new ApiError(409,"This draft is already under review.");
       if (!(message.rawText || message.renderedText || "").trim()) throw new ApiError(400,"Cannot route an empty message.");
+      if (hasOverlongMessageLine(message.rawText || message.renderedText || "")) throw new ApiError(409,"Message lines exceed 69 characters. The drafter must save edits to apply wrapping before submitting for fresh review.");
       const config = await lockedRoutingConfig(client,user.commandId);
       const workflow = selectWorkflow(config.workflows,message.type,message.originator);
       if (!route.length && !workflow) throw new ApiError(409,"No active routing workflow matches this message.");
@@ -112,6 +114,7 @@ export async function updateMessage(id: string, payload: unknown, user: AppUser)
         event="advanced"; eventComment=comment||"Endorsed and advanced.";
       } else {
         if (step.action!=="release" || route.some((entry)=>entry.order<step.order&&entry.status!=="endorsed")) throw new ApiError(409,"Every preceding review must be endorsed before release.");
+        if (hasOverlongMessageLine(message.rawText || message.renderedText || "")) throw new ApiError(409,"Message lines exceed 69 characters. The drafter must save edits and obtain fresh approvals before release.");
         const config=await lockedRoutingConfig(client,user.commandId);
         const authority=config.authorities.find((entry)=>entry.personId===user.id&&(!entry.scope.length||entry.scope.includes(message.type)));
         if (!authority || !user.roles.some((role)=>role.name==="Designated Release Authority"&&role.granted)) throw new ApiError(403,"Release requires a matching command designation and the Designated Release Authority role.");

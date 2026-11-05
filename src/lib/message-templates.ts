@@ -1,6 +1,7 @@
 // Shared, framework-independent authoring contract. No executable template logic.
 import { isSupportedGenerator, type GeneratorBinding } from "./generated-inputs";
 import { ZULU_DATETIME_PATTERN } from "./format";
+import { wrapMessageText } from "./message-format";
 
 export const INPUT_TYPES = [
   ["text", "Textbox"], ["textarea", "Multiline text"], ["select", "Dropdown"],
@@ -160,6 +161,14 @@ export function compileTemplate(definition: TemplateDefinition) {
     uiSchema: { fields: definition.fields.map((field) => ({ ...field, ...(isCommandChoice(field.control) ? { reference: { source: "recipient-commands", contractVersion: 1, parameters: {} } } : {}) })) },
     outputDefinition: { format: "plaintext", body: definition.text, placeholderSyntax: "named-v1" },
   };
+}
+
+// Apply the message-output policy after substitution, including command names
+// and automatic values. Preview and persistence must use this same entry point.
+export function renderGeneratedMessage(text: string, values: TemplateValues, fields: readonly TemplateField[] = [], maxOutputLength = Infinity): string {
+  const output = wrapMessageText(renderTemplatePreview(text, values, fields, maxOutputLength));
+  if (output.length > maxOutputLength) throw new TemplateValidationError("Generated message is too large after line wrapping.");
+  return output;
 }
 
 // One pass only: inserted values are never evaluated as template source or HTML.

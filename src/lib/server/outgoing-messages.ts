@@ -3,9 +3,10 @@ import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import { database } from "./db";
 import { ApiError } from "./api-error";
-import { validateTemplateDefinition, renderTemplatePreview, isCommandChoice, type TemplateValues } from "@/lib/message-templates";
+import { validateTemplateDefinition, renderGeneratedMessage, isCommandChoice, type TemplateValues } from "@/lib/message-templates";
 import { validateMessageInputs, UUID_PATTERN, PRECEDENCES, MessageInputError } from "@/lib/message-inputs";
 import { resolveGeneratedInputs } from "@/lib/generated-inputs";
+import { MESSAGE_FORMATTING_PROFILE } from "@/lib/message-format";
 import { DRAFT_TYPES } from "@/lib/routing";
 import { accessArgs, appendRoutingEvent, MESSAGE_ACCESS } from "./routing-data";
 import type { AppUser } from "@/lib/users";
@@ -68,10 +69,10 @@ export async function renderSnapshot(client: PoolClient, input: MessageInputs, u
   if (Object.keys(generated.errors).length) throw new MessageInputError(generated.errors);
   const resolved: TemplateValues = { ...values, ...generated.values };
   commandFields.forEach((field) => { const names = selections(field.name).map((id) => commands.get(id)!.name); resolved[field.name] = field.control === "command-multiple" ? names : names[0] ?? ""; });
-  const text = renderTemplatePreview(definition.text, resolved, definition.fields, 1000000);
+  const text = renderGeneratedMessage(definition.text, resolved, definition.fields, 1000000);
   if (Buffer.byteLength(text, "utf8") > 1000000) throw new ApiError(400, "Generated message exceeds 1 MB.");
   return { version, values, text, now, sections: [{ heading: "Template text", body: [text] }],
-    metadata: { rendererVersion: version.renderer_version, templateVersion: version.version, resolvedAt: generated.resolvedAt, generatedValues: generated.values,
+    metadata: { formatting: MESSAGE_FORMATTING_PROFILE, rendererVersion: version.renderer_version, templateVersion: version.version, resolvedAt: generated.resolvedAt, generatedValues: generated.values,
       generators: definition.fields.filter((field) => field.generator).map((field) => ({ name: field.name, ...field.generator })), sender: { userId: user.id, commandId: user.commandId, commandName: user.commandName } },
     references: commandFields.flatMap((field) => selections(field.name).map((commandId, position) => ({ field: field.name, position, sourceId, commandId, snapshot: commands.get(commandId) }))),
   };

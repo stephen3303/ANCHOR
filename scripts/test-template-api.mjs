@@ -33,7 +33,7 @@ try {
   sql(seed.stdout);
   assert.equal(sql("SELECT count(*) FROM users;").trim(), "10");
   const seededProfile = JSON.parse(sql("SELECT profile::text FROM users WHERE login = 'LTaylor';"));
-  sql("INSERT INTO commands (name) SELECT 'TEST COMMAND ' || lpad(n::text, 2, '0') FROM generate_series(1, 30) n;");
+  sql("INSERT INTO commands (name) SELECT 'TEST COMMAND ' || lpad(n::text, 2, '0') FROM generate_series(1, 60) n;");
 
   const socket = createServer();
   await new Promise((resolve) => socket.listen(0, "127.0.0.1", resolve));
@@ -119,11 +119,12 @@ try {
   assert.equal((await fetch(`${base}/api/message-templates/not-an-id`)).status, 400);
   assert.equal((await fetch(`${base}/api/message-templates/00000000-0000-0000-0000-000000000000`)).status, 404);
   const commands = await (await fetch(`${base}/api/reference-data/commands?q=TEST`)).json();
-  assert.equal(commands.commands.length, 25);
-  assert.equal(commands.nextCursor, "25");
-  const secondPage = await (await fetch(`${base}/api/reference-data/commands?q=TEST&cursor=25`)).json();
-  assert.equal(secondPage.commands.length, 5);
+  assert.equal(commands.commands.length, 50);
+  assert.equal(commands.nextCursor, "50");
+  const secondPage = await (await fetch(`${base}/api/reference-data/commands?q=TEST&cursor=50`)).json();
+  assert.equal(secondPage.commands.length, 10);
   assert.equal(secondPage.nextCursor, null);
+  assert.equal(new Set([...commands.commands, ...secondPage.commands].map((command) => command.id)).size, 60);
   assert.equal((await fetch(`${base}/api/reference-data/commands?cursor=-1`)).status, 400);
   for (const separator of ["semicolon", "space", "newline"]) {
     const separated = { ...definition, fields: definition.fields.map((field, index) => index === 0 ? { ...field, separator } : field) };

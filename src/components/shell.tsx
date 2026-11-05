@@ -22,7 +22,6 @@ import {
   UserCog,
   Waypoints,
   WifiOff,
-  ClipboardList,
   RadioTower,
   X,
 } from "lucide-react";
@@ -43,7 +42,6 @@ const NAV: { href: string; label: string; icon: typeof Home; badge?: "unread" | 
   { href: "/templates", label: "Message Templates", icon: FilePlus2 },
   { href: "/subscriptions", label: "Subscriptions", icon: Network },
   { href: "/search", label: "Search", icon: Search },
-  { href: "/watch-turnover", label: "Watch Turnover", icon: ClipboardList },
   { href: "/drafting", label: "Drafting & Release", icon: FilePenLine, badge: "routing" as const },
   { href: "/transmissions", label: "Transmission Queue", icon: RadioTower },
   { href: "/reports", label: "Reports", icon: BarChart3, role: REPORT_VIEWER },

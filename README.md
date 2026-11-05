@@ -716,7 +716,7 @@ remaining application-level validation, and rollback-only schema tests.
 | `/subscriptions` | Available template/message types with personal, immediate subscribe/unsubscribe |
 | `/briefings` | Tailored Briefing Builder with live preview |
 | `/briefings/generated` | Generated briefing |
-| `/watch-turnover` | Watch Turnover with notes and checklist |
+| `/watch-turnover` | Redirects to Watch Officer Home and opens Watch Handoff |
 | `/drafting` | Drafting & Release: fill a published template, save a private draft, and approve each step as its signed-in holder; only released messages enter the Messages list |
 | `/network` | Comms & Network: C2OIX circuit, ANCHOR server and three workstations. The Message Admin releases example traffic one message at a time, breaks and restores links, and resets messages for redelivery. (`/simulators`, `/topology` and `/offline` redirect here.) |
 | `/reports` | Acknowledgement accountability and traffic measures |
@@ -744,3 +744,53 @@ The UI follows the mockups. Where they differ from the ANCHOR requirements packa
 ## Stack
 
 Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, lucide-react icons. PostgreSQL 17 persists commands, templates, users/sessions, drafts, approvals, routing configuration, message artifacts, read state and command acknowledgements; REST endpoints use `pg`. Other prototype preferences and the network simulator remain in memory. Fictional seed data lives in `src/lib/data.ts`.
+
+
+## Watch Handoff on Home
+
+Select **Watch Officer** on Home and expand **Watch Handoff**. Other responsibility
+views do not show the handoff controls. Traffic, acknowledgements and message
+deadlines remain in Home's existing sections rather than a duplicate turnover page.
+The old `/watch-turnover` address selects Watch Officer and opens the handoff without
+changing the user's saved default view.
+
+After updating, run `npm run db:migrate` to apply migration 013. A System Admin
+uses **Station setup** within Watch Handoff to create a watch station/team and
+explicitly assign at least two active command users. No duties or station records
+are automatically seeded. View selection and application roles do not substitute
+for official station assignment. Administrative privileges alone do not allow
+editing/acceptance. Report Viewer, Auditor, and Release Authority can read their
+command's stations when command visibility is enabled; System Admin can configure
+and inspect them regardless of that visibility setting.
+
+An assigned outgoing officer starts a Draft, names a different assigned incoming
+officer, and enters the incoming watch's start/end as `DD MMM YYYY HHMMZ` in UTC.
+Save narrative notes, structured issues, source links, and checklist updates,
+then mark Ready for review. Only the named incoming officer may accept. Acceptance
+requires an explanation for any incomplete checks and records server timestamps.
+Ready records must be returned to Draft by the outgoing officer before editing.
+
+Accepted records are locked. Assigned participants can append corrections with
+reasons; the original record remains intact. New handoffs inherit unresolved issues
+from the station's latest accepted record, preserving owner, status, source snapshot,
+lineage, and predecessor history. Resolved issues do not carry forward. Acceptance
+does not acknowledge messages or complete substantive tasks. Legacy in-memory
+notes are explicitly labeled and are not silently imported into formal records.
+
+The selector initially favors an active station assigned to the current officer.
+Use Refresh handoff to load another session's changes; unsaved edits are retained
+on conflicts and require an explicit discard before refresh/history changes.
+Offline mode disables mutations and never queues a formal acceptance.
+
+Validation commands:
+
+```sh
+npm run test:handoff
+npm run build
+npm run test:handoff:api
+E2E_CHROMIUM_EXECUTABLE=/path/to/chromium npm run test:handoff:browser
+```
+
+The integration runner creates and drops its own test database and does not modify
+live users, messages, or watch assignments. Demo sign-in remains passwordless
+account selection, not production authentication.

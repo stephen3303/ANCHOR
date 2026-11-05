@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   try {
     const user = await requireSessionUser();
     if (new URL(request.url).searchParams.get("view") === "drafts") return Response.json(await listDrafts(user), { headers: noStore });
-    return Response.json(await messageSnapshot(user), { headers: noStore });
+    return Response.json(await messageSnapshot(user, new URL(request.url).searchParams.get("view") === "subscriptions"), { headers: noStore });
   } catch (error) { return messageFailure(error); }
 }
 

@@ -23,7 +23,7 @@ const SAVED = [
 type Mode = "basic" | "advanced" | "natural" | "saved";
 
 export default function SearchPage() {
-  const { log, notify, requestSubscription, messages } = useStore();
+  const { log, notify, messages } = useStore();
   const SOURCES = useMemo(() => [...new Set(messages.map((m) => m.source))], [messages]);
   const [mode, setMode] = useState<Mode>("advanced");
   const [q, setQ] = useState("deployment readiness");
@@ -81,17 +81,6 @@ export default function SearchPage() {
     log("Save Search", q);
     notify(`Saved search "${q}"`);
   };
-
-  const subscribeToSearch = () =>
-    requestSubscription({
-      name: `Saved search: ${q}`,
-      category: comms[0] ?? "Readiness",
-      description: `Messages matching "${q}"${types.length ? ` (${types.join(", ")})` : ""}.`,
-      criteria: { messageTypes: types, keywords: q.split(/\s+/) },
-      frequency: "Daily Digest",
-      channels: { inApp: true, email: true, teams: false },
-      justification: "Created from Advanced Search.",
-    });
 
   return (
     <>
@@ -222,7 +211,7 @@ export default function SearchPage() {
           {results.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3 text-sm">
               <span className="text-muted">Turn this search into a subscription so new matches reach you automatically.</span>
-              <Button size="sm" variant="primary" className="ml-auto" onClick={subscribeToSearch}>Request subscription</Button>
+              <Button size="sm" variant="primary" className="ml-auto" href="/subscriptions">Manage type subscriptions</Button>
             </div>
           )}
         </Panel>

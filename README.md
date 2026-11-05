@@ -118,7 +118,7 @@ For Node development, also stop `npm run dev` with `Ctrl+C`.
 project database**, including drafts/templates/users/sessions. After that reset,
 start PostgreSQL and rerun migrations and both seed commands from first-time setup.
 
-## Template message types (pub/sub foundation)
+## Message-type subscriptions
 
 New template publications and updates must contain the case-sensitive placeholder
 `{{ Type }}` and a non-empty, single-line text value set by the template
@@ -126,7 +126,8 @@ editor (up to 200 characters). Configure this fixed value in step 2. It is saved
 in the immutable version and rendered read-only for drafters; draft requests
 cannot supply or override it. Leading/trailing whitespace is trimmed; case and
 internal spacing are preserved. This value is the intended pub/sub topic, not a
-unique template ID; subscriptions and dispatch are not implemented by this step.
+unique template ID or workflow/release category. This is local feed selection,
+not external transport delivery.
 Existing published versions, including the historical Standard Message seed,
 remain unchanged and usable. Their next editor publication must satisfy the new
 rules. Opening an older template for editing renames legacy variables in the
@@ -158,6 +159,35 @@ Msg Type becomes Type; Originator and Origin Command become Origin. Locked
 configurations are restored in that editable copy.
 If both an old and new name exist, resolve the conflict explicitly; the editor
 will not silently merge them. Custom body variables remain configurable.
+
+### Subscribe and choose your inbox
+
+Apply migration `009-message-topic-subscriptions.sql` with `npm run db:migrate`.
+In **Subscriptions**, subscribe/unsubscribe freely to any listed published type;
+no approval or mandatory subscription is required. Preferences are persisted per
+signed-in person and survive reloads. Names match exactly (case-sensitive).
+
+In **Messages**, the **Subscriptions / All Messages** selector defaults to
+**All Messages**, preserving the existing full feed. **Subscriptions** shows only
+published messages in your saved types, including older matching traffic, with
+the existing search/filters still applied. An empty subscription list means an
+empty subscription feed, never a fallback to all messages. Manage subscriptions
+from the nearby link. Mark All Read in this mode affects only visible rows.
+Subscriptions are a preference, not an authorization boundary: all published
+messages remain available in All Messages and through direct reader links.
+
+Types are registered atomically when a message enters `messages`: for local
+traffic this happens at Message Admin transmission, **not** draft creation or
+release-to-queue. The pinned template's fixed Type is authoritative (even when
+rendered text wraps). Legacy manual Type values are supported; received traffic
+uses its MSGID type. Identical names share one topic. Template edits/deletion do
+not rename old topics or alter published messages. Migration 009 backfills only
+derived topic metadata, preserving canonical messages and artifacts.
+
+Bundled fallback traffic and in-memory simulated deliveries do not advertise
+persisted topics or appear in the subscription feed. If subscriptions cannot be
+loaded/saved, the UI reports the failure rather than pretending a change was
+saved. Legacy admin approval demos are separate and do not gate type subscriptions.
 
 ## PostgreSQL command directory
 
@@ -240,8 +270,8 @@ these roles; no combination is blocked.
 
 | Role | What it allows | Assigned by | Demo holders |
 | --- | --- | --- | --- |
-| Message Viewer | Read messages, request subscriptions, build briefings. Every account holds it. | Automatic | Everyone |
-| Subscription Approver | Review subscription requests and assign feeds to users | System Admin | Okafor, Chen, Ramos, Brooks, Taylor |
+| Message Viewer | Read messages, freely subscribe to published types, build briefings. Every account holds it. | Automatic | Everyone |
+| Subscription Approver | Legacy approval demo; not required for message-type subscriptions | System Admin | Okafor, Chen, Ramos, Brooks, Taylor |
 | Report Viewer | The Reports page | System Admin | Most accounts |
 | Auditor | The Audit & Integrity page and `/api/integrity` | System Admin | Taylor, Nguyen, Harper |
 | Message Admin | Transmit released traffic, manage the C2OIX circuit and workstation links, send acknowledgements | System Admin | Harper |
@@ -526,6 +556,10 @@ REST endpoints:
 | `POST /api/admin/users` | Add an account: `{ login, rank, surname, billet, unit, email?, roles }` (System Admin) |
 | `PATCH /api/admin/users/{id}` | Change `billet`, `unit`, `roles` or `active` (System Admin; Designated Release Authority is left to the Release Authority) |
 | `PATCH /api/routing/designations` | Replace release designations `{ revision, authorities }` (Release Authority) |
+| `GET /api/subscriptions` | Published Type/MSGID topics, counts and the current user's preferences |
+| `PUT /api/subscriptions/:id` | Subscribe the session user to an existing topic (idempotent, no approval) |
+| `DELETE /api/subscriptions/:id` | Unsubscribe the session user (idempotent) |
+| `GET /api/messages?view=subscriptions` | Published feed restricted to the session user's subscribed types |
 | `GET /api/transmissions` | The command's transmission queue and log |
 | `POST /api/transmissions/{id}` | `{ action: "transmit" }` (Message Admin) or `{ action: "revoke", comment }` (releaser or Release Authority) |
 | `POST /api/session` | Passwordless demo sign-in using `{ userId }` |
@@ -571,7 +605,7 @@ remaining application-level validation, and rollback-only schema tests.
 | `/messages/[id]` | Message detail: official text, AI summary (separate), metadata, integrity, attachments |
 | `/messages/[id]/print` | Official print / PDF rendition with integrity block |
 | `/search` | Basic, advanced, natural-language and saved searches |
-| `/subscriptions` | Subscriptions; new ones are requested and need approval |
+| `/subscriptions` | Published message types with personal, immediate subscribe/unsubscribe |
 | `/briefings` | Tailored Briefing Builder with live preview |
 | `/briefings/generated` | Generated briefing |
 | `/watch-turnover` | Watch Turnover with notes and checklist |
@@ -579,7 +613,7 @@ remaining application-level validation, and rollback-only schema tests.
 | `/network` | Comms & Network: C2OIX circuit, ANCHOR server and three workstations. The Message Admin releases example traffic one message at a time, breaks and restores links, and resets messages for redelivery. (`/simulators`, `/topology` and `/offline` redirect here.) |
 | `/reports` | Acknowledgement accountability and traffic measures |
 | `/audit` | Audit & Integrity: append-only, hash-chained log with a recompute check |
-| `/admin` | Tabs: subscription approval queue, alert rules and access groups; Users; Routing & Release (workflows, release authority, transmission settings at `/admin#routing`; the old `/admin/routing` redirects there) |
+| `/admin` | Tabs: legacy subscription approval demo, alert rules and access groups; Users; Routing & Release (workflows, release authority, transmission settings at `/admin#routing`; the old `/admin/routing` redirects there) |
 | `/profile` | Profile & Settings |
 
 ## How the requirements show up
@@ -590,7 +624,7 @@ The UI follows the mockups. Where they differ from the ANCHOR requirements packa
 - **Precedence** (FLASH, IMMEDIATE, PRIORITY, ROUTINE) on every message. FLASH and IMMEDIATE drive mandatory alerts.
 - **Lifecycle status** labels for AMENDED, CORRECTED, SUPERSEDED, CANCELLED and EXPIRED, with links to the replacing message and a banner on the message itself.
 - **Mandatory acknowledgement** with due time and escalation, a site-wide alert strip, and a roll-up in Reports.
-- **Approved subscriptions only.** Users request; the unit Subscription Approver approves in Admin. Command- and precedence-assigned subscriptions are locked on.
+- **Personal pub/sub feeds.** Anyone can subscribe/unsubscribe to published Type/MSGID topics. The inbox selector filters by these saved preferences; All Messages remains unchanged. Legacy approval demos are not used by this flow.
 - **Integrity.** Each message shows its C2OIX ID and SHA-256 from ingestion, and the print rendition carries the same block.
 - **AI summaries** are dashed, purple, labeled "Not authoritative", and never mixed into the official text.
 - **Disconnected / EMCON.** Actions taken offline are queued and replicate on sync, with bandwidth-aware priority.

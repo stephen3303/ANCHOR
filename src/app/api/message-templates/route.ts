@@ -1,7 +1,7 @@
 import { MESSAGE_FORMATTING_PROFILE } from "@/lib/message-format";
 import { randomUUID } from "node:crypto";
 import { connection } from "next/server";
-import { compileTemplate, isCommandChoice, validateTemplateDefinition } from "@/lib/message-templates";
+import { compileTemplate, isCommandChoice, validateTemplateForPublication } from "@/lib/message-templates";
 import { currentSessionUser } from "@/lib/server/session";
 import { isAdmin } from "@/lib/server/user-admin";
 import { database } from "@/lib/server/db";
@@ -29,7 +29,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const author = await templateAuthor(request);
-    const definition = validateTemplateDefinition(await readTemplatePayload(request));
+    const definition = validateTemplateForPublication(await readTemplatePayload(request));
     const compiled = compileTemplate(definition);
     const client = await database().connect();
     try {

@@ -29,6 +29,7 @@ function fieldConfig(field: FieldEditor): TemplateField {
 
 export default function TemplatesPage() {
   const [step, setStep] = useState(1);
+  const [editing, setEditing] = useState<{ id: string; versionId: string; version: number } | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [text, setText] = useState("");
@@ -40,7 +41,7 @@ export default function TemplatesPage() {
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [listError, setListError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [inspected, setInspected] = useState<(TemplateDefinition & { id: string; version: number }) | null>(null);
+  const [inspected, setInspected] = useState<(TemplateDefinition & { id: string; version: number; versionId: string }) | null>(null);
   const [inspecting, setInspecting] = useState<string | null>(null);
 
   const loadTemplates = useCallback(async () => {
@@ -80,10 +81,11 @@ export default function TemplatesPage() {
     setBusy(true);
     setError("");
     try {
-      const response = await fetch("/api/message-templates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(definition) });
+      const response = await fetch(editing ? `/api/message-templates/${editing.id}` : "/api/message-templates", { method: editing ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(editing ? { expectedVersionId: editing.versionId, definition } : definition) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not publish the template.");
       setSaved(data.template);
+      setInspected(null);
       await loadTemplates();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not publish the template. Your inputs have been preserved."); }
     finally { setBusy(false); }
@@ -99,8 +101,25 @@ export default function TemplatesPage() {
     } catch (reason) { setListError(reason instanceof Error ? reason.message : "Could not open the template."); }
     finally { setInspecting(null); }
   };
+  const startEdit = async (id: string) => {
+    if (busy || inspecting !== null) return;
+    if (!saved && (name || text || editing) && !window.confirm("Discard the current unsaved template changes and open this template?")) return;
+    setInspecting(id); setBusy(true);
+    try {
+      const response = await fetch(`/api/message-templates/${id}`, { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not open the template for editing.");
+      const template = data.template as TemplateDefinition & { id: string; versionId: string; version: number };
+      setEditing({ id: template.id, versionId: template.versionId, version: template.version });
+      setName(template.name); setDescription(template.description); setText(template.text);
+      setFields(template.fields.map((field) => ({ ...field, control: String(field.control) === "number" ? "text" : field.control, optionsText: field.options.join("\n") })));
+      setDefinition(null); setSaved(null); setInspected(null); setError(""); setListError(""); setStep(1);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (reason) { setListError(reason instanceof Error ? reason.message : "Could not open the template."); }
+    finally { setInspecting(null); setBusy(false); }
+  };
   const reset = () => {
-    setStep(1); setName(""); setDescription(""); setText(""); setFields([]); setDefinition(null); setSaved(null); setError("");
+    setEditing(null); setStep(1); setName(""); setDescription(""); setText(""); setFields([]); setDefinition(null); setSaved(null); setError("");
   };
 
   return (
@@ -110,25 +129,27 @@ export default function TemplatesPage() {
       {saved ? <Panel title="Template published">
         <div role="status" className="space-y-3">
           <p><strong>{saved.name}</strong> version {saved.version} is saved in PostgreSQL and available for future message drafting.</p>
-          <p className="text-sm text-muted">Published versions cannot be edited. Message creation is not part of this screen yet.</p>
+          <p className="text-sm text-muted">Existing drafts and published messages retain their pinned versions. Edit a template to publish another version for future drafts.</p>
           <Button variant="primary" href="/drafting">Drafting &amp; Release</Button>
-          <Button onClick={reset}>Create another template</Button>
+          <Button disabled={inspecting !== null} onClick={() => void startEdit(saved.id)}>Edit this template</Button>
+          <Button disabled={busy || inspecting !== null} onClick={reset}>Create another template</Button>
         </div>
-      </Panel> : <Panel title={`Create a template — Step ${step} of 3`}>
+      </Panel> : <Panel title={`${editing ? `Edit template (from version ${editing.version})` : "Create a template"} — Step ${step} of 3`}>
+        {editing && <div className="mb-4 space-y-2"><p className="text-sm text-muted">Publishing creates a new immutable version. Existing messages keep their original definition and text.</p><Button disabled={busy} onClick={reset}>Cancel template editing</Button></div>}
         <ol aria-label="Template creation steps" className="mb-5 flex flex-wrap gap-4 text-sm">
           {["Paste template", "Configure variables", "Review and publish"].map((label, index) => <li key={label} aria-current={step === index + 1 ? "step" : undefined} className={step === index + 1 ? "font-bold text-navy-800" : "text-muted"}>{index + 1}. {label}</li>)}
         </ol>
         {error && <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
         {step === 1 && <div className="space-y-4">
-          <label className="block space-y-1 text-sm font-semibold">Template name<input className={templateInputClass} value={name} maxLength={150} onChange={(event) => setName(event.target.value)} placeholder="Readiness report" /></label>
-          <label className="block space-y-1 text-sm font-semibold">Description (optional)<textarea className={templateInputClass} rows={2} value={description} maxLength={2000} onChange={(event) => setDescription(event.target.value)} /></label>
-          <label className="block space-y-1 text-sm font-semibold">Plaintext template<textarea className={`${templateInputClass} font-mono`} rows={14} value={text} maxLength={50000} onChange={(event) => setText(event.target.value)} placeholder={"FM {{ Originator }}\nTO {{ Recipients }}\nSUBJ/{{ Subject }}\n\n{{ Remarks }}"} aria-describedby="placeholder-help" /></label>
+          <label className="block space-y-1 text-sm font-semibold">Template name<input className={templateInputClass} value={name} disabled={busy} maxLength={150} onChange={(event) => setName(event.target.value)} placeholder="Readiness report" /></label>
+          <label className="block space-y-1 text-sm font-semibold">Description (optional)<textarea className={templateInputClass} rows={2} value={description} disabled={busy} maxLength={2000} onChange={(event) => setDescription(event.target.value)} /></label>
+          <label className="block space-y-1 text-sm font-semibold">Plaintext template<textarea className={`${templateInputClass} font-mono`} rows={14} value={text} disabled={busy} maxLength={50000} onChange={(event) => setText(event.target.value)} placeholder={"FM {{ Originator }}\nTO {{ Recipients }}\nSUBJ/{{ Subject }}\n\n{{ Remarks }}"} aria-describedby="placeholder-help" /></label>
           <p id="placeholder-help" className="text-sm text-muted">Mark variables as <code>{"{{ Name }}"}</code>. Names are case-sensitive and may contain letters, numbers, spaces, underscores and hyphens. Repeated names share one input. Only named substitutions are supported—no scripts or conditionals.</p>
-          <Button variant="primary" onClick={configure}>Detect and configure variables</Button>
+          <Button variant="primary" disabled={busy} onClick={configure}>Detect and configure variables</Button>
         </div>}
         {step === 2 && <div className="space-y-4">
           <p className="text-sm text-muted">Detected {fields.length} unique variable{fields.length === 1 ? "" : "s"}. Choose how each should be filled in when drafting a message.</p>
-          {fields.map((field, index) => <fieldset key={field.name} className="space-y-3 rounded-md border border-line p-4">
+          {fields.map((field, index) => <fieldset key={field.name} disabled={busy} className="space-y-3 rounded-md border border-line p-4">
             <legend className="px-1 font-semibold">{field.name}</legend>
             <div className="flex flex-wrap items-center gap-4">
               <label className="min-w-64 flex-1 space-y-1 text-sm">Input type<select className={templateInputClass} value={field.control} onChange={(event) => setFields((current) => current.map((item, position) => position === index ? { ...item, control: event.target.value as InputType, required: event.target.value === "autogenerated" ? true : item.required } : item))}>{INPUT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -153,28 +174,28 @@ export default function TemplatesPage() {
             {field.control === "command-multiple" && <label className="block space-y-1 text-sm">Command separator<select className={templateInputClass} value={field.separator ?? "semicolon"} onChange={(event) => setFields((current) => current.map((item, position) => position === index ? { ...item, separator: event.target.value as CommandSeparator } : item))}>{COMMAND_SEPARATORS.map(({ key, label }) => <option key={key} value={key}>{label}</option>)}</select><span className="text-xs text-muted">Separates selected command names in the generated plaintext. Selection order is preserved.</span></label>}
             {field.control.startsWith("command-") && <p className="text-sm text-muted">Options come from the PostgreSQL PLADS command directory. Users search by name{field.control === "command-multiple" ? " and select commands with checkboxes and removable chips" : " and select one command"}. No freeform recipients.</p>}
           </fieldset>)}
-          <div className="flex gap-2"><Button onClick={() => { setStep(1); setError(""); }}>Back to template</Button><Button variant="primary" onClick={review}>Review generated form</Button></div>
+          <div className="flex gap-2"><Button disabled={busy} onClick={() => { setStep(1); setError(""); }}>Back to template</Button><Button variant="primary" disabled={busy} onClick={review}>Review generated form</Button></div>
         </div>}
         {step === 3 && definition && <div className="space-y-5">
           <div><h3 className="font-bold">{definition.name}</h3><p className="text-sm text-muted">{definition.description}</p></div>
           <TemplatePreview key={JSON.stringify(definition)} definition={definition} />
           <p className="text-sm text-muted">Publishing saves the template and input definitions—not these sample values. The published version will be immutable.</p>
-          <div className="flex flex-wrap gap-2"><Button disabled={busy} onClick={() => { setStep(2); setError(""); }}>Back to inputs</Button><Button variant="primary" disabled={busy} onClick={() => void publish()}>{busy ? "Publishing…" : "Publish template"}</Button></div>
+          <div className="flex flex-wrap gap-2"><Button disabled={busy} onClick={() => { setStep(2); setError(""); }}>Back to inputs</Button><Button variant="primary" disabled={busy} onClick={() => void publish()}>{busy ? "Publishing…" : editing ? "Publish new version" : "Publish template"}</Button></div>
         </div>}
       </Panel>}
       <Panel title="Published templates" action={<Button size="sm" icon={RefreshCw} disabled={loading} onClick={() => { setLoading(true); void loadTemplates(); }}>Refresh</Button>}>
         {listError && <p role="alert" className="mb-3 text-sm text-red-700">{listError}</p>}
         {loading ? <p role="status" className="text-sm text-muted">Loading templates…</p> : templates.length ? <ul className="divide-y divide-line">
-          {templates.map((template) => <li key={template.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+          {templates.map((template) => <li key={template.id} data-testid={`template-${template.id}`} className="flex flex-wrap items-center justify-between gap-3 py-3">
             <div><h3 className="font-semibold">{template.name}</h3><p className="text-sm text-muted">Version {template.version} · {template.variableCount} variables</p><p className="text-sm text-muted">{template.description}</p></div>
-            <Button size="sm" disabled={inspecting !== null} onClick={() => void inspect(template.id)}>{inspecting === template.id ? "Opening…" : "View template"}</Button>
+            <div className="flex gap-2"><Button size="sm" disabled={busy || inspecting !== null} onClick={() => void inspect(template.id)}>{inspecting === template.id ? "Opening…" : "View template"}</Button>{template.canEdit && <Button size="sm" disabled={busy || inspecting !== null} aria-label={`Edit ${template.name}`} onClick={() => void startEdit(template.id)}>Edit template</Button>}</div>
           </li>)}
         </ul> : !listError && <p className="text-sm text-muted">No published templates yet. Create the first one above.</p>}
         <p className="mt-3 text-xs text-muted">Showing up to 100 most recently published templates.</p>
       </Panel>
       {inspected && <Panel title={`${inspected.name} — Version ${inspected.version}`} action={<Button size="sm" onClick={() => setInspected(null)}>Close</Button>}>
         <p className="mb-4 text-sm text-muted">{inspected.description} This is a read-only published definition; sample values are not saved.</p>
-        <TemplatePreview key={inspected.id} definition={inspected} />
+        <TemplatePreview key={`${inspected.id}:${inspected.versionId}`} definition={inspected} />
       </Panel>}
     </div>
   );

@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { database } from "@/lib/server/db";
-import { ApiError, apiFailure } from "@/lib/server/template-api";
+import { reviseTemplate } from "@/lib/server/template-versions";
+import { ApiError, apiFailure, templateAuthorUser, readTemplatePayload } from "@/lib/server/template-api";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   await connection();
@@ -17,5 +18,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     `, [id]);
     if (!template) throw new ApiError(404, "Template not found.");
     return Response.json({ template }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) { return apiFailure(error); }
+}
+
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await templateAuthorUser(request);
+    const { id } = await params;
+    const template = await reviseTemplate(id, await readTemplatePayload(request), user);
+    return Response.json({ template }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) { return apiFailure(error); }
 }

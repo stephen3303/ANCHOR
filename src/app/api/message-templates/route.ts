@@ -2,23 +2,27 @@ import { MESSAGE_FORMATTING_PROFILE } from "@/lib/message-format";
 import { randomUUID } from "node:crypto";
 import { connection } from "next/server";
 import { compileTemplate, isCommandChoice, validateTemplateDefinition } from "@/lib/message-templates";
+import { currentSessionUser } from "@/lib/server/session";
+import { isAdmin } from "@/lib/server/user-admin";
 import { database } from "@/lib/server/db";
 import { ApiError, apiFailure, readTemplatePayload, templateAuthor } from "@/lib/server/template-api";
 
 export async function GET() {
   await connection();
   try {
+    const user = await currentSessionUser();
     const { rows } = await database().query(`
-      SELECT t.id, t.name, t.description, v.version, v.published_at AS "publishedAt",
+      SELECT t.id, t.name, t.description, t.created_by AS "createdBy", u.command_id AS "creatorCommandId", v.version, v.published_at AS "publishedAt",
         jsonb_array_length(v.ui_schema->'fields') AS "variableCount"
-      FROM message_templates t
+      FROM message_templates t LEFT JOIN users u ON u.id::text=t.created_by
       JOIN LATERAL (
         SELECT * FROM message_template_versions WHERE template_id = t.id AND published_at IS NOT NULL
         ORDER BY version DESC LIMIT 1
       ) v ON true
       WHERE t.active ORDER BY v.published_at DESC LIMIT 100
     `);
-    return Response.json({ templates: rows }, { headers: { "Cache-Control": "no-store" } });
+    const templates = rows.map(({ createdBy, creatorCommandId, ...template }) => ({ ...template, canEdit: process.env.ENABLE_TEMPLATE_AUTHORING === "true" && !!user && (createdBy === user.id || (isAdmin(user) && creatorCommandId === user.commandId)) }));
+    return Response.json({ templates }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return apiFailure(error); }
 }
 

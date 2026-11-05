@@ -41,7 +41,7 @@
     { "name": "Msg Type", "control": "text", "required": true, "options": [] },
     { "name": "Subject", "control": "text", "required": true, "options": [] },
     { "name": "Point of Contact", "control": "text", "required": true, "options": [] },
-    { "name": "Body", "control": "text", "required": true, "options": [] },
+    { "name": "Body", "control": "textarea", "required": true, "options": [] },
     { "name": "Message Number", "control": "text", "required": true, "options": [] }
   ]
 }

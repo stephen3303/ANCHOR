@@ -17,6 +17,7 @@
     "test:templates": "tsx --test src/lib/message-templates.test.ts src/lib/message-inputs.test.ts src/lib/message-format.test.ts src/lib/command-search.test.ts",
     "test:columns": "tsx --test src/lib/message-columns.test.ts",
     "test:templates:api": "node scripts/test-template-api.mjs",
+    "test:templates:browser": "node scripts/test-template-api.mjs --browser",
     "test:messages": "tsx --test src/lib/naval.test.ts",
     "test:messages:api": "node scripts/test-message-api.mjs",
     "test:drafting:api": "node scripts/test-drafting-api.mjs",

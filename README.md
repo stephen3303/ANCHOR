@@ -28,6 +28,7 @@ npm run db:seed:commands
 npm run db:seed:users
 npm run db:seed:routing
 npm run db:seed:messages
+npm run db:seed:outgoing
 ```
 
 `db:migrate` applies SQL from `database/init/` and `database/migrations/`.
@@ -40,7 +41,13 @@ publishes the bundled **Standard Message** template on a fresh database; an
 existing template with that name or seed key is never overwritten. `db:seed:messages` loads the
 demo traffic into the message store through the C2OIX parser, plus acknowledgements
 received from other commands. Until it runs, the app shows bundled demo messages and
-says reads and acknowledgements are not saved. Seed commands are safe to rerun,
+says reads and acknowledgements are not saved. `db:seed:outgoing` adds this
+command's own example traffic at each lifecycle stage (drafting, in routing,
+returned, released and queued, transmitted) by driving the app's server code as
+each account on the routing chain, so the DTG is stamped only at release, the
+Release Authority or a designated release authority releases, and the Message
+Admin transmits. It also publishes CASREP, EXORD, OPREP and PLANORD templates
+when no template of that name exists. Seed commands are safe to rerun,
 but are not required for routine startup.
 
 4. Launch **one** app mode:
@@ -494,6 +501,7 @@ npm run db:migrate
 npm run db:seed:users
 npm run db:seed:routing
 npm run db:seed:messages
+npm run db:seed:outgoing
 ```
 
 Migration 003a preserves the first creation branch's incompatible `messages`

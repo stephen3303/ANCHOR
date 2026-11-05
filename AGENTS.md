@@ -69,6 +69,7 @@ npm run db:seed:commands
 npm run db:seed:users
 npm run db:seed:routing
 npm run db:seed:messages
+npm run db:seed:outgoing
 npm run dev
 ```
 

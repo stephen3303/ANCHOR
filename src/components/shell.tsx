@@ -151,14 +151,14 @@ function Sidebar({ open, onClose }: { open: boolean | null; onClose: () => void 
       <nav
         aria-label="Main"
         className={cx(
-          "no-print fixed inset-y-0 left-0 z-30 flex w-60 flex-col bg-gradient-to-b from-navy-900 via-navy-950 to-[#04101f] pt-16 text-white transition-transform sm:pt-[72px] lg:static lg:z-auto lg:pt-0",
+          "no-print fixed top-0 bottom-10 left-0 z-30 flex min-h-0 w-60 shrink-0 flex-col bg-gradient-to-b from-navy-900 via-navy-950 to-[#04101f] pt-16 text-white transition-transform sm:pt-[72px] lg:static lg:z-auto lg:pt-0",
           open === null ? "-translate-x-full lg:translate-x-0" : open ? "translate-x-0" : "-translate-x-full lg:hidden",
         )}
       >
         <button type="button" onClick={onClose} className="absolute right-2 top-[76px] p-1 lg:hidden" aria-label="Close navigation">
           <X className="size-5" />
         </button>
-        <ul className="flex-1 overflow-y-auto py-2">
+        <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-2">
           {NAV.filter((item) => !item.role || hasRole(user, item.role)).map(({ href, label, icon: Icon, badge }) => {
             const active = href === "/" ? path === "/" : path.startsWith(href);
             const count = badge ? badges[badge] : 0;
@@ -183,7 +183,7 @@ function Sidebar({ open, onClose }: { open: boolean | null; onClose: () => void 
             );
           })}
         </ul>
-        <div className="border-t border-white/15 px-6 py-5 text-[15px] font-semibold leading-7 tracking-[0.2em] text-gold">
+        <div className="shrink-0 border-t border-white/15 px-6 py-5 text-[15px] font-semibold leading-7 tracking-[0.2em] text-gold">
           PEOPLE
           <br />
           INFORMATION
@@ -259,12 +259,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState<boolean | null>(null);
   const toggle = () => setOpen((o) => (o === null ? window.innerWidth < 1024 : !o));
   return (
-    <div className="print-full flex h-screen flex-col overflow-hidden">
+    <div className="print-full flex min-h-0 flex-1 flex-col overflow-hidden">
       <Header onMenu={toggle} />
       <AlertStrip />
-      <div className="print-full flex min-h-0 flex-1">
+      <div className="print-full flex min-h-0 flex-1 overflow-hidden">
         <Sidebar open={open} onClose={() => setOpen(false)} />
-        <main className="print-full min-w-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">{children}</main>
+        <main className="print-full min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">{children}</main>
       </div>
       <Footer />
       <Toast />

@@ -1,5 +1,6 @@
 // Domain model for the prototype. Field names follow ANCHOR.txt where it names
 // a concept (precedence, lifecycle status, acknowledgement, source artifact).
+import type { MessageReference } from "./references";
 
 export type Classification = "UNCLASSIFIED" | "CUI" | "CONFIDENTIAL" | "SECRET";
 
@@ -97,6 +98,10 @@ export interface Message {
   /** Structured addressees (TO/INFO). Groups expand to member commands for acknowledgement tracking. */
   addressees: Addressee[];
   related: string[];
+  /** REF sets, lettered A, B, C, each with its part of the AMPN or NARR text (NTP 3(J) para 711) */
+  refs?: MessageReference[];
+  /** NTP 3(J) reference rules the received text breaks, for the Message Admin */
+  referenceIssues?: string[];
   /** AI-generated summary, always shown apart from the official text */
   aiSummary?: string;
 }

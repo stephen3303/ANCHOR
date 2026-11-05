@@ -17,16 +17,24 @@
 .EXAMPLE
   npm run app:update
   npm run app:update -- -Seed
+  npm run app:update -- -Https
   powershell -ExecutionPolicy Bypass -File scripts/update.ps1 -Seed
 #>
 param(
   # Also run db:seed:commands, users, routing and messages (all safe to rerun).
   [switch]$Seed,
+  # Keep the TLS proxy and Secure cookies enabled during updates.
+  [switch]$Https,
   # URL used to confirm the app is up after the rebuild.
   [string]$Url = "http://localhost:3000"
 )
 
 $ErrorActionPreference = "Stop"
+$compose = @("compose")
+if ($Https) {
+  $compose += @("-f", "docker-compose.yml", "-f", "docker-compose.https.yml")
+  if (-not $PSBoundParameters.ContainsKey("Url")) { $Url = "https://localhost:3443" }
+}
 Set-Location (Join-Path $PSScriptRoot "..")
 
 function Step([string]$Name) { Write-Host "`n==> $Name" -ForegroundColor Cyan }
@@ -76,7 +84,7 @@ try {
   }
 
   Step "Starting PostgreSQL"
-  Run docker @("compose", "up", "-d", "--wait", "postgres")
+  Run docker ($compose + @("up", "-d", "--wait", "postgres"))
 
   Step "Applying migrations"
   Run npm @("run", "db:migrate")
@@ -91,7 +99,9 @@ try {
   # Migrations run before the rebuild so the new app code never starts against
   # an old schema.
   Step "Rebuilding and restarting the app"
-  Run docker @("compose", "up", "-d", "--build", "anchor")
+  $services = @("anchor")
+  if ($Https) { $services += "https" }
+  Run docker ($compose + @("up", "-d", "--build") + $services)
 
   Step "Waiting for $Url"
   $deadline = (Get-Date).AddSeconds(60)

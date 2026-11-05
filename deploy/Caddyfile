@@ -1,0 +1,17 @@
+{
+	# Local certificates are explicitly supplied; do not request public certs or
+	# install a CA automatically. Only the HTTPS port is exposed by Compose.
+	auto_https off
+	admin off
+}
+
+:443 {
+	tls /certificates/anchor.pem /certificates/anchor-key.pem
+
+	# Caddy preserves the incoming Host and sets X-Forwarded-Proto/Host, which
+	# Next needs for HTTPS redirects and the API's existing same-origin checks.
+	reverse_proxy {$ANCHOR_HTTPS_UPSTREAM:anchor:3000} {
+		# Preserve streamed App Router/PPR responses; do not buffer or cache them.
+		flush_interval -1
+	}
+}

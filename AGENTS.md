@@ -46,6 +46,15 @@ and transmission features rather than restoring an old branch wholesale.
   control. Local Node uses `DATABASE_URL` or PG environment variables; the Docker
   app connects to `postgres:5432`. The example host port is **5433**, since 5432
   may belong to another local database. Keep the port and connection URL aligned.
+- HTTPS for LAN teammates: `npm run https:certs -- <hostname> <IP>` requires mkcert
+  and explicit `mkcert -install` by the owner; teammates must trust that CA's public
+  root certificate, never receive either private key. `npm run dev:https` forces
+  Secure cookies (default loopback:3443). Docker uses `docker-compose.https.yml`
+  with the base file, a pinned Caddy TLS proxy, read-only leaf cert/key mounts and
+  no published plaintext app port. Certificates are ignored by Git/Docker builds.
+  LAN binding is explicit via `ANCHOR_HTTPS_BIND`; preserve the override on restart
+  and use `app:update -- -Https -Url https://<bound-host>:<port>` on Windows.
+  Do not auto-install trust or replace a running app without owner approval.
 - Local demo switches: `ENABLE_DEMO_LOGIN=true`,
   `ENABLE_TEMPLATE_AUTHORING=true`, `SESSION_COOKIE_SECURE=false` for HTTP only.
   Passwordless account selection is impersonation, not proof of identity.
@@ -85,7 +94,7 @@ not reset release counters or overwrite administrators' workflow changes.
 | Shared generated form / PLADS picker | `src/components/template-preview.tsx`, `src/lib/command-search.ts` |
 | Draft composer and custom chains | `src/app/(workspace)/drafting/page.tsx`, `src/components/draft-composer.tsx`, `src/components/draft-routing-editor.tsx`, `src/lib/routing-store.tsx` |
 | Draft persistence and transitions | `src/lib/server/outgoing-messages.ts`, `src/lib/server/message-routing.ts`, `src/lib/server/routing-data.ts`, `src/lib/server/routing-config.ts` |
-| Pub/sub topics and preferences | `src/app/(workspace)/subscriptions/page.tsx`, `src/lib/message-topics.ts`, `src/lib/topic-subscriptions.ts`, `src/lib/server/message-topics.ts`, `src/app/api/subscriptions/`, `database/migrations/009-message-topic-subscriptions.sql` |
+| Pub/sub topics and preferences | `src/app/(workspace)/subscriptions/page.tsx`, `src/lib/message-topics.ts`, `src/lib/topic-subscriptions.ts`, `src/lib/server/message-topics.ts`, `src/app/api/subscriptions/`, `database/migrations/009-message-topic-subscriptions.sql`, `database/migrations/010-template-message-topics.sql` |
 | Transmission queue | `src/app/(workspace)/transmissions/`, `src/lib/server/transmissions.ts` |
 | Published traffic, ingest, integrity, acknowledgements | `src/lib/server/messages.ts`, `src/lib/naval.ts`, `src/lib/ingest-record.ts` |
 | Roles, users, admin | `src/lib/roles.ts`, `src/lib/demo-users.ts`, `src/lib/server/user-admin.ts`, `src/components/routing-admin.tsx` |
@@ -175,8 +184,14 @@ present watch-reported completion or acknowledgements as task closure.
 - `/subscriptions` allows every signed-in viewer to freely subscribe/unsubscribe,
   persisted by session user in `message_topic_subscriptions`. No approval, mandatory
   lock or client actor IDs. Existing legacy admin approval demos do not gate this.
-- Migration 009 registers topics and immutable message mappings atomically on
-  insertion into `messages`, hence at local transmission, not draft or release.
+- Migration 010 advertises a template's fixed Type atomically on publication
+  (creation or revision), before any traffic is sent. List zero-message types and
+  allow users to subscribe in advance; never automatically subscribe users.
+  Backfill only the latest published fixed Type of active templates.
+- Migration 009 remains the second creation path: on insertion into `messages`
+  (local transmission, not draft/release), register the topic only if absent and
+  link the message. Both paths share the unique case-sensitive topic name and
+  `ON CONFLICT DO NOTHING`; preserve existing IDs, memberships and counts.
   Resolve local Type from pinned definitions/saved legacy inputs; received traffic
   uses MSGID. Backfill derived metadata only; preserve all canonical artifacts.
 - Workflow `MessageType` categories remain separate. API responses expose derived

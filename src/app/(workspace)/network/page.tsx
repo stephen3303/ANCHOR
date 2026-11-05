@@ -100,7 +100,7 @@ export default function NetworkPage() {
 
           <NodeCard node="anchor" status="Online" up pipes={t.pipes.anchor} onQueue={() => setQueueNode("anchor")}>
             <div>Circuit {t.circuitUp ? "up" : "down"} · {t.reachable.length} of 3 workstations reachable · {t.held} held for transmit</div>
-            <Button size="sm" icon={RadioTower} href="/transmissions" className="mt-2">Transmission Queue</Button>
+            <Button size="sm" icon={RadioTower} href="/transmissions" className="mt-2">Transmission &amp; Acknowledge</Button>
           </NodeCard>
 
           <div className="h-5 w-0.5 bg-slate-300" aria-hidden />

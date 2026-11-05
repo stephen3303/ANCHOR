@@ -8,6 +8,8 @@ import type { AckReceipt, Lifecycle, Message, MessageUserState, ReadState } from
 import type { AppUser } from "@/lib/users";
 import { ApiError } from "./api-error";
 import { database } from "./db";
+import { recordAcknowledgement } from "./transmissions";
+import { hasRole, MESSAGE_ADMIN } from "@/lib/roles";
 
 export const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
 const MAX_RAW_BYTES = 64 * 1024;
@@ -76,7 +78,7 @@ export async function messageSnapshot(user: AppUser): Promise<MessageSnapshot> {
   return { messages, userState, ackReceipts };
 }
 
-async function requireMessage(id: string): Promise<Message> {
+export async function requireMessage(id: string): Promise<Message> {
   if (!/^[a-z0-9-]{1,120}$/.test(id)) throw new ApiError(400, "Invalid message ID.");
   const { rows: [row] } = await database().query<MessageRow>(`${MESSAGE_SELECT} WHERE m.id = $1`, [id]);
   if (!row) throw new ApiError(404, "Message not found.");
@@ -108,9 +110,12 @@ export async function markAllRead(user: AppUser): Promise<number> {
 
 /**
  * Acknowledge received traffic for the user's whole command. Traffic the
- * command sent is acknowledged by its addressees, not by itself.
+ * command sent is acknowledged by its addressees, not by itself. Only the
+ * Message Admin sends acknowledgements; doing so also records the outgoing
+ * acknowledgement message.
  */
 export async function acknowledge(user: AppUser, id: string, ownSource: string): Promise<{ acknowledgedAt: string; already: boolean }> {
+  if (!hasRole(user, MESSAGE_ADMIN)) throw new ApiError(403, "Only the Message Admin sends acknowledgements.");
   const m = await requireMessage(id);
   if (!m.ackRequired) throw new ApiError(409, `${m.reference} does not require acknowledgement.`);
   if (m.source === ownSource) throw new ApiError(409, `${m.reference} was sent by this command; its addressees acknowledge it.`);
@@ -131,6 +136,7 @@ export async function acknowledge(user: AppUser, id: string, ownSource: string):
       INSERT INTO message_acknowledgements (message_id, origin, command_name, command_id, acknowledged_by, acknowledged_at)
       VALUES ($1, 'local', $2, $3, $4, now()) RETURNING acknowledged_at AS at
     `, [m.id, user.commandName, user.commandId, user.id]);
+    await recordAcknowledgement(client, m, user, row.at);
     await client.query("COMMIT");
     return { acknowledgedAt: row.at.toISOString(), already: false };
   } catch (error) {

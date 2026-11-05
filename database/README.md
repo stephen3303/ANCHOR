@@ -11,6 +11,7 @@ docker compose up -d --wait postgres
 npm run db:migrate
 npm run db:seed:commands
 npm run db:seed:users
+npm run db:seed:routing
 npm run db:seed:messages
 ```
 
@@ -44,11 +45,36 @@ purposeful reset, then repeat migration/seeding from first-time setup.
 - Updated `database/seeds/PLADS.txt`: run `npm run db:seed:commands`. Existing IDs
   are retained and missing names are added; this does not delete removed names.
 - Missing initial user: run `npm run db:seed:users`. Existing accounts are preserved.
+- Default routing: after seeding users, run `npm run db:seed:routing`. This maps
+  the demo workflows to actual user UUIDs; existing workflows and counters are preserved.
+- Standard Message: migration 006 publishes the bundled template automatically,
+  bootstrapping only its LTaylor creator if missing. Existing accounts, matching
+  templates, versions and archived state are preserved. The optional
+  `npm run db:seed:templates` is idempotent; it does not upgrade published versions.
+
+### Upgrading from the original message-creation branch
+
+Run migrations, then the user/routing/message seeds above. Migration 003a moves
+that branch's conflicting table to `legacy_message_creation_records`; it does
+not delete it or edit the old migration ledger. Migration 005 copies its saved
+drafts and approval history into the new outgoing tables, preserving IDs,
+version pins, inputs, snapshots, references and routing configuration. Incoming
+main-schema databases are not renamed. Old published records with exact stored
+text are imported into the artifact store; demo records lacking raw text stay
+in the archive and are supplied by `db:seed:messages` instead. Do not reset the
+volume or delete old ledger entries.
 
 The migration runner uses the container's configured credentials, serializes
 concurrent runs with a transaction-scoped advisory lock, and applies all pending
 SQL in a transaction. `schema_migrations` records filenames and SHA-256 checksums.
-Applied files must not be edited; add a new numbered migration instead.
+Applied files normally must not be edited; add a new numbered migration instead.
+One explicitly supported exception is the requested 006 Standard Message seed
+amendment (Body textbox to textarea). The runner accepts only the exact original
+and revised SHA-256 pair, records both in `schema_migration_amendments`, and
+updates the ledger in the same transaction as migration 008. Unknown checksum
+changes still abort the transaction. Migration 008 appends a new published
+version for existing Standard Message templates that need the fix; it never
+updates existing published definitions or retargets message drafts.
 
 `database/init/001-commands.sql` bootstraps the original directory on an empty
 Docker volume. The migration runner also records/applies it safely on existing
@@ -68,7 +94,12 @@ automatically migrate an existing database.
 | `message_template_versions` | Editable unpublished definitions; immutable after publication. |
 | `message_drafts` | Partial or generated message drafts pinned to a published template version. |
 | `message_draft_references` | Ordered selections and resolved snapshots for the current draft. |
+| `outgoing_messages` | Private draft identity, creator/command, idempotency key, expected revision, route snapshot and release metadata. |
+| `outgoing_message_events` | Append-only approval history with authenticated actor and approved snapshot hash. |
+| `command_routing` | Persisted per-command workflows, designations, settings and serialized release counter. |
+| `messages` / `message_artifacts` | Main's published message records and immutable text artifacts; drafts are absent until release. |
 | `schema_migrations` | Applied migration ledger. |
+| `schema_migration_amendments` | Audited, exact-hash amendments to applied seed files; currently only the 006 Body textarea correction. |
 
 All domain tables have generated UUID keys. Timestamps use `timestamptz`.
 New `created_by` values are server-resolved user UUIDs stored as text, not a caller's
@@ -140,11 +171,46 @@ these values. All generated fields must resolve before authoritative rendering.
 The existing stateless preview API exercises the server resolver but stores
 nothing. It resolves the sender command from the valid session user's
 `users.command_id` joined to `commands`, not a global setting or submitted field.
-Future draft creation must apply the same lookup plus real command authorization.
+Draft creation applies the same lookup using the authenticated session's command.
 Capture one clock instant per
 generation, and save resolved automatic values, generator versions and resolution
 time in the draft's `render_metadata` alongside its rendered document/text.
+`POST /api/messages` validates template inputs and saves them atomically with
+reference snapshots. `GET /api/messages?view=drafts` is scoped to the creator,
+assigned reviewers, or the command's admins; ordinary `GET /api/messages` remains
+main's published feed with read-state and acknowledgement data. Draft transition
+requests use `PATCH /api/messages/:id` with an expected revision. The drafter
+can edit any unpublished message, including one under review or withdrawn.
+Content or chain edits reset status to drafting and clear all approvals atomically;
+resubmission starts fresh approval on the saved chain. `action: "route"` accepts
+1–20 distinct active command accounts as `{title, personId, action}` steps, ending
+with exactly one designated release authority; `steps: null` restores a copy of
+the command default. Clients cannot supply step status, approval timestamps or
+actors. These customizations do not modify command configuration.
+New approval-history entries include an append-only `route_snapshot`.
+Migration 007 adds `route_custom` and database publication locks: released
+outgoing rows, local published message records, saved inputs and reference
+snapshots cannot be updated or deleted. Truncation is also blocked. Incoming
+C2OIX lifecycle handling and separate read/acknowledgement state are unchanged. Only the current signed-in holder can approve or release, and
+release also checks their current role and command designation.
+
+Release publishes the exact approved body to main's artifact store in the same
+transaction as the status/event/counter update. Local artifacts use `ANCHOR-…`
+identifiers and real text hashes, not fabricated external receipts. No live
+C2OIX transmission is implemented by this workflow. Command configuration changes
+are admin-only and revision-checked; in-flight route snapshots are not rewritten.
 Do not resolve outputs when publishing templates or on every draft read.
+
+## Editing published templates
+
+`PATCH /api/message-templates/:id` accepts `{expectedVersionId, definition}`.
+The feature flag, signed-in creator or same-command System Admin, same origin,
+definition validation and command-directory availability are checked on the
+server. A parent-row lock serializes publishers; stale version IDs return 409.
+The next version number accounts for unpublished versions as well. Publication
+inserts a new immutable definition and updates parent display metadata in one
+transaction. Existing message version pins and rendered snapshots are untouched.
+The library returns a request-specific `canEdit` flag and must not be cached.
 
 ## Saving messages
 
@@ -153,14 +219,24 @@ null generated output; this supports saving work in progress without implying
 that it is valid or ready to send. Generated structured document and text must
 both be present or both be null.
 
-The future save service must execute one transaction to:
+The current API requires valid, complete template inputs before saving rendered
+output; the nullable schema also supports future incomplete-draft saving.
+The save service executes one transaction to:
 
 - Authenticate/authorize and check the expected draft revision.
 - Validate input values and resolve selected IDs under the appropriate parameters.
 - Resolve autogenerated bindings from trusted command context and one server clock;
   do not accept resolved automatic values from the client.
-- Update inputs, generated subject/metadata, canonical unwrapped document, final
-  text, and renderer/postprocessor version metadata together.
+- Apply the 69-character line policy after substitution: word wrap at whitespace
+  where possible, hard break unbroken text at character 69 otherwise (Unicode code
+  points, without splitting surrogate pairs). Preserve original input values.
+- Update inputs, generated subject/metadata, canonical wrapped document, final
+  text, and actual formatting/renderer metadata together. Formatting profile
+  version 2 records line length 69, word/hard wrapping and LF newlines. Previously
+  published template profiles are not rewritten; every new save records the
+  actual policy in `render_metadata.formatting`.
+- Reject submission/release of legacy overlong snapshots until the owner resaves
+  and obtains fresh approvals. Do not silently rewrap approved or published text.
 - Replace `message_draft_references` with the corresponding resolved selections.
 
 When saving incomplete/changed inputs without rendering, clear both generated

@@ -1,5 +1,6 @@
 "use client";
 
+import { hasRole, SUBSCRIPTION_APPROVER } from "@/lib/roles";
 import { useEffect, useState } from "react";
 import { BellRing, Check as CheckIcon, Lock, ShieldCheck, UserCog, Users, X } from "lucide-react";
 import { useCurrentUser } from "@/lib/current-user";
@@ -13,7 +14,7 @@ import { UserAdminPanel } from "@/components/user-admin";
 // Business rules that make delivery mandatory (ANCHOR.txt section 6).
 const ALERT_RULES = [
   { rule: "Precedence", match: <><PrecedenceBadge p="FLASH" /> <PrecedenceBadge p="IMMEDIATE" /></>, audience: "All addressed units", ack: "Required, 2h", escalate: "Department Head → XO" },
-  { rule: "Topic", match: "Safety (all subtopics)", audience: "All personnel", ack: "Required, 24h", escalate: "Safety Officer" },
+  { rule: "Message type", match: "SAFETY (all subtags)", audience: "All personnel", ack: "Required, 24h", escalate: "Safety Officer" },
   { rule: "Command applicability", match: "COMSUBLANT action messages", audience: "Commanding Officers, XOs", ack: "Required, 48h", escalate: "SUBRON Commander" },
   { rule: "Role", match: "Cybersecurity directives", audience: "ISSM, IT Chief", ack: "Required, 72h", escalate: "Comms Officer" },
 ];
@@ -62,10 +63,11 @@ export default function AdminPage() {
 function Overview() {
   const CURRENT_USER = useCurrentUser();
   const { approvals, decideApproval } = useStore();
+  const approver = hasRole(CURRENT_USER, SUBSCRIPTION_APPROVER);
   return (
     <>
       <Panel title={`Subscription Approval Queue (${approvals.length})`} icon={CheckIcon} className="mb-4">
-        <p className="mb-3 text-sm text-muted">You hold the Subscription Approver role for {CURRENT_USER.unit}. Requests are not active until approved.</p>
+        <p className="mb-3 text-sm text-muted">{approver ? "You hold the Subscription Approver role for this command." : "Only a Subscription Approver can decide these requests."} Requests are not active until approved.</p>
         {approvals.length ? (
           <div className={tableWrap}>
             <table className="w-full min-w-[760px]">
@@ -88,10 +90,12 @@ function Overview() {
                     <td className={td}>{a.justification}</td>
                     <td className={td}>{a.requestedOn}</td>
                     <td className={td}>
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="primary" icon={CheckIcon} onClick={() => decideApproval(a.id, true)}>Approve</Button>
-                        <Button size="sm" icon={X} onClick={() => decideApproval(a.id, false)}>Deny</Button>
-                      </div>
+                      {approver ? (
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="primary" icon={CheckIcon} onClick={() => decideApproval(a.id, true)}>Approve</Button>
+                          <Button size="sm" icon={X} onClick={() => decideApproval(a.id, false)}>Deny</Button>
+                        </div>
+                      ) : <span className="text-muted">Awaiting approver</span>}
                     </td>
                   </tr>
                 ))}

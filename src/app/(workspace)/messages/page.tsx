@@ -128,7 +128,7 @@ export default function MessagesPage() {
     dtg: { className: "whitespace-nowrap", cell: (m) => m.dtg },
     precedence: (m) => <PrecedenceBadge p={m.precedence} />,
     category: (m) => <CategoryBadge c={categoryOf(m.type)} />,
-    type: { className: "whitespace-nowrap", cell: (m) => <MessageTypeLabel t={m.type} /> },
+    type: { className: "whitespace-nowrap", cell: (m) => <MessageTypeLabel t={m.type} subtag={m.subtag} /> },
     status: (m) => <ReadStatus r={userState[m.id].read} />,
   });
 

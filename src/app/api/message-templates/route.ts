@@ -1,23 +1,28 @@
+import { MESSAGE_FORMATTING_PROFILE } from "@/lib/message-format";
 import { randomUUID } from "node:crypto";
 import { connection } from "next/server";
 import { compileTemplate, isCommandChoice, validateTemplateDefinition } from "@/lib/message-templates";
+import { currentSessionUser } from "@/lib/server/session";
+import { isAdmin } from "@/lib/server/user-admin";
 import { database } from "@/lib/server/db";
 import { ApiError, apiFailure, readTemplatePayload, templateAuthor } from "@/lib/server/template-api";
 
 export async function GET() {
   await connection();
   try {
+    const user = await currentSessionUser();
     const { rows } = await database().query(`
-      SELECT t.id, t.name, t.description, v.version, v.published_at AS "publishedAt",
+      SELECT t.id, t.name, t.description, t.created_by AS "createdBy", u.command_id AS "creatorCommandId", v.version, v.published_at AS "publishedAt",
         jsonb_array_length(v.ui_schema->'fields') AS "variableCount"
-      FROM message_templates t
+      FROM message_templates t LEFT JOIN users u ON u.id::text=t.created_by
       JOIN LATERAL (
         SELECT * FROM message_template_versions WHERE template_id = t.id AND published_at IS NOT NULL
         ORDER BY version DESC LIMIT 1
       ) v ON true
       WHERE t.active ORDER BY v.published_at DESC LIMIT 100
     `);
-    return Response.json({ templates: rows }, { headers: { "Cache-Control": "no-store" } });
+    const templates = rows.map(({ createdBy, creatorCommandId, ...template }) => ({ ...template, canEdit: process.env.ENABLE_TEMPLATE_AUTHORING === "true" && !!user && (createdBy === user.id || (isAdmin(user) && creatorCommandId === user.commandId)) }));
+    return Response.json({ templates }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return apiFailure(error); }
 }
 
@@ -43,7 +48,7 @@ export async function POST(request: Request) {
           (template_id, version, input_schema, ui_schema, output_definition, formatting_profile, renderer_version, created_by, published_at)
         VALUES ($1, 1, $2::jsonb, $3::jsonb, $4::jsonb, $5::jsonb, 'named-v1', $6, now())
         RETURNING id AS "versionId", version, published_at AS "publishedAt"
-      `, [template.id, JSON.stringify(compiled.inputSchema), JSON.stringify(compiled.uiSchema), JSON.stringify(compiled.outputDefinition), JSON.stringify({ version: 1, wordWrap: false, newline: "LF" }), author]);
+      `, [template.id, JSON.stringify(compiled.inputSchema), JSON.stringify(compiled.uiSchema), JSON.stringify(compiled.outputDefinition), JSON.stringify(MESSAGE_FORMATTING_PROFILE), author]);
       await client.query("COMMIT");
       return Response.json({ template: { ...template, ...version, variableCount: definition.fields.length } }, { status: 201 });
     } catch (error) {

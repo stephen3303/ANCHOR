@@ -18,8 +18,10 @@ import {
 } from "lucide-react";
 import { resolveAckStatus, sentByOwnCommand } from "@/lib/data";
 import { fmtDateTime, hoursUntil, shortHash } from "@/lib/format";
-import { MESSAGE_TYPE_INFO, PRECEDENCE_OBJECTIVE, categoryOf, precedenceAdvisory } from "@/lib/message-types";
+import { PRECEDENCE_OBJECTIVE, categoryOf, keyOf, keyPath, precedenceAdvisory } from "@/lib/message-types";
 import { useStore } from "@/lib/store";
+import { useCurrentUser } from "@/lib/current-user";
+import { hasRole, MESSAGE_ADMIN } from "@/lib/roles";
 import type { Attachment, Message } from "@/lib/types";
 import { Button, CategoryBadge, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tabs, cx, tableWrap, tbodyRow } from "./ui";
 import { MessageCellsRow, MessageHeaderRow, messageColumns, type MessageCells } from "./message-columns";
@@ -77,6 +79,7 @@ export function LifecycleNotice({ m }: { m: Message }) {
 
 export function AckPanel({ m, compact }: { m: Message; compact?: boolean }) {
   const { userState, acknowledge, ackReceipts } = useStore();
+  const canAck = hasRole(useCurrentUser(), MESSAGE_ADMIN);
   if (!m.ackRequired) return null;
   if (sentByOwnCommand(m)) {
     const { commands } = resolveAckStatus(m, ackReceipts[m.id] ?? []);
@@ -106,9 +109,13 @@ export function AckPanel({ m, compact }: { m: Message; compact?: boolean }) {
         <strong>Acknowledgement required</strong>
         {m.ackDue && <> by {fmtDateTime(m.ackDue)}{h !== null && h <= 24 && <> · escalates to your Department Head in {Math.max(h, 0)}h</>}</>}
       </span>
-      <Button variant="danger" size="sm" className="ml-auto" onClick={() => acknowledge(m.id)}>
-        Acknowledge receipt
-      </Button>
+      {canAck ? (
+        <Button variant="danger" size="sm" className="ml-auto" onClick={() => acknowledge(m.id)}>
+          Acknowledge receipt
+        </Button>
+      ) : (
+        <span className="ml-auto font-semibold">The Message Admin sends this acknowledgement.</span>
+      )}
     </div>
   );
 }
@@ -272,7 +279,7 @@ export function MetadataTable({ m }: { m: Message }) {
     ...(precedenceAdvisory(m.type, m.precedence) ? [["Precedence Check", <span key="pa" className="text-amber-800">{precedenceAdvisory(m.type, m.precedence)}</span>] as [string, React.ReactNode]] : []),
     ["Status", m.lifecycle === "ACTIVE" ? "Active" : <LifecycleBadge key="l" l={m.lifecycle} />],
     ["Category", <CategoryBadge key="cat" c={categoryOf(m.type)} />],
-    ["Message Type", `${m.type}${MESSAGE_TYPE_INFO[m.type].name !== m.type ? ` (${MESSAGE_TYPE_INFO[m.type].name})` : ""}`],
+    ["Message Type", `${keyOf(m)}${keyPath(keyOf(m)) !== keyOf(m) ? ` (${keyPath(keyOf(m))})` : ""}`],
     ["Reference", m.reference],
     ["Date-Time Group", m.dtg],
     ["From", m.originator],

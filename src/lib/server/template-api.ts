@@ -1,10 +1,12 @@
 import "server-only";
+import { MessageInputError } from "@/lib/message-inputs";
 import { TemplateValidationError } from "@/lib/message-templates";
 
 import { ApiError } from "./api-error";
 import { requireSessionUser } from "./session";
 export { ApiError } from "./api-error";
 export function apiFailure(error: unknown): Response {
+  if (error instanceof MessageInputError) return Response.json({ error: error.message, fields: error.fields }, { status: 400 });
   if (error instanceof TemplateValidationError) return Response.json({ error: error.message }, { status: 400 });
   if (error instanceof ApiError) return Response.json({ error: error.message }, { status: error.status });
   console.error("Template API request failed", error);
@@ -13,9 +15,13 @@ export function apiFailure(error: unknown): Response {
 
 // Passwordless demo sessions are not proof of identity or production authorization.
 export async function templateAuthor(request: Request): Promise<string> {
+  return (await templateAuthorUser(request)).id;
+}
+
+export async function templateAuthorUser(request: Request) {
   if (process.env.ENABLE_TEMPLATE_AUTHORING !== "true") throw new ApiError(403, "Template authoring is disabled on this server.");
   assertSameOrigin(request);
-  return (await requireSessionUser()).id;
+  return requireSessionUser();
 }
 
 export function assertSameOrigin(request: Request): void {

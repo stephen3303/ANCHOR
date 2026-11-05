@@ -4,7 +4,7 @@
 // roles, and deactivate or reactivate. Changes persist in PostgreSQL.
 import { useEffect, useState } from "react";
 import { Lock, Pencil, Plus, Save, UserCheck, UserPlus, UserX, Users } from "lucide-react";
-import { ROLE_CATALOG, SYSTEM_ADMIN_ROLE } from "@/lib/demo-users";
+import { DESIGNATED_ROLES, hasRole, MESSAGE_VIEWER, ROLE_CATALOG, SYSTEM_ADMIN as SYSTEM_ADMIN_ROLE } from "@/lib/roles";
 import { useCurrentUser } from "@/lib/current-user";
 import { useStore } from "@/lib/store";
 import { Button, Check, EmptyState, Panel, Pill, Tag, TextInput, Toggle, cx, tableWrap, td, th, theadRow, tbodyRow } from "./ui";
@@ -39,9 +39,11 @@ function RoleChecks({ value, onChange, lockAdmin }: { value: string[]; onChange:
       <legend className="mb-1 text-sm font-semibold text-ink">Roles</legend>
       <div className="grid gap-x-4 sm:grid-cols-2">
         {ROLE_CATALOG.map((role) => {
-          const locked = lockAdmin && role.name === SYSTEM_ADMIN_ROLE;
+          const reason = role.name === MESSAGE_VIEWER ? "Every account holds Message Viewer."
+            : DESIGNATED_ROLES.includes(role.name) ? "Granted by the Release Authority through a release designation."
+            : lockAdmin && role.name === SYSTEM_ADMIN_ROLE ? "You cannot remove your own System Admin role." : "";
           return (
-            <div key={role.name} title={locked ? "You cannot remove your own System Admin role." : role.detail} className={cx(locked && "pointer-events-none opacity-60")}>
+            <div key={role.name} title={reason || role.detail} className={cx(reason && "pointer-events-none opacity-60")}>
               <Check
                 checked={value.includes(role.name)}
                 label={<>{role.name} <span className="text-xs text-muted">· {role.detail}</span></>}
@@ -56,7 +58,7 @@ function RoleChecks({ value, onChange, lockAdmin }: { value: string[]; onChange:
 }
 
 function AddUserForm({ onCreated, onCancel }: { onCreated: (user: ManagedUser) => void; onCancel: () => void }) {
-  const [form, setForm] = useState({ login: "", rank: "", surname: "", billet: "", unit: "", email: "", roles: ["Message Viewer", "Subscription Requester"] });
+  const [form, setForm] = useState({ login: "", rank: "", surname: "", billet: "", unit: "", email: "", roles: [MESSAGE_VIEWER] });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
@@ -125,7 +127,7 @@ function EditUserRow({ user, self, onSaved, onCancel }: { user: ManagedUser; sel
 export function UserAdminPanel() {
   const me = useCurrentUser();
   const { notify } = useStore();
-  const isAdmin = me.roles.some((r) => r.name === SYSTEM_ADMIN_ROLE && r.granted);
+  const isAdmin = hasRole(me, SYSTEM_ADMIN_ROLE);
   const [users, setUsers] = useState<ManagedUser[] | null>(null);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);

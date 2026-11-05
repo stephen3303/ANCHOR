@@ -1,6 +1,7 @@
 // Shared, framework-independent authoring contract. No executable template logic.
 import { isSupportedGenerator, type GeneratorBinding } from "./generated-inputs";
 import { ZULU_DATETIME_PATTERN } from "./format";
+import { wrapMessageText } from "./message-format";
 
 export const INPUT_TYPES = [
   ["text", "Textbox"], ["textarea", "Multiline text"], ["select", "Dropdown"],
@@ -39,6 +40,7 @@ export interface TemplateSummary {
   version: number;
   publishedAt: string;
   variableCount: number;
+  canEdit?: boolean;
 }
 export type TemplateValues = Record<string, string | string[] | boolean>;
 export class TemplateValidationError extends Error {}
@@ -162,8 +164,17 @@ export function compileTemplate(definition: TemplateDefinition) {
   };
 }
 
+// Apply the message-output policy after substitution, including command names
+// and automatic values. Preview and persistence must use this same entry point.
+export function renderGeneratedMessage(text: string, values: TemplateValues, fields: readonly TemplateField[] = [], maxOutputLength = Infinity): string {
+  const output = wrapMessageText(renderTemplatePreview(text, values, fields, maxOutputLength));
+  if (output.length > maxOutputLength) throw new TemplateValidationError("Generated message is too large after line wrapping.");
+  return output;
+}
+
 // One pass only: inserted values are never evaluated as template source or HTML.
-export function renderTemplatePreview(text: string, values: TemplateValues, fields: readonly TemplateField[] = []): string {
+export function renderTemplatePreview(text: string, values: TemplateValues, fields: readonly TemplateField[] = [], maxOutputLength = Infinity): string {
+  let outputLength = text.length;
   const configurations = new Map(fields.map((field) => [field.name, field]));
   const zuluDateTime = new RegExp(ZULU_DATETIME_PATTERN);
   const separators = new Map(fields.filter((field) => field.control === "command-multiple").map((field) => [field.name, COMMAND_SEPARATORS.find(({ key }) => key === field.separator)?.value ?? "; "]));
@@ -177,8 +188,9 @@ export function renderTemplatePreview(text: string, values: TemplateValues, fiel
       const overrides = field?.optionOutputs;
       return field && (isStaticChoice(field.control) || field.control === "checkbox") && overrides && Object.hasOwn(overrides, label) && overrides[label].trim() ? overrides[label] : label;
     };
-    if (Array.isArray(value)) return value.map(outputFor).join(separators.get(name) ?? "; ");
-    if (typeof value === "boolean") return outputFor(value ? "YES" : "NO");
-    return outputFor(value);
+    const output = Array.isArray(value) ? value.map(outputFor).join(separators.get(name) ?? "; ") : typeof value === "boolean" ? outputFor(value ? "YES" : "NO") : outputFor(value);
+    outputLength += output.length - placeholder.length;
+    if (outputLength > maxOutputLength) throw new TemplateValidationError("Generated message is too large. Shorten the inputs or repeated placeholders.");
+    return output;
   });
 }

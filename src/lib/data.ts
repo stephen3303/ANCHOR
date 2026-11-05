@@ -1,6 +1,5 @@
 // Mock data for the prototype. Every message, person, unit and address here is
 // fictional and exists only to exercise the UI. None of it is real traffic.
-import { formatForType } from "./message-types";
 import type {
   AckReceipt,
   ActionItem,
@@ -13,6 +12,7 @@ import type {
   Subscription,
   SyncItem,
 } from "./types";
+import { AUDITOR, REPORT_VIEWER, rolesFor, SUBSCRIPTION_APPROVER, SYSTEM_ADMIN } from "./roles";
 
 export const CURRENT_USER = {
   name: "LT Taylor",
@@ -27,15 +27,7 @@ export const CURRENT_USER = {
   location: "Ashore",
   email: "taylor.j@example.mil",
   dsn: "312-555-1234",
-  roles: [
-    { name: "Message Viewer", detail: "View messages and attachments", granted: true },
-    { name: "Briefing Creator", detail: "Create and customize briefings", granted: true },
-    { name: "Subscription Requester", detail: "Request subscriptions for approval", granted: true },
-    { name: "Report Viewer", detail: "Acknowledgement and traffic reports", granted: true },
-    { name: "Subscription Approver", detail: "Approve unit subscription requests", granted: true },
-    { name: "Designated Release Authority", detail: "Release outgoing command traffic", granted: false },
-    { name: "System Admin", detail: "Manage unit users and settings", granted: true },
-  ],
+  roles: rolesFor([REPORT_VIEWER, SUBSCRIPTION_APPROVER, AUDITOR, SYSTEM_ADMIN]),
   groups: ["COMSUBLANT", "COMSUBLANT N6", "Comms Division"],
 };
 
@@ -112,7 +104,7 @@ function rawMessage(s: Seed, serial: number): string {
     "BT",
     CLASS_LINE[s.classification],
     ...wrap(`SUBJ/${up(s.subject)}//`),
-    `MSGID/${formatForType(s.type)}/${up(s.originator)}/${up(s.reference)}//`,
+    `MSGID/${[s.type, s.subtag, s.originator, s.reference].filter(Boolean).map((f) => up(f!)).join("/")}//`,
   ];
   if (s.relatesTo) out.push(`REF/A/MSG/${up(s.relatesTo)}//`);
   const poc = s.sections.find((x) => x.heading === "Point of Contact");
@@ -141,7 +133,8 @@ const seeds: Seed[] = [
     received: "2026-10-24T18:30:00Z",
     subject: "Submarine Deployment Readiness Reporting Requirements",
     reference: "COMSUBLANT 078/26",
-    type: "GENADMIN",
+    type: "READINESS",
+    subtag: "REPORTING",
     originator: "COMSUBLANT N3",
     source: "COMSUBLANT",
     to: "All COMSUBLANT Units",
@@ -151,7 +144,6 @@ const seeds: Seed[] = [
     importance: "High",
     lifecycle: "ACTIVE",
     relatesTo: "COMSUBLANT 061/26",
-    topics: ["submarine.deployments", "readiness.reporting"],
     attachments: [
       { name: "COMSUBLANT_078_26.pdf", size: "1.2 MB", kind: "pdf" },
       { name: "Readiness_Template.xlsx", size: "450 KB", kind: "xlsx" },
@@ -192,7 +184,6 @@ const seeds: Seed[] = [
     importance: "High",
     lifecycle: "CORRECTED",
     relatesTo: "NAVADMIN 235/26",
-    topics: ["cyber.controls", "policy.admin", "readiness.inspections"],
     attachments: [{ name: "NAVADMIN_236_26.pdf", size: "820 KB", kind: "pdf" }],
     sections: sections(
       "To issue updated cybersecurity controls and monitoring requirements for operational networks. This corrected copy fixes the implementation date in paragraph 3 of NAVADMIN 235/26.",
@@ -225,7 +216,6 @@ const seeds: Seed[] = [
     importance: "Medium",
     lifecycle: "SUPERSEDED",
     replacedBy: "NAVADMIN 236/26",
-    topics: ["cyber.controls", "policy.admin"],
     attachments: [],
     sections: sections(
       "To issue updated cybersecurity controls for operational networks.",
@@ -243,7 +233,8 @@ const seeds: Seed[] = [
     received: "2026-10-24T05:15:00Z",
     subject: "Submarine Safety Stand-Down Guidance",
     reference: "COMSUBLANT 080/26",
-    type: "GENADMIN",
+    type: "SAFETY",
+    subtag: "STAND-DOWNS",
     originator: "COMSUBLANT Safety",
     source: "COMSUBLANT",
     to: "All COMSUBLANT Units",
@@ -252,7 +243,6 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "High",
     lifecycle: "ACTIVE",
-    topics: ["safety.stand-downs", "safety.orm", "submarine"],
     attachments: [{ name: "Safety_Standdown_Agenda.docx", size: "210 KB", kind: "docx" }],
     sections: sections(
       "To direct a one-day safety stand-down for all COMSUBLANT units.",
@@ -287,7 +277,6 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Medium",
     lifecycle: "ACTIVE",
-    topics: ["readiness.force-health", "personnel.family"],
     attachments: [
       { name: "NAVADMIN_234_26.pdf", size: "1.2 MB", kind: "pdf" },
       { name: "Health_Protection_Annex.docx", size: "450 KB", kind: "docx" },
@@ -309,7 +298,8 @@ const seeds: Seed[] = [
     received: "2026-10-02T14:30:00Z",
     subject: "Deployment Readiness Reporting (Interim)",
     reference: "COMSUBLANT 061/26",
-    type: "GENADMIN",
+    type: "READINESS",
+    subtag: "REPORTING",
     originator: "COMSUBLANT N3",
     source: "COMSUBLANT",
     to: "All COMSUBLANT Units",
@@ -319,7 +309,6 @@ const seeds: Seed[] = [
     importance: "Medium",
     lifecycle: "SUPERSEDED",
     replacedBy: "COMSUBLANT 078/26",
-    topics: ["submarine.deployments", "readiness.reporting"],
     attachments: [],
     sections: sections(
       "To provide interim readiness reporting guidance pending a standardized template.",
@@ -346,7 +335,6 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Medium",
     lifecycle: "ACTIVE",
-    topics: ["personnel.assignments", "policy.admin"],
     attachments: [],
     sections: sections(
       "To announce changes to assignment timelines and detailer guidance.",
@@ -375,7 +363,6 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Medium",
     lifecycle: "ACTIVE",
-    topics: ["training.pipeline", "training.schools"],
     attachments: [{ name: "Pipeline_Schedule.xlsx", size: "310 KB", kind: "xlsx" }],
     sections: sections(
       "To publish revised training schedules for submarine and cybersecurity courses.",
@@ -403,7 +390,6 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Medium",
     lifecycle: "ACTIVE",
-    topics: ["training.watch-quals", "submarine.tactics"],
     attachments: [{ name: "Qualification_Standards.pdf", size: "2.1 MB", kind: "pdf" }],
     sections: sections(
       "To establish standard qualification requirements for submarine watch teams.",
@@ -430,7 +416,6 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Low",
     lifecycle: "ACTIVE",
-    topics: ["maintenance.availabilities", "maintenance.reporting"],
     attachments: [],
     sections: sections(
       "To update maintenance availability reporting procedures.",
@@ -448,7 +433,8 @@ const seeds: Seed[] = [
     received: "2026-10-20T19:05:00Z",
     subject: "Port Visit Coordination (Amendment 1)",
     reference: "COMSUBLANT 074/26",
-    type: "GENADMIN",
+    type: "SUBMARINE",
+    subtag: "PORT-VISITS",
     originator: "COMSUBLANT N3",
     source: "COMSUBLANT",
     to: "Pilot Unit (SSN)",
@@ -458,7 +444,6 @@ const seeds: Seed[] = [
     importance: "High",
     lifecycle: "AMENDED",
     relatesTo: "COMSUBLANT 070/26",
-    topics: ["submarine.port-visits", "logistics.port-services"],
     attachments: [],
     sections: sections(
       "To amend force protection measures for the upcoming port visit.",
@@ -492,7 +477,6 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "High",
     lifecycle: "ACTIVE",
-    topics: ["operations.incidents", "safety.mishaps"],
     attachments: [],
     sections: [
       { heading: "Situation", body: ["At 231842Z OCT 26, while surfaced in the Virginia Capes operating area, one crew member went over the side during topside line handling."] },
@@ -520,7 +504,6 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Low",
     lifecycle: "ACTIVE",
-    topics: ["operations.status", "logistics.fuel-provisions"],
     attachments: [],
     sections: [
       { heading: "Equipment Status", body: ["All mission-essential equipment fully mission capable. No outstanding CASREPs."] },
@@ -547,7 +530,6 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Medium",
     lifecycle: "ACTIVE",
-    topics: ["maintenance.casualties", "logistics.parts", "readiness.reporting"],
     attachments: [],
     sections: [
       { heading: "Casualty", body: ["Number 2 low pressure air compressor tripped on high discharge temperature and will not restart.", "Category 3: degrades a primary mission. Number 1 compressor carries the load with no redundancy."] },
@@ -576,7 +558,6 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Low",
     lifecycle: "ACTIVE",
-    topics: ["operations.movement", "submarine.deployments"],
     attachments: [],
     sections: [
       { heading: "Departure", body: ["Estimated time of departure Norfolk 221200Z OCT 26."] },
@@ -602,7 +583,6 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Low",
     lifecycle: "ACTIVE",
-    topics: ["logistics.fuel-provisions", "logistics.port-services", "submarine.port-visits"],
     attachments: [],
     sections: [
       { heading: "Arrival", body: ["Estimated time of arrival Port Canaveral 240800Z OCT 26, departure 270800Z OCT 26."] },
@@ -619,7 +599,8 @@ const seeds: Seed[] = [
     received: "2026-10-19T14:36:00Z",
     subject: "Undersea Warfare Exercise Planning Conference",
     reference: "USFF 2026-11",
-    type: "GENADMIN",
+    type: "OPERATIONS",
+    subtag: "EXERCISES",
     originator: "USFF N7",
     source: "USFF",
     to: "Participating Units",
@@ -628,7 +609,6 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Low",
     lifecycle: "ACTIVE",
-    topics: ["operations.exercises", "submarine.tactics"],
     attachments: [],
     sections: sections(
       "To announce the initial planning conference for the next undersea warfare exercise series.",
@@ -657,7 +637,6 @@ const seeds: Seed[] = [
     importance: "Low",
     lifecycle: "ACTIVE",
     relatesTo: "ALNAV 071/26",
-    topics: ["personnel.leave"],
     attachments: [],
     sections: sections(
       "To publish holiday leave policy and cancel ALNAV 071/26.",
@@ -685,7 +664,6 @@ const seeds: Seed[] = [
     importance: "Low",
     lifecycle: "CANCELLED",
     replacedBy: "ALNAV 079/26",
-    topics: ["personnel.leave"],
     attachments: [],
     sections: sections(
       "To publish holiday leave policy.",
@@ -712,7 +690,6 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Low",
     lifecycle: "EXPIRED",
-    topics: ["policy.environmental"],
     attachments: [],
     sections: sections(
       "To request environmental compliance data from all activities.",
@@ -739,7 +716,6 @@ const seeds: Seed[] = [
     classification: "UNCLASSIFIED",
     importance: "Low",
     lifecycle: "ACTIVE",
-    topics: ["policy.records"],
     attachments: [],
     sections: sections(
       "To remind commands of official records retention responsibilities.",
@@ -789,7 +765,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     id: "sub-comsublant-cmd",
     name: "COMSUBLANT Command Traffic",
     description: "All traffic from COMSUBLANT to assigned units. Assigned by command.",
-    criteria: { messageTypes: ["GENADMIN"], originators: ["COMSUBLANT"] },
+    criteria: { messageTypes: [], originators: ["COMSUBLANT"] },
     frequency: "Real-time",
     status: "Active",
     mandatory: true,
@@ -817,7 +793,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     id: "sub-deploy-readiness",
     name: "Deployment Readiness",
     description: "Deployment timelines, readiness reporting, checklists and validation procedures.",
-    criteria: { messageTypes: [], topics: ["submarine.deployments", "readiness.reporting"] },
+    criteria: { messageTypes: ["SUBMARINE/DEPLOYMENTS", "READINESS/REPORTING"] },
     frequency: "Real-time",
     status: "Active",
     mandatory: false,
@@ -832,7 +808,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     id: "sub-cyber",
     name: "Cybersecurity Controls",
     description: "Cyber policy, alerts, and implementation guidance.",
-    criteria: { messageTypes: [], topics: ["cyber"] },
+    criteria: { messageTypes: ["CYBER"] },
     frequency: "Daily Digest",
     status: "Active",
     mandatory: false,
@@ -846,7 +822,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     id: "sub-personnel",
     name: "Personnel Policy Updates",
     description: "Personnel policies, assignments and leave.",
-    criteria: { messageTypes: [], topics: ["personnel"] },
+    criteria: { messageTypes: ["PERSONNEL", "ALNAV"] },
     frequency: "Daily Digest",
     status: "Active",
     mandatory: false,
@@ -860,7 +836,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     id: "sub-training",
     name: "Training Pipeline",
     description: "Training pipeline schedules and qualification standards.",
-    criteria: { messageTypes: [], topics: ["training.pipeline", "training.watch-quals"] },
+    criteria: { messageTypes: ["TRAINING/PIPELINE", "TRAINING/WATCH-QUALS"] },
     frequency: "Weekly",
     status: "Active",
     mandatory: false,
@@ -874,7 +850,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     id: "sub-maintenance",
     name: "Maintenance Policy",
     description: "Maintenance policy and availability reporting.",
-    criteria: { messageTypes: [], topics: ["maintenance"] },
+    criteria: { messageTypes: ["MAINTENANCE", "NAVSEAINST"] },
     frequency: "Weekly",
     status: "Paused",
     mandatory: false,
@@ -888,7 +864,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     id: "sub-usw-exercise",
     name: "Undersea Warfare Exercises",
     description: "Exercise planning conferences and CONPLANs.",
-    criteria: { messageTypes: [], topics: ["operations.exercises"] },
+    criteria: { messageTypes: ["OPERATIONS/EXERCISES"] },
     frequency: "Daily Digest",
     status: "Pending Approval",
     mandatory: false,

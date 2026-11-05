@@ -33,7 +33,7 @@ try {
   sql(seed.stdout);
   assert.equal(sql("SELECT count(*) FROM users;").trim(), "10");
   const seededProfile = JSON.parse(sql("SELECT profile::text FROM users WHERE login = 'LTaylor';"));
-  sql("INSERT INTO commands (name) SELECT 'TEST COMMAND ' || lpad(n::text, 2, '0') FROM generate_series(1, 30) n;");
+  sql("INSERT INTO commands (name) SELECT 'TEST COMMAND ' || lpad(n::text, 2, '0') FROM generate_series(1, 60) n;");
 
   const socket = createServer();
   await new Promise((resolve) => socket.listen(0, "127.0.0.1", resolve));
@@ -119,11 +119,12 @@ try {
   assert.equal((await fetch(`${base}/api/message-templates/not-an-id`)).status, 400);
   assert.equal((await fetch(`${base}/api/message-templates/00000000-0000-0000-0000-000000000000`)).status, 404);
   const commands = await (await fetch(`${base}/api/reference-data/commands?q=TEST`)).json();
-  assert.equal(commands.commands.length, 25);
-  assert.equal(commands.nextCursor, "25");
-  const secondPage = await (await fetch(`${base}/api/reference-data/commands?q=TEST&cursor=25`)).json();
-  assert.equal(secondPage.commands.length, 5);
+  assert.equal(commands.commands.length, 50);
+  assert.equal(commands.nextCursor, "50");
+  const secondPage = await (await fetch(`${base}/api/reference-data/commands?q=TEST&cursor=50`)).json();
+  assert.equal(secondPage.commands.length, 10);
   assert.equal(secondPage.nextCursor, null);
+  assert.equal(new Set([...commands.commands, ...secondPage.commands].map((command) => command.id)).size, 60);
   assert.equal((await fetch(`${base}/api/reference-data/commands?cursor=-1`)).status, 400);
   for (const separator of ["semicolon", "space", "newline"]) {
     const separated = { ...definition, fields: definition.fields.map((field, index) => index === 0 ? { ...field, separator } : field) };
@@ -213,15 +214,15 @@ try {
   assert.equal((await admin("", "GET", undefined, "")).status, 401);
   const managed = await (await admin("")).json();
   assert.equal(managed.users.length, 11);
-  assert.ok(managed.users.find((user) => user.login === "RWalsh").roles.includes("Designated Release Authority"));
+  assert.ok(managed.users.find((user) => user.login === "RWalsh").roles.includes("Release Authority"));
   assert.equal((await admin("", "POST", { login: "TJones", rank: "lt", surname: "Jones", billet: "Assistant N3", unit: "COMSUBLANT N3", roles: ["Message Viewer"] }, sessionCookie)).status, 201);
   assert.equal((await admin("", "POST", { login: "tjones", rank: "LT", surname: "Jones", billet: "Assistant N3", unit: "COMSUBLANT N3", roles: [] })).status, 409);
   assert.equal((await admin("", "POST", { login: "Bad", rank: "LT", surname: "X", billet: "B", unit: "U", roles: ["Emperor"] })).status, 400);
   assert.equal((await admin("", "POST", { login: "X1", rank: "LT", surname: "X", billet: "B", unit: "U", roles: [] }, sessionCookie.replace(/=.*/, "=bad"))).status, 401);
   assert.equal((await (await fetch(`${base}/api/users`)).json()).users.length, 12);
-  const edited = await admin(`/${patel.id}`, "PATCH", { billet: "Assistant Logistics Officer (N4A)", roles: ["Message Viewer", "Briefing Creator"] });
+  const edited = await admin(`/${patel.id}`, "PATCH", { billet: "Assistant Logistics Officer (N4A)", roles: ["Message Viewer", "Report Viewer"] });
   assert.equal(edited.status, 200, await edited.clone().text());
-  assert.deepEqual((await edited.json()).user.roles, ["Message Viewer", "Briefing Creator"]);
+  assert.deepEqual((await edited.json()).user.roles, ["Message Viewer", "Report Viewer"]);
   assert.equal(JSON.parse(sql(`SELECT profile::text FROM users WHERE id = '${patel.id}';`)).billet, "Assistant Logistics Officer (N4A)");
   assert.equal((await admin(`/${seededUser.id}`, "PATCH", { active: false })).status, 400, "Admins cannot deactivate themselves");
   assert.equal((await admin(`/${seededUser.id}`, "PATCH", { roles: ["Message Viewer"] })).status, 400, "Admins cannot drop their own System Admin role");
@@ -231,6 +232,74 @@ try {
   assert.equal((await admin(`/${patel.id}`, "PATCH", { active: true })).status, 200);
   const crossOrigin = await fetch(`${base}/api/admin/users/${patel.id}`, { method: "PATCH", headers: { Origin: "https://untrusted.example", Cookie: sessionCookie, "Content-Type": "application/json" }, body: "{\"active\":false}" });
   assert.equal(crossOrigin.status, 403);
+
+  // Editing a template publishes a new version under the same stable ID.
+  const patchTemplate = (id, body, cookie = sessionCookie, origin = base) => fetch(`${base}/api/message-templates/${id}`, { method: "PATCH", headers: { Origin: origin, Cookie: cookie, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const originalVersion = JSON.parse(sql(`SELECT row_to_json(v) FROM message_template_versions v WHERE id='${template.versionId}';`));
+  const pinnedId = sql(`INSERT INTO message_drafts(template_version_id,created_by,subject,rendered_document,rendered_text) VALUES ('${template.versionId}','${seededUser.id}','Pinned draft','{}','Original saved text') RETURNING id;`).trim();
+  const revisedDefinition = { ...definition, text: `${definition.text}\nUPDATED {{ Remarks }}`, fields: definition.fields.map((field) => field.name === "Remarks" ? { ...field, control: "text" } : field) };
+  const editPayload = { expectedVersionId: template.versionId, definition: revisedDefinition };
+  const activePatel = await login(patel.id);
+  assert.equal((await patchTemplate(template.id, editPayload, "")).status, 401);
+  assert.equal((await patchTemplate(template.id, editPayload, activePatel.cookie)).status, 403);
+  assert.equal((await patchTemplate(template.id, editPayload, sessionCookie, "https://untrusted.example")).status, 403);
+  assert.equal((await patchTemplate(template.id, { ...editPayload, expectedVersionId: "invalid" })).status, 400);
+  assert.equal((await patchTemplate(template.id, { ...editPayload, definition: { ...definition, fields: [] } })).status, 400);
+  const simultaneousEdits = await Promise.all([patchTemplate(template.id, editPayload),patchTemplate(template.id, editPayload)]);
+  assert.deepEqual(simultaneousEdits.map((response) => response.status).sort(), [201,409]);
+  const versionTwo = (await (await fetch(`${base}/api/message-templates/${template.id}`)).json()).template;
+  assert.equal(versionTwo.id, template.id); assert.equal(versionTwo.version, 2);
+  assert.equal(versionTwo.text, revisedDefinition.text);
+  assert.notEqual(versionTwo.versionId, template.versionId);
+  assert.deepEqual(JSON.parse(sql(`SELECT row_to_json(v) FROM message_template_versions v WHERE id='${template.versionId}';`)), originalVersion);
+  assert.equal(sql(`SELECT template_version_id FROM message_drafts WHERE id='${pinnedId}';`).trim(), template.versionId);
+  assert.equal(sql(`SELECT rendered_text FROM message_drafts WHERE id='${pinnedId}';`).trim(), "Original saved text");
+  assert.equal((await patchTemplate(template.id, editPayload)).status, 409);
+  const patelLibrary = (await (await fetch(`${base}/api/message-templates`, { headers: { Cookie: activePatel.cookie } })).json()).templates;
+  assert.equal(patelLibrary.find((item) => item.id === template.id).canEdit, false);
+  assert.equal((await (await fetch(`${base}/api/message-templates`, { headers: { Cookie: sessionCookie } })).json()).templates.find((item) => item.id === template.id).canEdit, true);
+  assert.ok((await (await fetch(`${base}/api/message-templates`)).json()).templates.every((item) => item.canEdit === false));
+  const patelPublished = await publish({ ...definition, name: "Patel owned template" }, { Cookie: activePatel.cookie });
+  assert.equal(patelPublished.status, 201);
+  const patelTemplate = (await patelPublished.json()).template;
+  const patelUpdate = { expectedVersionId: patelTemplate.versionId, definition: { ...definition, name: "Updated by command admin" } };
+  assert.equal((await patchTemplate(patelTemplate.id, patelUpdate)).status, 201, "A command admin can revise a colleague's template");
+  sql(`UPDATE users SET profile=jsonb_set(profile,'{roles}','[{"name":"System Admin","granted":true}]') WHERE id='${secondId}';`);
+  const foreignAdmin = await login(secondId);
+  assert.equal((await patchTemplate(template.id, { expectedVersionId: versionTwo.versionId, definition }, foreignAdmin.cookie)).status, 403);
+  console.log("Template revision API passed: owner/admin permissions, concurrent edits, stale version rejection, preserved published definitions and pinned drafts.");
+  if (process.argv.includes("--browser")) {
+    const { chromium, expect } = await import("@playwright/test");
+    const browser = await chromium.launch({ channel: process.env.E2E_BROWSER_CHANNEL || undefined, headless: true });
+    try {
+      const page = await browser.newPage();
+      const errors = []; page.on("pageerror", (error) => errors.push(error.message));
+      assert.equal((await page.request.post(`${base}/api/session`, { data: { userId: seededUser.id } })).status(), 200);
+      await page.goto(`${base}/templates`);
+      await page.getByTestId(`template-${template.id}`).getByRole("button", { name: `Edit ${definition.name}`, exact: true }).click();
+      await expect(page.getByRole("textbox", { name: "Template name", exact: true })).toHaveValue(definition.name);
+      await expect(page.getByRole("textbox", { name: "Plaintext template", exact: true })).toHaveValue(versionTwo.text);
+      await page.getByRole("textbox", { name: "Plaintext template", exact: true }).fill(`${versionTwo.text}\nBrowser revision`);
+      await page.getByRole("button", { name: "Detect and configure variables", exact: true }).click();
+      await expect(page.getByRole("group", { name: "Status", exact: true }).getByRole("textbox", { name: /^Options \(one per line\)/ })).toHaveValue("Ready\nNot ready");
+      await page.getByRole("group", { name: "Remarks", exact: true }).getByRole("combobox", { name: "Input type", exact: true }).selectOption("textarea");
+      await page.getByRole("button", { name: "Review generated form", exact: true }).click();
+      const publishing = page.waitForResponse((response) => response.url() === `${base}/api/message-templates/${template.id}` && response.request().method() === "PATCH");
+      await page.getByRole("button", { name: "Publish new version", exact: true }).click();
+      const published = await publishing;
+      assert.equal(published.status(), 201, await published.text());
+      assert.equal((await published.json()).template.version, 3);
+      await expect(page.getByRole("heading", { name: "Template published", exact: true })).toBeVisible();
+      await page.reload();
+      const current = (await (await page.request.get(`${base}/api/message-templates/${template.id}`)).json()).template;
+      assert.equal(current.version, 3); assert.equal(current.fields.find((field) => field.name === "Remarks").control, "textarea");
+      assert.equal(current.text, `${versionTwo.text}\nBrowser revision`);
+      assert.equal(sql(`SELECT template_version_id FROM message_drafts WHERE id='${pinnedId}';`).trim(), template.versionId);
+      assert.deepEqual(errors, []);
+      await page.request.delete(`${base}/api/session`);
+      console.log("Template editing browser flow passed: load existing fields, modify text/control, publish a new version, reload, preserve old pins.");
+    } finally { await browser.close(); }
+  }
 
   const logout = await fetch(`${base}/api/session`, { method: "DELETE", headers: { Origin: base, Cookie: sessionCookie } });
   assert.equal(logout.status, 200);

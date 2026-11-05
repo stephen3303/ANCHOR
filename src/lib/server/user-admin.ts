@@ -1,5 +1,6 @@
 import "server-only";
-import { ROLE_CATALOG, SYSTEM_ADMIN_ROLE } from "@/lib/demo-users";
+import type { PoolClient } from "pg";
+import { DESIGNATED_ROLES, hasRole, MESSAGE_VIEWER, ROLE_CATALOG, SINGLE_HOLDER_ROLES, SYSTEM_ADMIN } from "@/lib/roles";
 import type { AppUser } from "@/lib/users";
 import { ApiError } from "./api-error";
 import { requireDemoLoginEnabled, requireSessionUser } from "./session";
@@ -24,7 +25,7 @@ export const USER_COLUMNS = `u.id, u.login, u.name, u.active, c.name AS "command
     CASE jsonb_typeof(u.profile->'roles') WHEN 'array' THEN u.profile->'roles' ELSE '[]'::jsonb END
   ) r WHERE (r->>'granted')::boolean), '[]'::jsonb) AS roles`;
 
-export const isAdmin = (user: AppUser) => user.roles.some((r) => r.name === SYSTEM_ADMIN_ROLE && r.granted);
+export const isAdmin = (user: AppUser) => hasRole(user, SYSTEM_ADMIN);
 
 /**
  * The signed-in demo account, when it holds System Admin. Like the rest of the
@@ -55,7 +56,24 @@ function roles(value: unknown): string[] {
   const known = new Set(ROLE_CATALOG.map((r) => r.name));
   const unknown = value.find((r) => !known.has(r));
   if (unknown) throw new ApiError(400, `Unknown role: ${unknown}.`);
-  return [...new Set(value as string[])];
+  return [...new Set([MESSAGE_VIEWER, ...(value as string[])])];
+}
+
+/**
+ * Rules System Admin role assignment must keep: designated roles stay as the
+ * Release Authority set them, and single-holder roles have one active holder
+ * in the command.
+ */
+export async function assertRoleAssignment(client: Pick<PoolClient, "query">, commandId: string, userId: string | null, next: string[], current: string[]) {
+  for (const role of DESIGNATED_ROLES) {
+    if (next.includes(role) !== current.includes(role)) throw new ApiError(400, `${role} is assigned by the Release Authority through a release designation, not by System Admin.`);
+  }
+  for (const role of SINGLE_HOLDER_ROLES) {
+    if (!next.includes(role) || current.includes(role)) continue;
+    const { rows: [holder] } = await client.query(`SELECT name FROM users WHERE command_id = $1 AND active AND ($2::uuid IS NULL OR id <> $2::uuid)
+      AND profile->'roles' @> $3::jsonb LIMIT 1`, [commandId, userId, JSON.stringify([{ name: role, granted: true }])]);
+    if (holder) throw new ApiError(409, `${holder.name} already holds ${role}. A command has one ${role}; remove it from ${holder.name} first.`);
+  }
 }
 
 export function parseNewUser(payload: unknown) {

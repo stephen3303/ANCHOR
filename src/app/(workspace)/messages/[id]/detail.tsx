@@ -6,17 +6,18 @@ import { ArrowLeft, Bell, Clock, Copy, Download, FileText, Link2, Mail, Plus, Pr
 import { useStore } from "@/lib/store";
 import { AckPanel, Attachments, LifecycleNotice, MessageList, MessageTabs, MetadataTable, MissingMessage } from "@/components/message";
 import { Button, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tag } from "@/components/ui";
-import { matchesTopics, topicName, topicPath } from "@/lib/topics";
+import { keyOf, keyPath, matchesKeys } from "@/lib/message-types";
+import { DraftMessage } from "@/components/draft-message";
 import type { Message } from "@/lib/types";
 
-export function MessageDetail({ id, onBack }: { id: string; onBack?: () => void }) {
+export function MessageDetail({ id, onBack, backLabel = "Back to Messages" }: { id: string; onBack?: () => void; backLabel?: string }) {
   const { messageById, messageSource } = useStore();
   const m = messageById(id);
   if (!m) return <MissingMessage loading={messageSource === "loading"} />;
-  return <LoadedDetail m={m} onBack={onBack} />;
+  return <LoadedDetail m={m} onBack={onBack} backLabel={backLabel} />;
 }
 
-function LoadedDetail({ m, onBack }: { m: Message; onBack?: () => void }) {
+function LoadedDetail({ m, onBack, backLabel }: { m: Message; onBack?: () => void; backLabel: string }) {
   const id = m.id;
   const { markRead, markUnread, log, notify, briefing, setBriefing } = useStore();
 
@@ -27,10 +28,18 @@ function LoadedDetail({ m, onBack }: { m: Message; onBack?: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  const downloadOriginal = () => {
+    const url = URL.createObjectURL(new Blob([m.rawText], { type: "text/plain;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url; anchor.download = `${m.id}-original.txt`; anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    log("Export", `Message (${m.reference})`, "Downloaded original source text.");
+  };
+
   const addToBriefing = () => {
-    const extra = m.topics.filter((t) => !matchesTopics([t], briefing.topics));
-    setBriefing({ ...briefing, topics: [...briefing.topics, ...extra] });
-    notify(`Added ${m.reference} topics to your briefing`);
+    const key = keyOf(m);
+    if (briefing.messageTypes.length && !matchesKeys(key, briefing.messageTypes)) setBriefing({ ...briefing, messageTypes: [...briefing.messageTypes, key] });
+    notify(`Added ${key} to your briefing`);
   };
 
   const actions: { icon: typeof Mail; label: string; run: () => void }[] = [
@@ -41,12 +50,13 @@ function LoadedDetail({ m, onBack }: { m: Message; onBack?: () => void }) {
     { icon: Copy, label: "Copy Reference", run: () => { navigator.clipboard?.writeText(m.reference); notify(`Copied ${m.reference}`); } },
   ];
 
+  if (m.kind === "released") return <DraftMessage message={m} onBack={onBack} />;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         {onBack ? (
           <button type="button" autoFocus onClick={onBack} className="flex items-center gap-1.5 font-medium text-link hover:underline">
-            <ArrowLeft className="size-4" /> Back to Messages
+            <ArrowLeft className="size-4" /> {backLabel}
           </button>
         ) : (
           <Link href="/messages" className="flex items-center gap-1.5 font-medium text-link hover:underline">
@@ -56,7 +66,7 @@ function LoadedDetail({ m, onBack }: { m: Message; onBack?: () => void }) {
         <div className="ml-auto flex flex-wrap gap-2">
           <Button icon={Bell} href="/subscriptions">Subscribe</Button>
           <Button variant="primary" icon={FilePlus2} onClick={addToBriefing}>Add to Briefing</Button>
-          <Button variant="primary" icon={Download} onClick={() => { log("Export", `Message (${m.reference})`); notify("Exported PDF with integrity block"); }}>Export PDF</Button>
+          <Button variant="primary" icon={Download} onClick={downloadOriginal}>Download original</Button>
           <Button icon={Printer} href={`/messages/${m.id}/print`}>Print</Button>
         </div>
       </div>
@@ -78,7 +88,7 @@ function LoadedDetail({ m, onBack }: { m: Message; onBack?: () => void }) {
                 <LifecycleBadge l={m.lifecycle} />
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
-                {m.topics.map((t) => <Tag key={t} title={topicPath(t)}>{topicName(t)}</Tag>)}
+                <Tag title={`MSGID type: ${keyPath(keyOf(m))}`}>{keyOf(m)}</Tag>
                 <button type="button" className="flex items-center gap-1 rounded border border-line px-2 py-0.5 text-xs text-link" onClick={() => notify("Personal tags are visible only to you")}>
                   <Plus className="size-3" /> Add Tag
                 </button>

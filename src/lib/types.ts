@@ -22,21 +22,9 @@ export type Importance = "High" | "Medium" | "Low";
 /** Purpose of a message. Derived from its type (see message-types.ts). */
 export type MessageCategory = "Operational" | "Administrative";
 
-export type MessageType =
-  | "MOVREP"
-  | "LOGREQ"
-  | "OPREP-3"
-  | "OPREP-5"
-  | "CASREP"
-  | "INDIGO"
-  | "GENADMIN"
-  | "NAVADMIN"
-  | "ALNAV"
-  | "ALMAR"
-  | "OPNAVINST"
-  | "MARADMIN"
-  | "NAVSEAINST"
-  | "COMSUBFOR INST";
+/** MSGID field 2. The catalog lives in message-types.ts. */
+export type { MessageType } from "./message-types";
+import type { MessageType } from "./message-types";
 
 export interface Attachment {
   name: string;
@@ -51,6 +39,19 @@ export interface MessageSection {
 
 export interface Message {
   id: string;
+  /** Local template draft/release, not an external C2OIX receipt. */
+  kind?: "draft" | "released";
+  draftId?: string;
+  renderedText?: string;
+  templateName?: string;
+  releasedAt?: string;
+  releasedBy?: string;
+  releaseDesignation?: string;
+  localSequence?: string;
+  msn?: string;
+  /** Set when the Message Admin transmits a released message. */
+  transmittedAt?: string;
+  transmittedBy?: string;
   /** Date-time group, e.g. 151830Z OCT 26 */
   dtg: string;
   /** ISO timestamp for sorting and relative display */
@@ -70,13 +71,13 @@ export interface Message {
   relatesTo?: string;
   /** Reference that superseded or cancelled this one */
   replacedBy?: string;
-  /** Topic tags (src/lib/topics.ts), usually subtopics such as "safety.electrical". */
-  topics: string[];
+  /** MSGID field 3 for a topic type, e.g. ELECTRICAL in MSGID/SAFETY/ELECTRICAL/... */
+  subtag?: string;
   attachments: Attachment[];
   sections: MessageSection[];
   /**
-   * The message text exactly as it arrived from C2OIX, before ANCHOR parsed it
-   * into sections. Shown verbatim (monospace, whitespace preserved) so readers
+   * Text exactly as received from C2OIX, or the approved local snapshot for
+   * kind "released", before any presentation formatting. Shown verbatim (monospace, whitespace preserved) so readers
    * can check the formatted view against the original.
    */
   rawText: string;
@@ -84,7 +85,7 @@ export interface Message {
   ackRequired: boolean;
   ackDue?: string;
   actionItem?: { text: string; suspense: string; assignedTo: string };
-  /** Integrity data recorded at C2OIX ingestion */
+  /** Artifact identity/hash; local releases use ANCHOR- IDs, not external receipts. */
   c2oixId: string;
   sha256: string;
   sizeKb: number;
@@ -130,9 +131,8 @@ export interface Subscription {
   name: string;
   description: string;
   criteria: {
-    messageTypes: MessageType[];
-    /** Topics or subtopics; a topic covers all of its subtopics. */
-    topics?: string[];
+    /** Subscription keys, "SAFETY" or "SAFETY/ELECTRICAL"; a type covers all its subtags. */
+    messageTypes: string[];
     originators?: string[];
     keywords?: string[];
     precedence?: Precedence[];
@@ -210,8 +210,6 @@ export interface RoutingWorkflow {
   active: boolean;
   matchTypes: MessageType[];
   matchOriginators: string[];
-  /** Drafting office codes this chain handles; empty means any office. */
-  matchOffices: string[];
   steps: WorkflowStep[];
 }
 
@@ -223,8 +221,6 @@ export interface ReleaseAuthority {
   isCommandingOfficer: boolean;
   /** Message types this designation covers; empty means all. */
   scope: MessageType[];
-  /** Drafting offices this designation covers; empty means all. */
-  offices: string[];
 }
 
 export interface CommandSettings {
@@ -249,8 +245,8 @@ export interface Draft {
   subject: string;
   type: MessageType;
   originator: string;
-  /** Drafting office code, written with the originator in the MSGID set (NTP 3(J) requires it on GENADMIN). */
-  office: string;
+  /** MSGID field 3 when the type is a topic type. */
+  subtag?: string;
   precedence: Precedence;
   classification: Classification;
   to: string[];
@@ -269,11 +265,12 @@ export interface Draft {
   releasedAt?: string;
   releasedBy?: string;
   releaseDesignation?: string;
-  /** The transmitted text, frozen at release. */
+  transmittedAt?: string;
+  /** Approved text frozen at release. External transmission is separate. */
   renderedText?: string;
 }
 
-export type RoutingEventType = "created" | "submitted" | "advanced" | "returned" | "revised" | "released" | "withdrawn";
+export type RoutingEventType = "created" | "submitted" | "advanced" | "returned" | "revised" | "released" | "withdrawn" | "release_revoked" | "transmitted";
 
 /** Append-only route log entry. */
 export interface RoutingEvent {

@@ -1,7 +1,7 @@
-import { rolesFor, SYSTEM_ADMIN_ROLE } from "@/lib/demo-users";
+import { rolesFor, SYSTEM_ADMIN as SYSTEM_ADMIN_ROLE } from "@/lib/roles";
 import { database } from "@/lib/server/db";
 import { ApiError, apiFailure, readTemplatePayload } from "@/lib/server/template-api";
-import { parseUserUpdate, requireUserAdmin, USER_COLUMNS } from "@/lib/server/user-admin";
+import { assertRoleAssignment, parseUserUpdate, requireUserAdmin, USER_COLUMNS } from "@/lib/server/user-admin";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -16,8 +16,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const client = await database().connect();
     try {
       await client.query("BEGIN");
-      const { rows: [current] } = await client.query("SELECT profile FROM users WHERE id = $1 FOR UPDATE", [id]);
+      // Serialise role changes per command so two admins cannot both grant a single-holder role.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('roles|' || $1))", [admin.commandId]);
+      const { rows: [current] } = await client.query("SELECT profile, command_id FROM users WHERE id = $1 FOR UPDATE", [id]);
       if (!current) throw new ApiError(404, "User not found.");
+      if (update.roles !== undefined) {
+        const held = Array.isArray(current.profile.roles) ? current.profile.roles.filter((r: { granted: boolean }) => r.granted).map((r: { name: string }) => r.name) : [];
+        await assertRoleAssignment(client, current.command_id, id, update.roles, held);
+      }
       const profile = { ...current.profile };
       if (update.billet !== undefined) profile.billet = update.billet;
       if (update.unit !== undefined) profile.unit = update.unit;

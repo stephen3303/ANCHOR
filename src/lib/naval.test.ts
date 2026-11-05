@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { MESSAGES, resolveAckStatus } from "./data";
 import { messageFromParsed } from "./ingest-record";
-import { categoryOf, formatForType, precedenceAdvisory, PRECEDENCE_OBJECTIVE } from "./message-types";
-import { isTopic, matchesTopics } from "./topics";
+import { categoryOf, DRAFT_KEYS, draftKeyFrom, isKnownKey, keyOf, keyOption, matchesKeys, precedenceAdvisory, PRECEDENCE_OBJECTIVE } from "./message-types";
 import { fromDtg, NavalParseError, normRef, ownLifecycle, parseNavalMessage, targetLifecycle, toDtg } from "./naval";
 
 const SAMPLE = `O 041530Z NOV 26
@@ -114,8 +114,8 @@ test("the MSGID message identifier sets the type, and general messages go by tit
 test("categories follow NTP 3(J): operational reports versus administrative traffic", () => {
   for (const t of ["MOVREP", "LOGREQ", "OPREP-3", "OPREP-5", "CASREP", "INDIGO"] as const) assert.equal(categoryOf(t), "Operational", t);
   for (const t of ["GENADMIN", "NAVADMIN", "ALNAV", "ALMAR", "MARADMIN"] as const) assert.equal(categoryOf(t), "Administrative", t);
-  assert.equal(formatForType("NAVADMIN"), "GENADMIN");
-  assert.equal(formatForType("CASREP"), "CASREP");
+  assert.equal(categoryOf("SAFETY"), "Administrative");
+  assert.equal(categoryOf("SUBMARINE"), "Operational");
 });
 
 test("precedence objectives and the administrative precedence ceiling", () => {
@@ -125,13 +125,40 @@ test("precedence objectives and the administrative precedence ceiling", () => {
   assert.equal(precedenceAdvisory("OPREP-3", "FLASH"), null);
 });
 
-test("demo topic tags are all known, and a topic covers its subtopics", () => {
-  for (const m of MESSAGES) {
-    assert.ok(m.topics.length, m.reference);
-    for (const t of m.topics) assert.ok(isTopic(t), `${m.reference}: ${t}`);
-  }
-  assert.equal(matchesTopics(["safety.electrical"], ["safety"]), true);
-  assert.equal(matchesTopics(["safety.electrical"], ["safety.motorcycle"]), false);
-  assert.equal(matchesTopics(["safety"], ["safety.electrical"]), false);
-  assert.equal(matchesTopics(["policy.records"], []), true);
+test("MSGID field 3 carries the subtag of a topic type", () => {
+  const parse = (msgid: string) => parseNavalMessage(SAMPLE.replace(/MSGID\/.*\n/, `${msgid}\n`));
+  const safety = parse("MSGID/SAFETY/ELECTRICAL/COMSUBLANT N3/COMSUBLANT 091/26//");
+  assert.deepEqual([safety.type, safety.subtag, safety.originator, safety.reference], ["SAFETY", "ELECTRICAL", "COMSUBLANT N3", "COMSUBLANT 091/26"]);
+  // No subtag: field 3 is still the originator.
+  const whole = parse("MSGID/SAFETY/COMSUBLANT N3/COMSUBLANT 092/26//");
+  assert.deepEqual([whole.type, whole.subtag, whole.originator], ["SAFETY", undefined, "COMSUBLANT N3"]);
+  // Types without subtags never read field 3 as one.
+  const genadmin = parse("MSGID/GENADMIN/COMSUBLANT N3/COMSUBLANT 093/26//");
+  assert.deepEqual([genadmin.type, genadmin.subtag, genadmin.originator], ["GENADMIN", undefined, "COMSUBLANT N3"]);
+  assert.equal(messageFromParsed(safety, "x", { c2oixId: "C2OIX-26-060001", sha256: "b".repeat(64), sizeBytes: 1 }).subtag, "ELECTRICAL");
+});
+
+test("a subscription to a type catches every subtag; a subtag catches only itself", () => {
+  assert.equal(matchesKeys("SAFETY/ELECTRICAL", ["SAFETY"]), true);
+  assert.equal(matchesKeys("SAFETY/ELECTRICAL", ["SAFETY/MOTORCYCLE"]), false);
+  assert.equal(matchesKeys("SAFETY", ["SAFETY/ELECTRICAL"]), false);
+  assert.equal(matchesKeys("CASREP", ["CASREP"]), true);
+  assert.equal(matchesKeys("POLICY/RECORDS", []), true);
+  for (const m of MESSAGES) assert.ok(isKnownKey(keyOf(m)), `${m.reference}: ${keyOf(m)}`);
+});
+
+test("the template Msg Type picker offers every draftable key and maps back to it", () => {
+  assert.ok(DRAFT_KEYS.includes("SAFETY/ELECTRICAL") && DRAFT_KEYS.includes("GENADMIN") && !DRAFT_KEYS.includes("NAVADMIN"));
+  assert.equal(keyOption("SAFETY/ELECTRICAL"), "SAFETY/ELECTRICAL - Electrical Safety");
+  assert.equal(draftKeyFrom(keyOption("SAFETY/ELECTRICAL")), "SAFETY/ELECTRICAL");
+  assert.equal(draftKeyFrom("casrep"), "CASREP");
+  assert.equal(draftKeyFrom("NAVADMIN"), undefined);
+  assert.equal(draftKeyFrom("COMSUBLANT MSG"), undefined);
+});
+
+test("migration 009's Standard Message pick list offers exactly the draftable keys", () => {
+  const sql = readFileSync(new URL("../../database/migrations/009-message-types.sql", import.meta.url), "utf8");
+  const ui = JSON.parse(/select_field jsonb := '(.*)'::jsonb;/.exec(sql)![1].replaceAll("''", "'"));
+  assert.deepEqual(ui.options, DRAFT_KEYS.map(keyOption));
+  assert.deepEqual(Object.entries(ui.optionOutputs), DRAFT_KEYS.map((k) => [keyOption(k), k]));
 });

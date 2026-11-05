@@ -1,5 +1,7 @@
 "use client";
 
+import { RequireRole } from "@/components/require-role";
+import { AUDITOR } from "@/lib/roles";
 import { useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Download, FileText, Link2, Printer, RefreshCw, RotateCcw, ShieldAlert, ShieldCheck, Undo2, Users } from "lucide-react";
 import { fmtDate, fmtDateTime, fmtTime, shortHash } from "@/lib/format";
@@ -18,6 +20,10 @@ const CATEGORY_TONE: Record<AuditCategory, string> = {
 };
 
 export default function AuditPage() {
+  return <RequireRole role={AUDITOR}><AuditPageContent /></RequireRole>;
+}
+
+function AuditPageContent() {
   const { audit, log, notify, tamperAudit, undoTamper, tampered, messages } = useStore();
   const [user, setUser] = useState("All Users");
   const [action, setAction] = useState("All Actions");

@@ -5,7 +5,7 @@
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { MESSAGE_TYPE_INFO } from "@/lib/message-types";
+import { MESSAGE_TYPE_INFO, keyPath, messageKey } from "@/lib/message-types";
 import type { Classification, Importance, Lifecycle, MessageCategory, MessageType, Precedence, ReadState } from "@/lib/types";
 
 export function cx(...c: (string | false | null | undefined)[]) {
@@ -158,9 +158,12 @@ const categoryTone: Record<MessageCategory, string> = {
 export const CategoryBadge = ({ c }: { c: MessageCategory }) => <Pill className={categoryTone[c]}>{c}</Pill>;
 
 /** The type's short code, with its full name and purpose on hover. */
-export const MessageTypeLabel = ({ t }: { t: MessageType }) => (
-  <abbr title={`${MESSAGE_TYPE_INFO[t].name}: ${MESSAGE_TYPE_INFO[t].description}`} className="no-underline">{t}</abbr>
-);
+/** MSGID field 2, and field 3 when the type has a subtag: "SAFETY/ELECTRICAL". */
+export const MessageTypeLabel = ({ t, subtag }: { t: MessageType; subtag?: string }) => {
+  const info = MESSAGE_TYPE_INFO[t];
+  const key = messageKey(t, subtag);
+  return <abbr title={info ? `${keyPath(key)}: ${info.description}` : t} className="no-underline">{key}</abbr>;
+};
 
 const lifeTone: Record<Lifecycle, string> = {
   ACTIVE: "",

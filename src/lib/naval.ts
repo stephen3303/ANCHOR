@@ -14,7 +14,8 @@
 //   BT
 //   UNCLAS                           classification line
 //   SUBJ/SUBMARINE DEPLOYMENT .../   sets may wrap; each ends with //
-//   MSGID/GENADMIN/COMSUBLANT N3/COMSUBLANT 078/26//   originator / serial
+//   MSGID/GENADMIN/COMSUBLANT N3/COMSUBLANT 078/26//   type / originator / serial
+//   MSGID/SAFETY/ELECTRICAL/COMSUBLANT N3/...//        topic types add a subtag in field 3
 //   REF/A/MSG/COMSUBLANT 061/26//
 //   NARR/THIS MSG SUPERSEDES REF A.//                   optional lifecycle directive
 //   ACK/261830Z OCT 26//                                optional: acknowledgement due
@@ -26,7 +27,7 @@
 //   BT
 //   #1001                            optional channel serial
 //   NNNN                             optional end of message
-import { typeForFormat } from "./message-types";
+import { findSubtag, isMessageType, MESSAGE_TYPE_INFO, subtagsOf } from "./message-types";
 import type { Classification, Lifecycle, MessageSection, MessageType, Precedence } from "./types";
 
 const PROSIGN: Record<string, Precedence> = { Z: "FLASH", O: "IMMEDIATE", P: "PRIORITY", R: "ROUTINE" };
@@ -62,6 +63,8 @@ export interface ParsedMessage {
   /** Message serial from MSGID, normalised (see normRef) */
   reference: string;
   type: MessageType;
+  /** MSGID field 3 when the type is a topic type, e.g. ELECTRICAL. */
+  subtag?: string;
   subject: string;
   references: string[];
   directive?: { kind: Directive; target: string };
@@ -100,22 +103,31 @@ export const idFor = (reference: string) =>
 
 /**
  * Message type. Service-wide general messages and instructions are known by
- * their serial ("NAVADMIN 236/26" -> NAVADMIN). Otherwise the MSGID format
- * names the type ("MSGID/CASREP/..." -> CASREP). Anything else is GENADMIN,
- * the format NTP 3(J) para 305 uses for most narrative traffic.
+ * their serial ("NAVADMIN 236/26" -> NAVADMIN, NTP 3(J) para 306d). Otherwise
+ * MSGID field 2 names the type ("MSGID/CASREP/..." -> CASREP). Anything else is
+ * GENADMIN, the format NTP 3(J) para 305 uses for most narrative traffic.
  */
-export function typeOf(reference: string, format = ""): MessageType {
-  const bySerial: [RegExp, MessageType][] = [
-    [/^NAVADMIN\b/, "NAVADMIN"],
-    [/^ALNAV\b/, "ALNAV"],
-    [/^ALMAR\b/, "ALMAR"],
-    [/^OPNAVINST\b/, "OPNAVINST"],
-    [/^MARADMIN\b/, "MARADMIN"],
-    [/^NAVSEAINST\b/, "NAVSEAINST"],
-    [/^COMSUBFOR INST\b/, "COMSUBFOR INST"],
-  ];
-  for (const [re, t] of bySerial) if (re.test(reference.toUpperCase())) return t;
-  return typeForFormat(format) ?? "GENADMIN";
+export function typeOf(reference: string, field2 = ""): MessageType {
+  const ref = reference.toUpperCase();
+  const byTitle = (Object.keys(MESSAGE_TYPE_INFO) as MessageType[]).find(
+    (t) => MESSAGE_TYPE_INFO[t].byTitle && (ref === t || ref.startsWith(`${t} `)),
+  );
+  if (byTitle) return byTitle;
+  const f = field2.trim().toUpperCase();
+  return isMessageType(f) && !MESSAGE_TYPE_INFO[f].byTitle ? f : "GENADMIN";
+}
+
+/**
+ * Splits the fields after MSGID/ into type, optional subtag, originator and
+ * serial. A subtag is only read when field 2 is a topic type and field 3 is
+ * one of its subtags, so "MSGID/GENADMIN/COMSUBLANT N3/..." keeps its
+ * originator in field 3.
+ */
+export function splitMsgid(fields: string[]) {
+  const field2 = (fields[0] ?? "").trim().toUpperCase();
+  const sub = isMessageType(field2) && subtagsOf(field2).length && fields.length > 3 ? findSubtag(field2, fields[1]) : undefined;
+  const rest = fields.slice(sub ? 2 : 1);
+  return { field2, subtag: sub?.code, originator: (rest[0] ?? "").trim(), serial: rest.slice(1).join("/").trim() };
 }
 
 /** The lifecycle a new message carries itself, from its directive. */
@@ -192,7 +204,8 @@ export function parseNavalMessage(raw: string): ParsedMessage {
   let subject = "";
   let originator = header.FM;
   let serial = "";
-  let format = "";
+  let field2 = "";
+  let subtag: string | undefined;
   let narr = "";
   let ackDue: string | undefined;
   let poc: string | undefined;
@@ -202,10 +215,12 @@ export function parseNavalMessage(raw: string): ParsedMessage {
     let m: RegExpExecArray | null;
     if ((m = /^SUBJ\/(.*)$/.exec(body))) subject = m[1].trim();
     // The serial itself may contain a slash ("COMSUBLANT 078/26"), so it takes the rest of the set.
-    else if ((m = /^MSGID\/([^/]*)\/([^/]*)\/(.*)$/.exec(body))) {
-      format = m[1].trim().toUpperCase();
-      originator = m[2].trim() || originator;
-      serial = m[3].trim();
+    else if ((m = /^MSGID\/(.*)$/.exec(body))) {
+      const id = splitMsgid(m[1].split("/"));
+      field2 = id.field2;
+      subtag = id.subtag;
+      originator = id.originator || originator;
+      serial = id.serial;
     } else if ((m = /^REF\/([A-Z])\/[^/]*\/(.*)$/.exec(body))) refs.push({ letter: m[1], ref: normRef(m[2]) });
     else if ((m = /^NARR\/(.*)$/.exec(body))) narr = m[1];
     else if ((m = /^ACK\/(.*)$/.exec(body))) ackDue = fromDtg(m[1]) ?? fail(`ACK due "${m[1]}" is not a valid date-time group.`);
@@ -241,6 +256,7 @@ export function parseNavalMessage(raw: string): ParsedMessage {
   if (!sections.length) fail("The remarks are empty.");
 
   const reference = normRef(serial);
+  const type = typeOf(reference, field2);
   return {
     precedence,
     dtg,
@@ -254,7 +270,8 @@ export function parseNavalMessage(raw: string): ParsedMessage {
     ],
     classification,
     reference,
-    type: typeOf(reference, format),
+    type,
+    subtag: type === field2 ? subtag : undefined,
     subject,
     references: refs.map((r) => r.ref),
     directive,

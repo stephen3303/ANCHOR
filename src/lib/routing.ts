@@ -1,7 +1,6 @@
 // Routing and release: the roster, the admin-defined chains, who may release,
 // and the rules a draft follows from drafting to release. Ported from the Base44
 // build. Everything here is fictional mock data.
-import { formatForType } from "./message-types";
 import type {
   CommandSettings,
   Draft,
@@ -60,25 +59,8 @@ export const STEP_STATUS: Record<RouteStep["status"], { label: string; className
   released: { label: "Released", className: "font-semibold text-green-700" },
 };
 
-/** Formats this command drafts. Most narrative traffic is GENADMIN (NTP 3(J) para 305). */
-export const DRAFT_TYPES: MessageType[] = ["GENADMIN", "OPREP-3", "LOGREQ", "MOVREP", "CASREP"];
-
-/** Drafting offices. The office code travels with the originator in the MSGID set. */
-export const OFFICES: { code: string; name: string }[] = [
-  { code: "N1", name: "Administration" },
-  { code: "N2", name: "Intelligence" },
-  { code: "N3", name: "Operations" },
-  { code: "N4", name: "Logistics" },
-  { code: "N6", name: "Communications" },
-  { code: "SAFETY", name: "Safety" },
-];
-
-/** The office a person drafts for, from their roster code: N41 drafts for N4. Staff codes default to N3. */
-export function draftingOffice(personId: string) {
-  const m = /^N(\d)/.exec(personById(personId)?.code ?? "");
-  const code = m ? `N${m[1]}` : "N3";
-  return OFFICES.some((o) => o.code === code) ? code : "N3";
-}
+/** Types this command drafts: every type in the catalog it does not only receive. */
+export { DRAFT_TYPES } from "./message-types";
 
 export const INITIAL_WORKFLOWS: RoutingWorkflow[] = [
   {
@@ -88,7 +70,6 @@ export const INITIAL_WORKFLOWS: RoutingWorkflow[] = [
     active: true,
     matchTypes: ["GENADMIN"],
     matchOriginators: [],
-    matchOffices: [],
     steps: [
       { title: "N3 review", personId: "p-ramos", action: "review" },
       { title: "Chief of Staff review", personId: "p-chen", action: "review" },
@@ -100,9 +81,8 @@ export const INITIAL_WORKFLOWS: RoutingWorkflow[] = [
     name: "Safety message",
     description: "Time-critical safety traffic. Operations reviews and the Chief of Staff releases under delegated authority.",
     active: true,
-    matchTypes: ["GENADMIN"],
+    matchTypes: ["SAFETY"],
     matchOriginators: [OWN_ORIGINATOR],
-    matchOffices: ["SAFETY"],
     steps: [
       { title: "N3 review", personId: "p-ramos", action: "review" },
       { title: "Chief of Staff release", personId: "p-chen", action: "release" },
@@ -110,12 +90,11 @@ export const INITIAL_WORKFLOWS: RoutingWorkflow[] = [
   },
   {
     id: "wf-logistics",
-    name: "Logistics fleet message",
+    name: "Logistics message",
     description: "Supply and logistics traffic to the fleet. The N4 releases.",
     active: true,
-    matchTypes: ["GENADMIN"],
+    matchTypes: ["LOGISTICS"],
     matchOriginators: [],
-    matchOffices: ["N4"],
     steps: [
       { title: "Supply review", personId: "p-patel", action: "review" },
       { title: "N4 release", personId: "p-brooks", action: "release" },
@@ -128,7 +107,6 @@ export const INITIAL_WORKFLOWS: RoutingWorkflow[] = [
     active: true,
     matchTypes: [],
     matchOriginators: [],
-    matchOffices: [],
     steps: [
       { title: "Chief of Staff review", personId: "p-chen", action: "review" },
       { title: "Commander release", personId: "p-walsh", action: "release" },
@@ -136,10 +114,10 @@ export const INITIAL_WORKFLOWS: RoutingWorkflow[] = [
   },
 ];
 
+/** Designated release authorities. The Commander releases as the Release Authority role, without a designation. */
 export const INITIAL_AUTHORITIES: ReleaseAuthority[] = [
-  { id: "ra-walsh", personId: "p-walsh", designation: "Commander", isCommandingOfficer: true, scope: [], offices: [] },
-  { id: "ra-chen", personId: "p-chen", designation: "Chief of Staff", isCommandingOfficer: false, scope: ["GENADMIN"], offices: ["SAFETY"] },
-  { id: "ra-brooks", personId: "p-brooks", designation: "Logistics Officer (N4)", isCommandingOfficer: false, scope: ["GENADMIN"], offices: ["N4"] },
+  { id: "ra-chen", personId: "p-chen", designation: "Chief of Staff", isCommandingOfficer: false, scope: ["SAFETY"] },
+  { id: "ra-brooks", personId: "p-brooks", designation: "Logistics Officer (N4)", isCommandingOfficer: false, scope: ["LOGISTICS"] },
 ];
 
 export const INITIAL_COMMAND_SETTINGS: CommandSettings = {
@@ -151,13 +129,8 @@ export const INITIAL_COMMAND_SETTINGS: CommandSettings = {
 
 /* ---------- rules ---------- */
 
-// Weights: a matching office outranks a matching type, which outranks a matching originator.
-const specificity = (w: RoutingWorkflow, type: MessageType, originator: string, office: string) => {
+const specificity = (w: RoutingWorkflow, type: MessageType, originator: string) => {
   let score = 0;
-  if (w.matchOffices.length) {
-    if (!w.matchOffices.includes(office)) return -1;
-    score += 4;
-  }
   if (w.matchTypes.length) {
     if (!w.matchTypes.includes(type)) return -1;
     score += 2;
@@ -169,12 +142,12 @@ const specificity = (w: RoutingWorkflow, type: MessageType, originator: string, 
   return score;
 };
 
-/** The most specific active workflow matching this message type, originator and drafting office. */
-export function selectWorkflow(workflows: RoutingWorkflow[], type: MessageType, originator: string, office: string) {
+/** The most specific active workflow matching this message type and originator. */
+export function selectWorkflow(workflows: RoutingWorkflow[], type: MessageType, originator: string) {
   return (
     workflows
       .filter((w) => w.active)
-      .map((w) => ({ w, score: specificity(w, type, originator, office) }))
+      .map((w) => ({ w, score: specificity(w, type, originator) }))
       .filter((e) => e.score >= 0)
       .sort((a, b) => b.score - a.score)[0]?.w ?? null
   );
@@ -192,21 +165,16 @@ export const currentStep = (d: Draft) => d.route.find((s) => s.status === "curre
 
 export const isEditable = (d: Draft) => d.status === "drafting" || d.status === "returned";
 
-const covers = (a: ReleaseAuthority, d: Pick<Draft, "type" | "office">) =>
-  (!a.scope.length || a.scope.includes(d.type)) && (!a.offices.length || a.offices.includes(d.office));
-
-/** "GENADMIN from SAFETY", "all message types" */
-export const authorityScope = (a: ReleaseAuthority) =>
-  [a.scope.length ? a.scope.join(", ") : "all message types", a.offices.length ? `from ${a.offices.join(", ")}` : ""].filter(Boolean).join(" ");
+const covers = (a: ReleaseAuthority, type: MessageType) => !a.scope.length || a.scope.includes(type);
 
 /** Whether this person may release this draft, and if not, why. */
 export function releaseGate(authorities: ReleaseAuthority[], personId: string, d: Draft) {
-  const authority = authorities.find((a) => a.personId === personId && covers(a, d)) ?? null;
+  const authority = authorities.find((a) => a.personId === personId && covers(a, d.type)) ?? null;
   if (!authority)
     return {
       ok: false,
       authority,
-      reason: `Only the Commander, or a release authority designated for ${d.type} from ${d.office}, may release it.`,
+      reason: `Only the Commander, or a release authority designated for ${d.type}, may release it.`,
     };
   if (personById(personId)?.status === "detached")
     return {
@@ -255,7 +223,7 @@ export function renderMessage(d: Draft, s: CommandSettings) {
     ...(d.info.length ? [`INFO ${d.info.join("\n     ")}`] : []),
     "BT",
     CLASS_LINE[d.classification],
-    `MSGID/${formatForType(d.type)}/COMSUBLANT ${d.office}/${d.msn ?? "-".repeat(s.sequenceDigits)}/${month}//`,
+    `MSGID/${[d.type, d.subtag].filter(Boolean).join("/")}/COMSUBLANT/${d.msn ?? "-".repeat(s.sequenceDigits)}/${month}//`,
     `SUBJ/${caseOf(d.subject || "UNTITLED")}//`,
     ...d.paragraphs.filter((p) => p.trim()).map((p, i) => `${i + 1}. ${caseOf(p.trim())}`),
     "BT",
@@ -273,7 +241,6 @@ export const INITIAL_DRAFTS: Draft[] = [
     subject: "Quarterly communications security inspection schedule",
     type: "GENADMIN",
     originator: OWN_ORIGINATOR,
-    office: "N6",
     precedence: "ROUTINE",
     classification: "UNCLASSIFIED",
     to: ["ALSUBLANT"],
@@ -293,7 +260,6 @@ export const INITIAL_DRAFTS: Draft[] = [
     subject: "Holiday leave period watch manning",
     type: "GENADMIN",
     originator: OWN_ORIGINATOR,
-    office: "N1",
     precedence: "PRIORITY",
     classification: "UNCLASSIFIED",
     to: ["ALSUBLANT"],
@@ -316,9 +282,9 @@ export const INITIAL_DRAFTS: Draft[] = [
   {
     id: "dr-3",
     subject: "Heavy weather mooring check",
-    type: "GENADMIN",
+    type: "SAFETY",
+    subtag: "HEAVY-WEATHER",
     originator: OWN_ORIGINATOR,
-    office: "SAFETY",
     precedence: "IMMEDIATE",
     classification: "UNCLASSIFIED",
     to: ["COMSUBRON SIX", "COMSUBRON EIGHT"],
@@ -343,9 +309,9 @@ export const INITIAL_DRAFTS: Draft[] = [
   {
     id: "dr-4",
     subject: "Spare parts validation reminder",
-    type: "GENADMIN",
+    type: "LOGISTICS",
+    subtag: "PARTS",
     originator: OWN_ORIGINATOR,
-    office: "N4",
     precedence: "ROUTINE",
     classification: "UNCLASSIFIED",
     to: ["COMSUBRON TWO"],

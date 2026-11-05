@@ -26,13 +26,18 @@ docker compose up -d --wait postgres
 npm run db:migrate
 npm run db:seed:commands
 npm run db:seed:users
+npm run db:seed:routing
 npm run db:seed:messages
 ```
 
 `db:migrate` applies SQL from `database/init/` and `database/migrations/`.
 `db:seed:commands` imports `database/seeds/PLADS.txt` into the `commands` table;
 **no Downloads file or manual file copy is needed**. `db:seed:users` imports
-the ten demo accounts and links each one to its command. `db:seed:messages` loads the
+the ten demo accounts and links each one to its command. `db:seed:routing`
+initializes the command's workflows using those real accounts; reruns preserve
+administrative changes and sequence counters. Migration 006 automatically
+publishes the bundled **Standard Message** template on a fresh database; an
+existing template with that name or seed key is never overwritten. `db:seed:messages` loads the
 demo traffic into the message store through the C2OIX parser, plus acknowledgements
 received from other commands. Until it runs, the app shows bundled demo messages and
 says reads and acknowledgements are not saved. Seed commands are safe to rerun,
@@ -74,6 +79,21 @@ records, templates, users, and unexpired sessions remain in the database volume.
 Both containers use `restart: unless-stopped`, so Docker may already restart them
 when its engine starts; the `up` commands above are safe either way. Containers
 explicitly stopped by you may need those commands to start again.
+
+### Update to the latest main (Windows, Docker app)
+
+```sh
+npm run app:update            # pull main, migrate, rebuild and restart the app
+npm run app:update -- -Seed   # also rerun the (idempotent) seed scripts
+```
+
+If PowerShell says `npm.ps1 cannot be loaded because running scripts is disabled`,
+run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once (or use `npm.cmd`).
+
+`scripts/update.ps1` stops if tracked files have uncommitted changes, fast-forwards
+`main`, runs `npm ci` only when `package-lock.json` changed, applies new migrations
+before rebuilding the `anchor` container, and waits until http://localhost:3000
+answers. It never deletes database data.
 
 ### After pulling changes — only as needed
 
@@ -172,6 +192,30 @@ signs it out immediately and removes it from the account picker. Admins cannot
 deactivate themselves or remove their own System Admin role. This is role-based
 UI gating on a passwordless demo, not real authorization.
 
+### Roles
+
+One ANCHOR instance serves one command. An account can hold any combination of
+these roles; no combination is blocked.
+
+| Role | What it allows | Assigned by | Demo holders |
+| --- | --- | --- | --- |
+| Message Viewer | Read messages, request subscriptions, build briefings. Every account holds it. | Automatic | Everyone |
+| Subscription Approver | Review subscription requests and assign feeds to users | System Admin | Okafor, Chen, Ramos, Brooks, Taylor |
+| Report Viewer | The Reports page | System Admin | Most accounts |
+| Auditor | The Audit & Integrity page and `/api/integrity` | System Admin | Taylor, Nguyen, Harper |
+| Message Admin | Transmit released traffic, manage the C2OIX circuit and workstation links, send acknowledgements | System Admin | Harper |
+| Designated Release Authority | Release the message types in their designation | Release Authority, by designation | Chen, Brooks |
+| Release Authority | The commanding officer: release any traffic, designate release authorities, withdraw any queued release. One per command. | System Admin | Walsh |
+| System Admin | Users, roles, routing workflows and sequence settings | System Admin | Taylor, Nguyen, Harper |
+
+Everyone can see that an acknowledgement is due and can see link status, but only
+the Message Admin can send acknowledgements or change links. Sending an
+acknowledgement also records the outgoing acknowledgement message in the
+transmission log. Migration `008-roles-and-transmissions.sql` maps existing
+accounts onto these roles: Briefing Creator and Subscription Requester fold into
+Message Viewer, System Admins also become Auditors, the commander's designation
+becomes Release Authority, and the demo N6 ISSM (DHarper) becomes Message Admin.
+
 Sessions use random HttpOnly, SameSite=Strict cookies and expire after eight
 hours; only SHA-256 token hashes are stored in `user_sessions`. Refreshing the
 page preserves the account. Use the header menu's **Sign out / switch account**
@@ -229,6 +273,67 @@ are development-only. The tests cover signed-out deep links, login, hard refresh
 client navigation, logout, and revoked cookies, and fail on navigation-validation
 errors. They revoke their own test sessions without modifying users or templates.
 
+## Template-driven drafting and release
+
+`/drafting` is the single message composer. Select a published template, fill its
+fields, and save through `POST /api/messages`. Private drafts and approval history
+survive reloads; they do not enter the ordinary Messages feed until release.
+Reviewers must sign in as the actual account holding the current step. The drafter
+can edit any unpublished message, including while it is under review or withdrawn.
+Saving text or routing changes stops review, clears every approval, and returns
+the message to drafting; it must be resubmitted before publication. Stale saves
+are rejected without discarding the author's unsaved input.
+
+Use **Customize routing** to drag command people into the chain, reorder them,
+or remove them. Add/Move/Remove buttons support keyboard and touch as well.
+These changes apply only to this draft, not the command's shared workflow.
+The final person must still hold the appropriate release designation and role.
+**Use command default** restores a fresh copy of the matching command chain.
+Saved chains survive reloads and are retained across text edits and resubmissions.
+The server enforces ownership, membership, roles, step order and expected revisions.
+
+Final release atomically freezes the approved text, allocates the command serial,
+and puts the message in the **Transmission Queue** (`/transmissions`). A released
+message cannot be edited. Until it is transmitted, the person who released it or
+the Release Authority can withdraw the release with a reason; the draft returns
+to its drafter and needs fresh approvals (its serial stays used). When the
+Message Admin transmits it, the same message ID is published into main's
+artifact-backed message store and appears in Messages.
+Existing ingestion, acknowledgements, per-user read state and shared column order
+are preserved. Migration 007 additionally locks released local message records,
+their saved template inputs, reference snapshots and outgoing records against
+updates/deletes in PostgreSQL, not just in the UI. Publication is irreversible;
+changes afterward require a new message. Read-state and acknowledgement resources
+remain separate from the immutable message. Local releases use `ANCHOR-…` artifact identifiers, not invented
+C2OIX receipt numbers. **Publishing locally does not perform external transmission**;
+the network simulator is still separate.
+
+For an existing checkout, run:
+
+```sh
+npm run db:migrate
+npm run db:seed:users
+npm run db:seed:routing
+npm run db:seed:messages
+```
+
+Migration 003a preserves the first creation branch's incompatible `messages`
+table as `legacy_message_creation_records` before main's schema is installed.
+Migration 005 imports its saved drafts/history and any published records with
+exact stored text. Legacy demo records without raw text remain archived; the
+normal message seed supplies main's artifact-backed demo records without deleting
+the archive. No database reset or volume deletion is necessary.
+
+Migration 006 carries a frozen snapshot of the authored **Standard Message**
+template, including its existing header TODO and manual fields. It preserves any
+existing matching template and its versions. The optional
+`npm run db:seed:templates` command is also safe to rerun; changing the bundled
+JSON does not rewrite published versions.
+
+Tests: `npm run test:drafting:api`, `npm run test:templates:seed`, and
+`E2E_BROWSER_CHANNEL=chrome npm run test:drafting:browser` (after a production
+build). Main's `test:messages:api` regression suite remains available.
+
 ## Message templates and drafts
 
 Open **Message Templates** in the sidebar (`/templates`) to:
@@ -245,10 +350,42 @@ Open **Message Templates** in the sidebar (`/templates`) to:
 
 Publishing validates the entire definition server-side and atomically saves a
 new template plus immutable version 1. The published library survives reloads
-and supports read-only form previews. Repeated placeholders share one input;
+and supports form previews. Template creators and their command's System Admins
+also get an **Edit template** button. This reopens the existing plaintext and all
+field settings in the wizard; **Publish new version** appends an immutable version
+under the same template ID. Existing draft version pins and saved message text
+are not retargeted. Concurrent/stale edits are rejected without clearing the
+editor's inputs. Repeated placeholders share one input;
 variable names are case-sensitive. Only named substitution is supported—no
-executable helpers, conditions, HTML rendering, or automatic word wrapping.
-Preview values are not saved. Creating messages from these templates is a later step.
+executable helpers, conditions, or HTML rendering. Preview values are not saved;
+use Drafting & Release to create a message from a published template.
+
+The bundled Standard Message now uses a **textarea** for Body. Fresh databases
+receive this in migration 006; migration 008 appends a corrected version for
+existing Standard Message templates whose latest Body control is still a textbox.
+It preserves other customizations and all older versions/draft pins. Run
+`npm run db:migrate` to apply the upgrade. The original 006 checksum amendment is
+explicitly allowlisted and recorded in `schema_migration_amendments`; other
+applied-file checksum changes remain errors.
+
+### Generated message line length and command search
+
+All newly generated previews and saved message text use **at most 69 characters
+per line**, applied after substituting every field. Wrap at a word separator when
+possible; an unbroken string longer than 69 characters continues on the next line
+without an added hyphen or lost characters. These are actual LF newline characters,
+not CSS-only wrapping. Existing blank lines and short lines are preserved, and
+original form inputs/reference names remain unchanged. Actual formatting is
+recorded in the message's render metadata; new template profiles use version 2.
+
+Already published messages and template versions are never reformatted. Older
+unpublished drafts with overlong lines must be resaved by the drafter, which
+applies wrapping and resets approvals, before they can be submitted/released.
+Release publishes exactly the text reviewed, without another formatting pass.
+
+Command pickers return **50 matches per page** (previously 25). Matching literal
+text is highlighted case-insensitively in each selectable name, including repeated
+matches. Next/Previous pagination uses the same 50-result page size.
 
 ### Choice output overrides
 
@@ -260,8 +397,8 @@ Checkboxes use displayed states `YES` (checked) and `NO` (unchecked), each with 
 own optional override. An unchecked checkbox previews its `NO` output immediately.
 
 Blank/whitespace-only override boxes mean "use the displayed label". Nonblank
-text preserves whitespace and newlines, and is inserted as plaintext once—never
-as template syntax. Checkbox groups map each selected option individually before
+text is inserted as plaintext once—never as template syntax—then the final
+69-character wrapping policy is applied. Checkbox groups map each selected option individually before
 joining with the existing semicolon separator. The API stores the optional
 `optionOutputs` object alongside the field, keyed by option label (or `YES`/`NO`
 for checkboxes). Input schemas still validate original labels or booleans, not
@@ -339,14 +476,18 @@ REST endpoints:
 | `GET /api/session` | Current session profile, or null when signed out |
 | `GET /api/admin/users` | List all accounts, active and deactivated (System Admin) |
 | `POST /api/admin/users` | Add an account: `{ login, rank, surname, billet, unit, email?, roles }` (System Admin) |
-| `PATCH /api/admin/users/{id}` | Change `billet`, `unit`, `roles` or `active` (System Admin) |
+| `PATCH /api/admin/users/{id}` | Change `billet`, `unit`, `roles` or `active` (System Admin; Designated Release Authority is left to the Release Authority) |
+| `PATCH /api/routing/designations` | Replace release designations `{ revision, authorities }` (Release Authority) |
+| `GET /api/transmissions` | The command's transmission queue and log |
+| `POST /api/transmissions/{id}` | `{ action: "transmit" }` (Message Admin) or `{ action: "revoke", comment }` (releaser or Release Authority) |
 | `POST /api/session` | Passwordless demo sign-in using `{ userId }` |
 | `DELETE /api/session` | Revoke the current session and clear its cookie |
 | `GET /api/message-templates` | List up to 100 active published templates |
 | `POST /api/message-templates` | Validate and publish `{ name, description, text, fields }` |
 | `POST /api/message-templates/preview-generated` | Resolve automatic fields for a validated definition; no persistence |
 | `GET /api/message-templates/:id` | Read the latest published template definition |
-| `GET /api/reference-data/commands?q=...&cursor=...` | Search command names, 25 results per page |
+| `PATCH /api/message-templates/:id` | Publish a new version with `{ expectedVersionId, definition }`; creator or same-command admin only |
+| `GET /api/reference-data/commands?q=...&cursor=...` | Search command names, 50 results per page |
 
 Each field supplies `name`, `control`, `required`, and `options` (an empty array
 for non-static controls), plus `generator` for autogenerated fields only.
@@ -385,10 +526,8 @@ remaining application-level validation, and rollback-only schema tests.
 | `/briefings` | Tailored Briefing Builder with live preview |
 | `/briefings/generated` | Generated briefing |
 | `/watch-turnover` | Watch Turnover with notes and checklist |
-| `/drafting` | Drafting & Release: draft outgoing traffic, route it through the chain, release it ("Acting as" plays each person) |
-| `/simulators` | Server Simulators: the external C2OIX server and the local ANCHOR server |
-| `/topology` | Network Topology: two servers, three workstations; break and restore any link |
-| `/offline` | Offline / EMCON mode with sync queue (toggle "Simulate EMCON") |
+| `/drafting` | Drafting & Release: fill a published template, save a private draft, and approve each step as its signed-in holder; only released messages enter the Messages list |
+| `/network` | Comms & Network: C2OIX circuit, ANCHOR server and three workstations. The Message Admin releases example traffic one message at a time, breaks and restores links, and resets messages for redelivery. (`/simulators`, `/topology` and `/offline` redirect here.) |
 | `/reports` | Acknowledgement accountability and traffic measures |
 | `/audit` | Audit & Integrity: append-only, hash-chained log with a recompute check |
 | `/admin` | Tabs: subscription approval queue, alert rules and access groups; Users; Routing & Release (workflows, release authority, transmission settings at `/admin#routing`; the old `/admin/routing` redirects there) |
@@ -408,9 +547,9 @@ The UI follows the mockups. Where they differ from the ANCHOR requirements packa
 - **Disconnected / EMCON.** Actions taken offline are queued and replicate on sync, with bandwidth-aware priority.
 - **Audit.** Every action in the prototype is written to the audit log. Each event is chained to the one before it by SHA-256, and Audit & Integrity recomputes the chain and names the first break.
 - **No Reply / Forward.** The mockups show them, but releasing traffic stays with Designated Release Authorities, so the prototype offers Share Link instead.
-- **Routing and release.** Outgoing traffic follows an admin-defined chain matched by message type and originator. Steps are held by people on the roster; only a designated release authority can release, and the DTG and serial are assigned at release.
-- **Circuit = EMCON.** Breaking the C2OIX circuit on Network Topology or Server Simulators is the same switch as offline mode. Releases are held at the ANCHOR server and C2OIX defers inbound traffic until it returns.
+- **Routing and release.** Outgoing traffic follows an admin-defined chain matched by message type and originator. Steps are held by people on the roster; only the Release Authority or a designated release authority can release, the DTG and serial are assigned at release, and the Message Admin transmits from the queue.
+- **Circuit = EMCON.** Breaking the C2OIX circuit on Comms & Network is the same switch as offline mode, and the only control for it. Connection status and the sync queue live in the header bar; queued items sync automatically when the circuit returns. Releases are held at the ANCHOR server and C2OIX defers inbound traffic until it returns.
 
 ## Stack
 
-Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, lucide-react icons. Legacy frontend state is in memory (`src/lib/store.tsx`) and resets on reload. Mock data lives in `src/lib/data.ts`. PostgreSQL 17 persists commands and message templates; TypeScript REST endpoints use `pg` on the Node server.
+Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, lucide-react icons. PostgreSQL 17 persists commands, templates, users/sessions, drafts, approvals, routing configuration, message artifacts, read state and command acknowledgements; REST endpoints use `pg`. Other prototype preferences and the network simulator remain in memory. Fictional seed data lives in `src/lib/data.ts`.

@@ -4,26 +4,29 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Filter, Info, Lock, Pencil, Plus, Radio, Search, Star, FileText, X } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { MESSAGE_TYPES } from "@/lib/message-types";
-import { TOPICS, matchesTopics, parentOf, topicName, topicPath } from "@/lib/topics";
-import { TopicPicker } from "@/components/topic-picker";
-import type { Frequency, Message, MessageType, Subscription } from "@/lib/types";
+import { MESSAGE_CATEGORIES, MESSAGE_TYPE_INFO, MESSAGE_TYPES, countUnder, keyOf, keyPath, matchesKeys, messageKey, splitKey, subtagsOf } from "@/lib/message-types";
+import { MessageTypePicker } from "@/components/message-type-picker";
+import type { Frequency, Message, Subscription } from "@/lib/types";
 import { Button, Check, Panel, Pill, Select, Tabs, TextInput, Toggle, cx, td, th, theadRow } from "@/components/ui";
 
-const ALL_TYPES: MessageType[] = MESSAGE_TYPES;
-
-const RECOMMENDED: { name: string; description: string; topics: string[]; types: MessageType[] }[] = [
-  { name: "Submarine Safety", description: "All safety traffic, from stand-downs to hearing conservation.", topics: ["safety"], types: [] },
-  { name: "Motorcycle Safety", description: "Rider training, PPE and mishap prevention.", topics: ["safety.motorcycle"], types: [] },
-  { name: "Watch Team Qualifications", description: "Watch team qualification standards and changes.", topics: ["training.watch-quals"], types: [] },
-  { name: "Records Management", description: "Official records retention and handling.", topics: ["policy.records"], types: [] },
-  { name: "Port Visit Planning", description: "Port visit coordination, logistics requests and port services.", topics: ["submarine.port-visits", "logistics.port-services"], types: [] },
-  { name: "Equipment Casualties", description: "CASREPs and casualty corrections across the force.", topics: ["maintenance.casualties"], types: [] },
+// Subscriptions are keyed by MSGID field 2 (the type) and, for topic types,
+// field 3 (the subtag). A type alone catches every subtag under it.
+const RECOMMENDED: { name: string; description: string; types: string[] }[] = [
+  { name: "Submarine Safety", description: "All safety traffic, from stand-downs to hearing conservation.", types: ["SAFETY"] },
+  { name: "Motorcycle Safety", description: "Rider training, PPE and mishap prevention.", types: ["SAFETY/MOTORCYCLE"] },
+  { name: "Watch Team Qualifications", description: "Watch team qualification standards and changes.", types: ["TRAINING/WATCH-QUALS"] },
+  { name: "Records Management", description: "Official records retention and handling.", types: ["POLICY/RECORDS"] },
+  { name: "Port Visit Planning", description: "Port visit coordination, logistics requests and port services.", types: ["SUBMARINE/PORT-VISITS", "LOGREQ", "LOGISTICS/PORT-SERVICES"] },
+  { name: "Equipment Casualties", description: "CASREPs and casualty corrections across the force.", types: ["CASREP", "MAINTENANCE/CASUALTIES"] },
 ];
 
-/** "Safety (all)" for a whole topic, "Safety › Electrical Safety" for a subtopic. */
-const topicLabel = (id: string) => (id.includes(".") ? topicPath(id) : `${topicName(id)} (all)`);
-const topicsText = (ids?: string[]) => (ids?.length ? ids.map(topicLabel).join(", ") : "Any topic");
+/** "SAFETY (all)" for a whole type with subtags, "SAFETY/ELECTRICAL" otherwise, with the name. */
+const keyLabel = (key: string) => {
+  const [type, sub] = splitKey(key);
+  const all = !sub && MESSAGE_TYPE_INFO[type as keyof typeof MESSAGE_TYPE_INFO]?.subtags?.length;
+  return `${key}${all ? " (all)" : ""}`;
+};
+const keysText = (keys: string[]) => (keys.length ? keys.map(keyLabel).join(", ") : "Any type");
 
 type TabId = "mine" | "recommended" | "categories" | "shared";
 
@@ -37,11 +40,10 @@ function statusPill(s: Subscription) {
 function matches(s: Subscription, messages: Message[]) {
   return messages.filter(
     (m) =>
-      (!s.criteria.messageTypes.length || s.criteria.messageTypes.includes(m.type)) &&
-      matchesTopics(m.topics, s.criteria.topics ?? []) &&
+      matchesKeys(keyOf(m), s.criteria.messageTypes) &&
       (!s.criteria.precedence || s.criteria.precedence.includes(m.precedence)) &&
       (!s.criteria.originators?.length || s.criteria.originators.includes(m.source)) &&
-      (!s.criteria.keywords?.length || s.criteria.keywords.some((k) => (m.subject + " " + m.topics.map(topicPath).join(" ")).toLowerCase().includes(k.toLowerCase()))),
+      (!s.criteria.keywords?.length || s.criteria.keywords.some((k) => (m.subject + " " + keyPath(keyOf(m))).toLowerCase().includes(k.toLowerCase()))),
   );
 }
 
@@ -56,16 +58,16 @@ export default function SubscriptionsPage() {
   const rows = useMemo(
     () =>
       subscriptions.filter(
-        (s) => (!cat || (s.criteria.topics ?? []).some((t) => parentOf(t) === cat)) && (!q || (s.name + s.description).toLowerCase().includes(q.toLowerCase())),
+        (s) => (!cat || s.criteria.messageTypes.some((k) => splitKey(k)[0] === cat)) && (!q || (s.name + s.description).toLowerCase().includes(q.toLowerCase())),
       ),
     [subscriptions, cat, q],
   );
   const current = subscriptions.find((s) => s.id === selected) ?? subscriptions[0];
   const recent = matches(current, messages).slice(0, 5);
-  const messageCount = (id: string) => messages.filter((m) => matchesTopics(m.topics, [id])).length;
-  const subsFor = (id: string) => subscriptions.filter((s) => (s.criteria.topics ?? []).some((t) => parentOf(t) === id)).length;
-  const subscribeTo = (topics: string[], name: string) =>
-    setForm({ name, description: `Messages tagged ${topics.map(topicLabel).join(", ")}.`, frequency: "Daily Digest", channels: { inApp: true, email: true, teams: false }, criteria: { messageTypes: [], topics } });
+  const messageCount = (key: string) => countUnder(key, messages);
+  const subsFor = (type: string) => subscriptions.filter((s) => s.criteria.messageTypes.some((k) => splitKey(k)[0] === type)).length;
+  const subscribeTo = (keys: string[], name: string) =>
+    setForm({ name, description: `Messages with MSGID type ${keys.map(keyLabel).join(", ")}.`, frequency: "Daily Digest", channels: { inApp: true, email: true, teams: false }, criteria: { messageTypes: keys } });
 
   return (
     <>
@@ -74,7 +76,7 @@ export default function SubscriptionsPage() {
           <Radio className="mt-1 size-9 text-navy-900" aria-hidden />
           <div>
             <h1 className="text-2xl font-bold sm:text-[28px]">Message Subscriptions</h1>
-            <p className="text-[15px] text-muted">Subscribe to the topics and subtopics that matter to your mission.</p>
+            <p className="text-[15px] text-muted">Subscribe by message type, the MSGID field 2 value, or narrow a topic type to its field 3 subtags.</p>
           </div>
         </div>
         <Button variant="primary" icon={Plus} onClick={() => setForm({ frequency: "Daily Digest", channels: { inApp: true, email: true, teams: false }, criteria: { messageTypes: [] } })}>
@@ -93,7 +95,7 @@ export default function SubscriptionsPage() {
         tabs={[
           { id: "mine", label: `My Subscriptions (${subscriptions.length})` },
           { id: "recommended", label: `Recommended (${RECOMMENDED.length})` },
-          { id: "categories", label: "Browse Topics" },
+          { id: "categories", label: "Browse Message Types" },
           { id: "shared", label: "Shared with Me (2)" },
         ]}
       />
@@ -103,9 +105,9 @@ export default function SubscriptionsPage() {
           {RECOMMENDED.map((r) => (
             <Panel key={r.name}>
               <div className="font-semibold">{r.name}</div>
-              <div className="text-xs text-muted">{topicsText(r.topics)}</div>
+              <div className="text-xs text-muted">{keysText(r.types)}</div>
               <p className="my-2 text-sm">{r.description}</p>
-              <Button size="sm" variant="primary" onClick={() => setForm({ name: r.name, description: r.description, frequency: "Daily Digest", channels: { inApp: true, email: true, teams: false }, criteria: { messageTypes: r.types, topics: r.topics } })}>
+              <Button size="sm" variant="primary" onClick={() => setForm({ name: r.name, description: r.description, frequency: "Daily Digest", channels: { inApp: true, email: true, teams: false }, criteria: { messageTypes: r.types } })}>
                 Request
               </Button>
             </Panel>
@@ -114,30 +116,46 @@ export default function SubscriptionsPage() {
       )}
 
       {tab === "categories" && (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {TOPICS.map((t) => (
-            <Panel key={t.id}>
-              <div className="mb-2 flex items-start justify-between gap-2">
-                <div>
-                  <div className="font-semibold">{t.name}</div>
-                  <div className="text-xs text-muted">{messageCount(t.id)} messages · {t.subtopics.length} subtopics</div>
-                </div>
-                <Button size="sm" onClick={() => subscribeTo([t.id], t.name)}>Subscribe to all</Button>
+        <div className="space-y-5">
+          {MESSAGE_CATEGORIES.map((category) => (
+            <section key={category}>
+              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">{category}</h2>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {MESSAGE_TYPES.filter((t) => MESSAGE_TYPE_INFO[t].category === category).map((t) => {
+                  const info = MESSAGE_TYPE_INFO[t];
+                  const subs = subtagsOf(t);
+                  return (
+                    <Panel key={t}>
+                      <div className="mb-2 flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-semibold"><span className="font-mono text-sm">{t}</span>{info.name !== t && ` · ${info.name}`}</div>
+                          <div className="text-xs text-muted">{messageCount(t)} messages{subs.length ? ` · ${subs.length} subtags` : ""} · template: {info.template}</div>
+                        </div>
+                        <Button size="sm" onClick={() => subscribeTo([t], info.name)}>{subs.length ? "Subscribe to all" : "Subscribe"}</Button>
+                      </div>
+                      {subs.length ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {subs.map((st) => {
+                            const key = messageKey(t, st.code);
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => subscribeTo([key], st.name)}
+                                title={`Request a subscription to ${key}`}
+                                className="rounded border border-line bg-white px-2 py-1 text-xs hover:border-navy-600 hover:bg-navy-50"
+                              >
+                                {st.name} <span className="text-muted">({messageCount(key)})</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : <p className="text-xs text-muted">{info.description}</p>}
+                    </Panel>
+                  );
+                })}
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {t.subtopics.map((st) => (
-                  <button
-                    key={st.id}
-                    type="button"
-                    onClick={() => subscribeTo([st.id], st.name)}
-                    title={`Request a subscription to ${st.name}`}
-                    className="rounded border border-line bg-white px-2 py-1 text-xs hover:border-navy-600 hover:bg-navy-50"
-                  >
-                    {st.name} <span className="text-muted">({messageCount(st.id)})</span>
-                  </button>
-                ))}
-              </div>
-            </Panel>
+            </section>
           ))}
         </div>
       )}
@@ -154,17 +172,17 @@ export default function SubscriptionsPage() {
       {tab === "mine" && (
         <>
           <div className="mb-4 grid gap-4 lg:grid-cols-[250px_1fr]">
-            <Panel title="Topics" bodyClassName="p-2">
+            <Panel title="Message Types" bodyClassName="p-2">
               <ul>
                 <li>
                   <button type="button" onClick={() => setCat(null)} className={cx("w-full rounded px-3 py-2 text-left text-[15px]", !cat ? "bg-navy-100 font-semibold" : "hover:bg-navy-50")}>
-                    All topics
+                    All types
                   </button>
                 </li>
-                {TOPICS.filter((t) => subsFor(t.id)).map((t) => (
-                  <li key={t.id}>
-                    <button type="button" onClick={() => setCat(t.id)} className={cx("w-full rounded px-3 py-2 text-left text-[15px]", cat === t.id ? "bg-navy-100 font-semibold" : "hover:bg-navy-50")}>
-                      {t.name} ({subsFor(t.id)})
+                {MESSAGE_TYPES.filter((t) => subsFor(t)).map((t) => (
+                  <li key={t}>
+                    <button type="button" onClick={() => setCat(t)} className={cx("w-full rounded px-3 py-2 text-left text-[15px]", cat === t ? "bg-navy-100 font-semibold" : "hover:bg-navy-50")}>
+                      {MESSAGE_TYPE_INFO[t].name} ({subsFor(t)})
                     </button>
                   </li>
                 ))}
@@ -185,9 +203,9 @@ export default function SubscriptionsPage() {
                   <thead>
                     <tr className={theadRow}>
                       <th className={th}>Subscription Name</th>
-                      <th className={th}>Topics</th>
-                      <th className={th}>Description</th>
                       <th className={th}>Message Types</th>
+                      <th className={th}>Description</th>
+                      <th className={th}>Other Criteria</th>
                       <th className={th}>Frequency</th>
                       <th className={th}>Status</th>
                       <th className={th}>On</th>
@@ -202,9 +220,9 @@ export default function SubscriptionsPage() {
                             {s.name}
                           </span>
                         </td>
-                        <td className={td}>{topicsText(s.criteria.topics)}</td>
+                        <td className={td}>{keysText(s.criteria.messageTypes)}</td>
                         <td className={td}>{s.description}</td>
-                        <td className={td}>{s.criteria.messageTypes.join(", ") || (s.criteria.precedence ?? []).join(", ") || "Any"}</td>
+                        <td className={td}>{[...(s.criteria.precedence ?? []), ...(s.criteria.originators ?? []).map((o) => `From ${o}`)].join(", ") || "None"}</td>
                         <td className={td}>{s.frequency}</td>
                         <td className={td}>{statusPill(s)}</td>
                         <td className={td} onClick={(e) => e.stopPropagation()}>
@@ -231,9 +249,9 @@ export default function SubscriptionsPage() {
                 {current.mandatory && <Pill className="bg-navy-100 text-navy-800"><Lock className="size-3" /> Mandatory</Pill>}
               </div>
               <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
-                <Field k="Topics" v={topicsText(current.criteria.topics)} />
+                <Field k="Message Types" v={keysText(current.criteria.messageTypes)} />
                 <Field k="Description" v={current.description} />
-                <Field k="Message Types" v={current.criteria.messageTypes.join(", ") || "Any"} />
+                <Field k="Other Criteria" v={[...(current.criteria.precedence ?? []), ...(current.criteria.originators ?? []).map((o) => `From ${o}`), ...(current.criteria.keywords ?? []).map((k) => `"${k}"`)].join(", ") || "None"} />
                 <Field k="Frequency" v={current.frequency} />
                 <Field k="Requested By" v={current.requestedBy} />
                 <Field k="Approved By" v={current.approver ?? "Awaiting approval"} />
@@ -290,9 +308,8 @@ type Req = Parameters<ReturnType<typeof useStore>["requestSubscription"]>[0];
 
 function RequestDialog({ initial, onClose, onSubmit }: { initial: Partial<Subscription>; onClose: () => void; onSubmit: (s: Req) => void }) {
   const [name, setName] = useState(initial.name ?? "");
-  const [topics, setTopics] = useState<string[]>(initial.criteria?.topics ?? []);
   const [description, setDescription] = useState(initial.description ?? "");
-  const [types, setTypes] = useState<MessageType[]>(initial.criteria?.messageTypes ?? []);
+  const [types, setTypes] = useState<string[]>(initial.criteria?.messageTypes ?? []);
   const [keywords, setKeywords] = useState((initial.criteria?.keywords ?? []).join(", "));
   const [frequency, setFrequency] = useState<Frequency>(initial.frequency ?? "Daily Digest");
   const [channels, setChannels] = useState(initial.channels ?? { inApp: true, email: true, teams: false });
@@ -310,15 +327,9 @@ function RequestDialog({ initial, onClose, onSubmit }: { initial: Partial<Subscr
           <TextInput label="Subscription name" value={name} onChange={(e) => setName(e.target.value)} />
           <TextInput label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
           <fieldset>
-            <legend className="mb-1 text-sm font-semibold">Topics</legend>
-            <p className="mb-1 text-xs text-muted">Check a topic for everything in it, or open it and pick subtopics. None checked means any topic.</p>
-            <TopicPicker value={topics} onChange={setTopics} className="max-h-64 overflow-y-auto rounded-md border border-line p-2" />
-          </fieldset>
-          <fieldset>
             <legend className="mb-1 text-sm font-semibold">Message types</legend>
-            <div className="grid grid-cols-2">
-              {ALL_TYPES.map((t) => <Check key={t} label={t} checked={types.includes(t)} onChange={() => setTypes(types.includes(t) ? types.filter((x) => x !== t) : [...types, t])} />)}
-            </div>
+            <p className="mb-1 text-xs text-muted">The MSGID field 2 type. Check a type for everything in it, or open it and pick field 3 subtags. None checked means any type.</p>
+            <MessageTypePicker value={types} onChange={setTypes} className="max-h-64 overflow-y-auto rounded-md border border-line p-2" />
           </fieldset>
           <TextInput label="Keywords (comma separated)" value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="readiness, deployment" />
           <Select label="Frequency" value={frequency} onChange={(v) => setFrequency(v as Frequency)} options={["Real-time", "Daily Digest", "Weekly"]} />
@@ -342,7 +353,7 @@ function RequestDialog({ initial, onClose, onSubmit }: { initial: Partial<Subscr
               onSubmit({
                 name,
                 description,
-                criteria: { messageTypes: types, topics, keywords: keywords.split(",").map((k) => k.trim()).filter(Boolean) },
+                criteria: { messageTypes: types, keywords: keywords.split(",").map((k) => k.trim()).filter(Boolean) },
                 frequency,
                 channels,
                 justification,

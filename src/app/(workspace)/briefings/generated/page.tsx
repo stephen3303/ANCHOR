@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { useState } from "react";
 import { AlertCircle, AlertTriangle, BellRing, Download, FileText, Link2, Mail, Pencil, Printer, RefreshCw, Share2, Users } from "lucide-react";
-import { selectBriefing, topicCounts } from "@/lib/briefing";
+import { selectBriefing, typeCounts } from "@/lib/briefing";
 import { useStore } from "@/lib/store";
 import { fmtDate } from "@/lib/format";
 import { AiSummary } from "@/components/message";
 import { Bar, Button, Donut, ImportanceBadge, LifecycleBadge, Panel, PrecedenceBadge, StatCard, Tabs, Delta, tableWrap, td, th, theadRow, tbodyRow } from "@/components/ui";
-import { matchesTopics, topicName } from "@/lib/topics";
+import { keyName, keyOf, matchesKeys } from "@/lib/message-types";
 
 type Tab = "summary" | "takeaways" | "actions" | "messages" | "charts";
 
@@ -20,11 +20,11 @@ export default function GeneratedBriefing() {
   const med = items.filter((m) => m.importance === "Medium");
   const low = items.filter((m) => m.importance === "Low");
   const actions = items.filter((m) => m.actionItem);
-  const topics = topicCounts(items);
-  const statusChanges = messages.filter((m) => m.lifecycle !== "ACTIVE" && matchesTopics(m.topics, b.topics));
+  const topics = typeCounts(items);
+  const statusChanges = messages.filter((m) => m.lifecycle !== "ACTIVE" && matchesKeys(keyOf(m), b.messageTypes));
   const pct = (n: number) => (items.length ? Math.round((n / items.length) * 100) : 0);
 
-  const summary = `This briefing covers ${items.length} messages from the ${b.range.toLowerCase()} relevant to ${b.topics.slice(0, 3).map(topicName).join(", ")}${b.topics.length > 3 ? " and other topics" : ""}. ${high.length} are high priority and ${actions.length} carry action items. ${statusChanges.length ? `${statusChanges.length} messages changed status (superseded, corrected, amended or cancelled), so confirm you are working from the current version.` : ""}`;
+  const summary = `This briefing covers ${items.length} messages from the ${b.range.toLowerCase()} ${b.messageTypes.length ? `relevant to ${b.messageTypes.slice(0, 3).map(keyName).join(", ")}${b.messageTypes.length > 3 ? " and other message types" : ""}` : "across all message types"}. ${high.length} are high priority and ${actions.length} carry action items. ${statusChanges.length ? `${statusChanges.length} messages changed status (superseded, corrected, amended or cancelled), so confirm you are working from the current version.` : ""}`;
 
   return (
     <>
@@ -36,7 +36,7 @@ export default function GeneratedBriefing() {
             <div className="text-xl font-bold">{b.name}</div>
             <div className="text-lg font-semibold">{b.format}</div>
             <div className="text-[15px] text-muted">
-              Generated: {fmtDate(new Date("2026-10-24T19:00:00Z"))} 1900Z | {items.length} Messages | {b.topics.slice(0, 3).map(topicName).join(", ")}
+              Generated: {fmtDate(new Date("2026-10-24T19:00:00Z"))} 1900Z | {items.length} Messages | {b.messageTypes.length ? b.messageTypes.slice(0, 3).map(keyName).join(", ") : "All message types"}
             </div>
           </div>
         </div>
@@ -73,7 +73,7 @@ export default function GeneratedBriefing() {
                     <StatCard icon={Mail} value={items.length} label="Total Messages" note={<Delta dir="up" good>+6 from last briefing</Delta>} />
                     <StatCard icon={AlertCircle} value={high.length} label="High Priority" tone="red" note={<Delta dir="up">+1 from last briefing</Delta>} />
                     <StatCard icon={AlertTriangle} value={actions.length} label="Action Items" tone="amber" note={<Delta dir="down" good>−2 from last briefing</Delta>} />
-                    <StatCard icon={Users} value={topics.length} label="Communities" note={topics.slice(0, 3).map((t) => t.topic.split(" ")[0]).join(", ")} />
+                    <StatCard icon={Users} value={topics.length} label="Message Types" note={topics.slice(0, 3).map((t) => t.topic.split(" ")[0]).join(", ")} />
                   </div>
                 </>
               )}

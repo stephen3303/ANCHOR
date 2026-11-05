@@ -65,13 +65,13 @@ Attach the mockups (in the project files) and this file to Prompt 1. Everything 
 
 **Message** (immutable after ingestion)
 - `reference` (e.g. "NAVADMIN 234/26"), `dtg` ("151830Z OCT 26"), `received` (datetime), `subject`
-- `type`: NAVADMIN, ALNAV, OPNAVINST, MARADMIN, NAVSEAINST, COMSUBLANT MSG, COMSUBFOR INST, FLEET MSG, SAFETY MSG
+- `type`: MSGID field 2. Report formats (MOVREP, LOGREQ, OPREP-3, OPREP-5, CASREP, INDIGO), topic types (OPERATIONS, SUBMARINE, SURFACE, AVIATION, EXPEDITIONARY, LOGISTICS, CYBER, READINESS, PERSONNEL, TRAINING, MAINTENANCE, SAFETY, POLICY), GENADMIN, and general messages by title (NAVADMIN, ALNAV, ALMAR, MARADMIN, OPNAVINST, NAVSEAINST, COMSUBFOR INST). The type is the subscription key and names the drafting template.
+- `subtag`: MSGID field 3 for a topic type, e.g. ELECTRICAL in `MSGID/SAFETY/ELECTRICAL/COMSUBLANT N3/...`. Subscribing to SAFETY catches every subtag; SAFETY/ELECTRICAL catches only that one.
 - `originator`, `to`, `info`, `source`
 - `precedence`: FLASH, IMMEDIATE, PRIORITY, ROUTINE
 - `classification`: UNCLASSIFIED (prototype only uses this)
 - `lifecycle`: ACTIVE, AMENDED, CORRECTED, CANCELLED, SUPERSEDED, EXPIRED
 - `relates_to` (reference this message amends/corrects/supersedes/cancels), `replaced_by`
-- `communities` (list: Submarine Warfare, Readiness, Cybersecurity, Safety, Personnel, Training & Education, Maintenance, Policy, ...)
 - `sections` (list of {heading, body}), `attachments` (list of {name, size, kind})
 - `ack_required` (bool), `ack_due` (datetime), `action_item` ({text, suspense, assigned_to})
 - Integrity: `c2oix_id`, `sha256`, `size_kb`, `retention`
@@ -87,7 +87,7 @@ Attach the mockups (in the project files) and this file to Prompt 1. Everything 
 
 **SyncItem**: `type` (Acknowledgement, Annotation, Watch Notes, Briefing, Subscription, Action Item), `description`, `created`, `status` (Pending, Synced).
 
-**Briefing**: `title`, `purpose`, date range, `communities`, filters, sections included, generated content. **WatchTurnover**: `watch`, notes, checklist items, linked high-priority messages and open actions.
+**Briefing**: `title`, `purpose`, date range, `message_types` (subscription keys), filters, sections included, generated content. **WatchTurnover**: `watch`, notes, checklist items, linked high-priority messages and open actions.
 
 Seed about 16 messages including: Submarine Deployment Readiness Reporting Requirements (IMMEDIATE, ack required), Cybersecurity Controls Update plus its Corrected Copy, Submarine Safety Stand-Down Guidance (FLASH, ack required), Deployment Readiness Reporting (Interim, SUPERSEDED), Holiday Leave Policy plus a CANCELLED initial version, Port Visit Coordination (Amendment 1), Watch Team Qualification Standards, Maintenance Availability Reporting and Official Records Management Reminder. Default user: "LT Taylor", COMSUBLANT staff, role Watch Officer.
 
@@ -101,7 +101,7 @@ Seed about 16 messages including: Submarine Deployment Readiness Reporting Requi
 | Print rendition | Clean official layout with classification markings top and bottom and the integrity block. |
 | Search | Basic, Advanced (date range, type, originator, precedence, community, status, keywords), natural-language search, and saved searches. |
 | Subscriptions | My subscriptions table with status, category sidebar, recommended subscriptions, "Request subscription" form with justification. Mandatory rows are locked. |
-| Briefings | Tailored Briefing Builder (purpose, date range, communities, filters) with a live preview; Generated Briefing with executive summary, key takeaways, high-priority messages and action items. |
+| Briefings | Tailored Briefing Builder (purpose, date range, message types, filters) with a live preview; Generated Briefing with executive summary, key takeaways, high-priority messages and action items. |
 | Watch Turnover | Situation overview, high-priority messages since last watch, open action items, ongoing topics, watch notes, turnover checklist, "Generate turnover package". |
 | Offline Mode | EMCON toggle, connection status, local cache stats, sync queue, offline-capable actions, sync priority settings. |
 | Reports | Acknowledgement accountability roll-up per message (acknowledged, pending, overdue, escalated), traffic volume by type and precedence. |

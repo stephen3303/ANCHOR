@@ -80,6 +80,18 @@ Both containers use `restart: unless-stopped`, so Docker may already restart the
 when its engine starts; the `up` commands above are safe either way. Containers
 explicitly stopped by you may need those commands to start again.
 
+### Update to the latest main (Windows, Docker app)
+
+```sh
+npm run app:update            # pull main, migrate, rebuild and restart the app
+npm run app:update -- -Seed   # also rerun the (idempotent) seed scripts
+```
+
+`scripts/update.ps1` stops if tracked files have uncommitted changes, fast-forwards
+`main`, runs `npm ci` only when `package-lock.json` changed, applies new migrations
+before rebuilding the `anchor` container, and waits until http://localhost:3000
+answers. It never deletes database data.
+
 ### After pulling changes — only as needed
 
 - Dependency changes: `npm ci`.

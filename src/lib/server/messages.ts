@@ -61,7 +61,9 @@ export async function messageSnapshot(user: AppUser, subscriptionsOnly = false):
   const db = database();
   const [{ rows: messageRows }, { rows: stateRows }, { rows: localAcks }, { rows: received }] = await Promise.all([
     db.query<MessageRow>(`${MESSAGE_SELECT}
-      WHERE (NOT $1::boolean OR EXISTS (SELECT 1 FROM message_topic_subscriptions s WHERE s.topic_id=t.id AND s.user_id=$2))
+      WHERE (NOT $1::boolean OR EXISTS (SELECT 1 FROM message_topic_subscriptions s JOIN message_topics st ON st.id=s.topic_id
+        -- A subscription to a type alone (SAFETY) also catches its subtags (SAFETY:ELECTRICAL).
+        WHERE s.user_id=$2 AND (s.topic_id=t.id OR btrim(split_part(t.name, ':', 1))=st.name)))
       ORDER BY m.received DESC, m.id`, [subscriptionsOnly, user.id]),
     db.query<{ messageId: string; read: ReadState }>(
       `SELECT message_id AS "messageId", read_state AS read FROM message_user_state WHERE user_id = $1`, [user.id]),

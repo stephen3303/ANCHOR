@@ -7,10 +7,18 @@ import { database } from "./db";
 
 export async function listMessageTopics(user: AppUser): Promise<MessageTopic[]> {
   const { rows } = await database().query<MessageTopic>(`
-    SELECT t.id, t.name, count(m.message_id)::integer AS "messageCount",
-      EXISTS (SELECT 1 FROM message_topic_subscriptions s WHERE s.topic_id=t.id AND s.user_id=$1) AS subscribed
-    FROM message_topics t LEFT JOIN message_topic_messages m ON m.topic_id=t.id
-    GROUP BY t.id ORDER BY lower(t.name), t.name`, [user.id]);
+    WITH template_types AS (
+      -- Name the active templates whose latest published version drafts each Type.
+      SELECT t.name AS template, template_message_topic(v.ui_schema) AS name
+      FROM message_templates t
+      JOIN LATERAL (SELECT ui_schema FROM message_template_versions WHERE template_id=t.id AND published_at IS NOT NULL
+        ORDER BY version DESC LIMIT 1) v ON true
+      WHERE t.active
+    )
+    SELECT t.id, t.name, (SELECT count(*)::integer FROM message_topic_messages m WHERE m.topic_id=t.id) AS "messageCount",
+      EXISTS (SELECT 1 FROM message_topic_subscriptions s WHERE s.topic_id=t.id AND s.user_id=$1) AS subscribed,
+      coalesce((SELECT array_agg(tt.template ORDER BY lower(tt.template)) FROM template_types tt WHERE tt.name=t.name), '{}') AS templates
+    FROM message_topics t ORDER BY lower(t.name), t.name`, [user.id]);
   return rows;
 }
 

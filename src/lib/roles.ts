@@ -13,7 +13,7 @@ export const RELEASE_AUTHORITY = "Release Authority";
 export const SYSTEM_ADMIN = "System Admin";
 
 export const ROLE_CATALOG = [
-  { name: MESSAGE_VIEWER, detail: "View messages, request subscriptions and build briefings" },
+  { name: MESSAGE_VIEWER, detail: "View messages, subscribe to published types and build briefings" },
   { name: SUBSCRIPTION_APPROVER, detail: "Assign feeds to users and review subscription requests" },
   { name: REPORT_VIEWER, detail: "View the Reports page" },
   { name: AUDITOR, detail: "View audit logs and integrity checks" },

@@ -29,12 +29,17 @@ interface MessageRow {
   sha256: string;
   sizeBytes: number;
   rawText: string;
+  subscriptionTopicId: string | null;
+  subscriptionType: string | null;
 }
 
 const MESSAGE_SELECT = `
   SELECT m.record, m.lifecycle, m.replaced_by AS "replacedBy", a.c2oix_id AS "c2oixId",
-    a.sha256, a.size_bytes AS "sizeBytes", a.raw_text AS "rawText"
-  FROM messages m JOIN message_artifacts a ON a.c2oix_id = m.c2oix_id`;
+    a.sha256, a.size_bytes AS "sizeBytes", a.raw_text AS "rawText",
+    t.id AS "subscriptionTopicId", t.name AS "subscriptionType"
+  FROM messages m JOIN message_artifacts a ON a.c2oix_id = m.c2oix_id
+  LEFT JOIN message_topic_messages mt ON mt.message_id=m.id
+  LEFT JOIN message_topics t ON t.id=mt.topic_id`;
 
 /** The record as stored, with the columns the server owns written over it. */
 function toMessage(row: MessageRow): Message {
@@ -46,14 +51,18 @@ function toMessage(row: MessageRow): Message {
     sha256: row.sha256,
     sizeKb: Math.max(1, Math.ceil(row.sizeBytes / 1024)),
     rawText: row.rawText,
+    subscriptionTopicId: row.subscriptionTopicId ?? undefined,
+    subscriptionType: row.subscriptionType ?? undefined,
   };
 }
 
 /** Everything the message screens need for one signed-in user. */
-export async function messageSnapshot(user: AppUser): Promise<MessageSnapshot> {
+export async function messageSnapshot(user: AppUser, subscriptionsOnly = false): Promise<MessageSnapshot> {
   const db = database();
   const [{ rows: messageRows }, { rows: stateRows }, { rows: localAcks }, { rows: received }] = await Promise.all([
-    db.query<MessageRow>(`${MESSAGE_SELECT} ORDER BY m.received DESC, m.id`),
+    db.query<MessageRow>(`${MESSAGE_SELECT}
+      WHERE (NOT $1::boolean OR EXISTS (SELECT 1 FROM message_topic_subscriptions s WHERE s.topic_id=t.id AND s.user_id=$2))
+      ORDER BY m.received DESC, m.id`, [subscriptionsOnly, user.id]),
     db.query<{ messageId: string; read: ReadState }>(
       `SELECT message_id AS "messageId", read_state AS read FROM message_user_state WHERE user_id = $1`, [user.id]),
     // Acknowledgement belongs to the command: anyone in it acknowledging counts for everyone in it.

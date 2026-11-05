@@ -85,6 +85,7 @@ not reset release counters or overwrite administrators' workflow changes.
 | Shared generated form / PLADS picker | `src/components/template-preview.tsx`, `src/lib/command-search.ts` |
 | Draft composer and custom chains | `src/app/(workspace)/drafting/page.tsx`, `src/components/draft-composer.tsx`, `src/components/draft-routing-editor.tsx`, `src/lib/routing-store.tsx` |
 | Draft persistence and transitions | `src/lib/server/outgoing-messages.ts`, `src/lib/server/message-routing.ts`, `src/lib/server/routing-data.ts`, `src/lib/server/routing-config.ts` |
+| Pub/sub topics and preferences | `src/app/(workspace)/subscriptions/page.tsx`, `src/lib/message-topics.ts`, `src/lib/topic-subscriptions.ts`, `src/lib/server/message-topics.ts`, `src/app/api/subscriptions/`, `database/migrations/009-message-topic-subscriptions.sql` |
 | Transmission queue | `src/app/(workspace)/transmissions/`, `src/lib/server/transmissions.ts` |
 | Published traffic, ingest, integrity, acknowledgements | `src/lib/server/messages.ts`, `src/lib/naval.ts`, `src/lib/ingest-record.ts` |
 | Roles, users, admin | `src/lib/roles.ts`, `src/lib/demo-users.ts`, `src/lib/server/user-admin.ts`, `src/components/routing-admin.tsx` |
@@ -165,6 +166,25 @@ bundled demo data if the store is unavailable/empty. Check `messageSource` and
 API responses before claiming persistence works. Watch notes/action updates,
 some legacy preferences, and simulation state are still in memory; do not
 present watch-reported completion or acknowledgements as task closure.
+
+### Personal pub/sub feeds
+
+- Messages defaults to All Messages (unchanged full published feed). Subscriptions
+  filters by exact saved Type/MSGID topic IDs, alongside the existing filters.
+  No subscriptions means no subscribed rows; never fall back to All Messages.
+- `/subscriptions` allows every signed-in viewer to freely subscribe/unsubscribe,
+  persisted by session user in `message_topic_subscriptions`. No approval, mandatory
+  lock or client actor IDs. Existing legacy admin approval demos do not gate this.
+- Migration 009 registers topics and immutable message mappings atomically on
+  insertion into `messages`, hence at local transmission, not draft or release.
+  Resolve local Type from pinned definitions/saved legacy inputs; received traffic
+  uses MSGID. Backfill derived metadata only; preserve all canonical artifacts.
+- Workflow `MessageType` categories remain separate. API responses expose derived
+  `subscriptionTopicId`/`subscriptionType`; templates can be edited/deleted without
+  changing old topics. Preferences filter a feed, not message access permissions.
+- `topic-subscriptions.ts` loads server preferences with no demo/offline fallback;
+  never claim a failed write was saved. The existing account-keyed store refresh
+  reloads them; no new persistent background runner is introduced.
 
 ### Template and output invariants
 

@@ -5,6 +5,7 @@ import { CheckCheck, Download, Filter, Mail, Paperclip, Search } from "lucide-re
 import { needsOwnAck } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import { MESSAGE_CATEGORIES, MESSAGE_TYPES, categoryOf } from "@/lib/message-types";
+import { subscribedMessages } from "@/lib/message-topics";
 import type { Lifecycle, Message, MessageCategory, MessageType, ReadState } from "@/lib/types";
 import { MessageReaderNavigation } from "@/components/message";
 import { MessageCellsRow, MessageHeaderRow, messageColumns } from "@/components/message-columns";
@@ -25,10 +26,12 @@ import {
 const RETIRED: Lifecycle[] = ["SUPERSEDED", "CANCELLED", "EXPIRED"];
 
 export default function MessagesPage() {
-  const { messages, userState, markAllRead, log, notify } = useStore();
-  const SOURCES = useMemo(() => [...new Set(messages.map((m) => m.source))], [messages]);
-  const TYPES = useMemo(() => MESSAGE_TYPES.filter((t) => messages.some((m) => m.type === t)), [messages]);
-  const count = <K extends keyof Message>(k: K, v: Message[K]) => messages.filter((m) => m[k] === v).length;
+  const { messages, userState, markAllRead, markRead, log, notify, messageTopics, topicsLoaded, topicsError, refreshTopics } = useStore();
+  const [feed, setFeed] = useState<"all" | "subscriptions">("all");
+  const scopedMessages = useMemo(() => feed === "all" ? messages : subscribedMessages(messages, messageTopics), [feed, messages, messageTopics]);
+  const SOURCES = useMemo(() => [...new Set(scopedMessages.map((m) => m.source))], [scopedMessages]);
+  const TYPES = useMemo(() => MESSAGE_TYPES.filter((t) => scopedMessages.some((m) => m.type === t)), [scopedMessages]);
+  const count = <K extends keyof Message>(k: K, v: Message[K]) => scopedMessages.filter((m) => m[k] === v).length;
   const [q, setQ] = useState("");
   const [sources, setSources] = useState<string[]>([]);
   const [categories, setCategories] = useState<MessageCategory[]>([]);
@@ -46,7 +49,7 @@ export default function MessagesPage() {
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return messages.filter((m) => {
+    return scopedMessages.filter((m) => {
       const st = userState[m.id];
       if (needle && ![m.subject, m.reference, m.originator, ...m.sections.flatMap((s) => s.body)].join(" ").toLowerCase().includes(needle)) return false;
       if (sources.length && !sources.includes(m.source)) return false;
@@ -57,7 +60,7 @@ export default function MessagesPage() {
       if (!showRetired && RETIRED.includes(m.lifecycle)) return false;
       return true;
     });
-  }, [messages, q, sources, categories, types, states, ackOnly, showRetired, userState]);
+  }, [scopedMessages, q, sources, categories, types, states, ackOnly, showRetired, userState]);
 
   // Keep the list mounted and its scroll containers untouched beneath the reader.
   // A same-document history entry also makes browser Back/Forward work.
@@ -91,6 +94,7 @@ export default function MessagesPage() {
   const toggleChecked = (id: string) =>
     setChecked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
+  const selectedCount = feed === "all" ? checked.size : rows.filter((message) => checked.has(message.id)).length;
   const cols = messageColumns<Message>({
     select: {
       header: (
@@ -98,7 +102,7 @@ export default function MessagesPage() {
           type="checkbox"
           aria-label="Select all"
           className="size-4 accent-navy-600"
-          checked={checked.size > 0 && checked.size === rows.length}
+          checked={selectedCount > 0 && selectedCount === rows.length}
           onChange={(e) => setChecked(e.target.checked ? new Set(rows.map((r) => r.id)) : new Set())}
         />
       ),
@@ -148,7 +152,7 @@ export default function MessagesPage() {
         <div className="flex flex-wrap items-center gap-3">
           <Mail className="size-9 text-navy-700" strokeWidth={1.75} aria-hidden />
           <h1 className="text-2xl font-bold sm:text-[28px]">
-            Messages <span className="font-semibold text-muted">({rows.length} of {messages.length})</span>
+            Messages <span className="font-semibold text-muted">({rows.length} of {scopedMessages.length})</span>
           </h1>
           <label className="relative ml-auto min-w-[240px] flex-1 sm:max-w-xl">
             <span className="sr-only">Search messages</span>
@@ -162,11 +166,21 @@ export default function MessagesPage() {
           </label>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="group" aria-label="Message feed" className="flex gap-1 rounded-md border border-line p-1">
+            <Button size="sm" aria-pressed={feed === "subscriptions"} variant={feed === "subscriptions" ? "primary" : "ghost"} onClick={() => { setFeed("subscriptions"); setChecked(new Set()); void refreshTopics(); }}>Subscriptions</Button>
+            <Button size="sm" aria-pressed={feed === "all"} variant={feed === "all" ? "primary" : "ghost"} onClick={() => { setFeed("all"); setChecked(new Set()); }}>All Messages</Button>
+          </div>
+          <Button size="sm" href="/subscriptions">Manage subscriptions</Button>
+        </div>
+        {feed === "subscriptions" && !topicsLoaded && <p role="status">{topicsError ? "Subscriptions could not be loaded." : "Loading subscriptions…"}</p>}
+        {feed === "subscriptions" && topicsError && <div role="alert" className="text-sm text-red-700">{topicsError} <Button size="sm" onClick={() => void refreshTopics()}>Retry subscriptions</Button></div>}
+
         <Panel bodyClassName="p-0">
           <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
-            <Button size="sm" icon={CheckCheck} onClick={() => { markAllRead(); notify("All messages marked read"); }}>Mark All Read</Button>
-            <Button size="sm" icon={Download} disabled={!checked.size} onClick={() => { log("Export", `Messages (${checked.size} selected)`); notify(`Exported ${checked.size} messages with integrity data`); }}>
-              Export{checked.size ? ` (${checked.size})` : ""}
+            <Button size="sm" icon={CheckCheck} onClick={() => { if (feed === "all") { markAllRead(); notify("All messages marked read"); } else { rows.forEach((message) => markRead(message.id)); notify("Visible subscribed messages marked read"); } }}>Mark All Read</Button>
+            <Button size="sm" icon={Download} disabled={!selectedCount} onClick={() => { log("Export", `Messages (${selectedCount} selected)`); notify(`Exported ${selectedCount} messages with integrity data`); }}>
+              Export{selectedCount ? ` (${selectedCount})` : ""}
             </Button>
             <Button size="sm" variant="primary" icon={Filter} className="ml-auto" onClick={() => setShowFilters((s) => !s)}>
               Filter
@@ -181,6 +195,7 @@ export default function MessagesPage() {
                 {rows.map((m) => (
                   <tr
                     key={m.id}
+                    data-testid={`message-row-${m.id}`}
                     onClick={() => open(m.id)}
                     className={cx(
                       "cursor-pointer border-b border-line/70 last:border-0 hover:bg-navy-50",
@@ -192,7 +207,7 @@ export default function MessagesPage() {
                 ))}
                 {!rows.length && (
                   <tr>
-                    <td colSpan={cols.length} className="py-10 text-center text-sm text-muted">No messages match these filters.</td>
+                    <td colSpan={cols.length} className="py-10 text-center text-sm text-muted">{feed === "subscriptions" && !scopedMessages.length ? "No messages from your subscribed types. Choose types in Manage subscriptions." : "No messages match these filters."}</td>
                   </tr>
                 )}
               </tbody>
@@ -213,7 +228,7 @@ export default function MessagesPage() {
               <fieldset>
                 <legend className="mb-1 text-sm font-semibold">Status</legend>
                 {(["new", "unread", "read"] as ReadState[]).map((s) => (
-                  <Check key={s} label={s[0].toUpperCase() + s.slice(1)} count={messages.filter((m) => userState[m.id].read === s).length} checked={states.includes(s)} onChange={() => toggle(states, s, setStates)} />
+                  <Check key={s} label={s[0].toUpperCase() + s.slice(1)} count={scopedMessages.filter((m) => userState[m.id].read === s).length} checked={states.includes(s)} onChange={() => toggle(states, s, setStates)} />
                 ))}
                 <Check label="Needs acknowledgement" checked={ackOnly} onChange={setAckOnly} />
                 <Check label="Show superseded, cancelled & expired" checked={showRetired} onChange={setShowRetired} />
@@ -221,7 +236,7 @@ export default function MessagesPage() {
               <fieldset>
                 <legend className="mb-1 text-sm font-semibold">Category</legend>
                 {MESSAGE_CATEGORIES.map((c) => (
-                  <Check key={c} label={c} count={messages.filter((m) => categoryOf(m.type) === c).length} checked={categories.includes(c)} onChange={() => toggle(categories, c, setCategories)} />
+                  <Check key={c} label={c} count={scopedMessages.filter((m) => categoryOf(m.type) === c).length} checked={categories.includes(c)} onChange={() => toggle(categories, c, setCategories)} />
                 ))}
               </fieldset>
               <fieldset>

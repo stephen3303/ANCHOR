@@ -31,7 +31,10 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // Server Simulators, Network Topology and Offline Mode became one screen.
   async redirects() {
-    return ["/simulators", "/topology", "/offline"].map((source) => ({ source, destination: "/network", permanent: true }));
+    return [
+      ...["/simulators", "/topology", "/offline"].map((source) => ({ source, destination: "/network", permanent: true })),
+      { source: "/personalized-preview", destination: "/", permanent: false },
+    ];
   },
   cacheComponents: true,
   partialPrefetching: true,

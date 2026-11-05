@@ -59,6 +59,9 @@ export interface Message {
   subject: string;
   reference: string;
   type: MessageType;
+  /** Derived from published Type/MSGID; separate from workflow categories. */
+  subscriptionTopicId?: string;
+  subscriptionType?: string;
   originator: string;
   source: string;
   to: string;

@@ -59,7 +59,8 @@ export const STEP_STATUS: Record<RouteStep["status"], { label: string; className
   released: { label: "Released", className: "font-semibold text-green-700" },
 };
 
-export const DRAFT_TYPES: MessageType[] = ["COMSUBLANT MSG", "FLEET MSG", "SAFETY MSG", "COMSUBFOR INST"];
+/** Types this command drafts: every type in the catalog it does not only receive. */
+export { DRAFT_TYPES } from "./message-types";
 
 export const INITIAL_WORKFLOWS: RoutingWorkflow[] = [
   {
@@ -67,7 +68,7 @@ export const INITIAL_WORKFLOWS: RoutingWorkflow[] = [
     name: "COMSUBLANT general message",
     description: "Force-wide general traffic. Operations reviews, the Chief of Staff endorses, the Commander releases.",
     active: true,
-    matchTypes: ["COMSUBLANT MSG"],
+    matchTypes: ["GENADMIN"],
     matchOriginators: [],
     steps: [
       { title: "N3 review", personId: "p-ramos", action: "review" },
@@ -80,7 +81,7 @@ export const INITIAL_WORKFLOWS: RoutingWorkflow[] = [
     name: "Safety message",
     description: "Time-critical safety traffic. Operations reviews and the Chief of Staff releases under delegated authority.",
     active: true,
-    matchTypes: ["SAFETY MSG"],
+    matchTypes: ["SAFETY"],
     matchOriginators: [OWN_ORIGINATOR],
     steps: [
       { title: "N3 review", personId: "p-ramos", action: "review" },
@@ -89,10 +90,10 @@ export const INITIAL_WORKFLOWS: RoutingWorkflow[] = [
   },
   {
     id: "wf-logistics",
-    name: "Logistics fleet message",
+    name: "Logistics message",
     description: "Supply and logistics traffic to the fleet. The N4 releases.",
     active: true,
-    matchTypes: ["FLEET MSG"],
+    matchTypes: ["LOGISTICS"],
     matchOriginators: [],
     steps: [
       { title: "Supply review", personId: "p-patel", action: "review" },
@@ -115,8 +116,8 @@ export const INITIAL_WORKFLOWS: RoutingWorkflow[] = [
 
 /** Designated release authorities. The Commander releases as the Release Authority role, without a designation. */
 export const INITIAL_AUTHORITIES: ReleaseAuthority[] = [
-  { id: "ra-chen", personId: "p-chen", designation: "Chief of Staff", isCommandingOfficer: false, scope: ["SAFETY MSG"] },
-  { id: "ra-brooks", personId: "p-brooks", designation: "Logistics Officer (N4)", isCommandingOfficer: false, scope: ["FLEET MSG"] },
+  { id: "ra-chen", personId: "p-chen", designation: "Chief of Staff", isCommandingOfficer: false, scope: ["SAFETY"] },
+  { id: "ra-brooks", personId: "p-brooks", designation: "Logistics Officer (N4)", isCommandingOfficer: false, scope: ["LOGISTICS"] },
 ];
 
 export const INITIAL_COMMAND_SETTINGS: CommandSettings = {
@@ -222,7 +223,7 @@ export function renderMessage(d: Draft, s: CommandSettings) {
     ...(d.info.length ? [`INFO ${d.info.join("\n     ")}`] : []),
     "BT",
     CLASS_LINE[d.classification],
-    `MSGID/GENADMIN/COMSUBLANT/${d.msn ?? "-".repeat(s.sequenceDigits)}/${month}//`,
+    `MSGID/${d.subtag ? `${d.type}:${d.subtag}` : d.type}/COMSUBLANT/${d.msn ?? "-".repeat(s.sequenceDigits)}/${month}//`,
     `SUBJ/${caseOf(d.subject || "UNTITLED")}//`,
     ...d.paragraphs.filter((p) => p.trim()).map((p, i) => `${i + 1}. ${caseOf(p.trim())}`),
     "BT",
@@ -238,7 +239,7 @@ export const INITIAL_DRAFTS: Draft[] = [
   {
     id: "dr-1",
     subject: "Quarterly communications security inspection schedule",
-    type: "COMSUBLANT MSG",
+    type: "GENADMIN",
     originator: OWN_ORIGINATOR,
     precedence: "ROUTINE",
     classification: "UNCLASSIFIED",
@@ -257,7 +258,7 @@ export const INITIAL_DRAFTS: Draft[] = [
   {
     id: "dr-2",
     subject: "Holiday leave period watch manning",
-    type: "COMSUBLANT MSG",
+    type: "GENADMIN",
     originator: OWN_ORIGINATOR,
     precedence: "PRIORITY",
     classification: "UNCLASSIFIED",
@@ -281,7 +282,8 @@ export const INITIAL_DRAFTS: Draft[] = [
   {
     id: "dr-3",
     subject: "Heavy weather mooring check",
-    type: "SAFETY MSG",
+    type: "SAFETY",
+    subtag: "HEAVY-WEATHER",
     originator: OWN_ORIGINATOR,
     precedence: "IMMEDIATE",
     classification: "UNCLASSIFIED",
@@ -307,7 +309,8 @@ export const INITIAL_DRAFTS: Draft[] = [
   {
     id: "dr-4",
     subject: "Spare parts validation reminder",
-    type: "FLEET MSG",
+    type: "LOGISTICS",
+    subtag: "PARTS",
     originator: OWN_ORIGINATOR,
     precedence: "ROUTINE",
     classification: "UNCLASSIFIED",

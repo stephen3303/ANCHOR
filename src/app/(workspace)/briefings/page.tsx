@@ -2,33 +2,19 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, FolderOpen, RotateCcw, Save, Sparkles, CheckSquare, Square } from "lucide-react";
+import { FileText, FolderOpen, RotateCcw, Save, Sparkles } from "lucide-react";
 import { selectBriefing } from "@/lib/briefing";
 import { DEFAULT_BRIEFING, useStore } from "@/lib/store";
-import type { Community } from "@/lib/types";
+import { countUnder, keyOf, keyPath } from "@/lib/message-types";
+import { MessageTypePicker } from "@/components/message-type-picker";
 import { hoursAgo } from "@/lib/format";
-import { Button, Check, ImportanceBadge, LifecycleBadge, PageHeader, Panel, Select, Tag, TextInput, cx } from "@/components/ui";
-
-const COMMUNITIES: Community[] = [
-  "Submarine Warfare",
-  "Surface Warfare",
-  "Expeditionary Forces",
-  "Cybersecurity",
-  "Readiness",
-  "Personnel",
-  "Training & Education",
-  "Maintenance",
-  "Safety",
-  "Policy",
-];
+import { Button, Check, ImportanceBadge, LifecycleBadge, PageHeader, Panel, Select, Tag, TextInput } from "@/components/ui";
 
 export default function BriefingBuilder() {
   const router = useRouter();
   const { briefing: b, setBriefing, userState, log, notify, messages } = useStore();
   const set = (p: Partial<typeof b>) => setBriefing({ ...b, ...p });
   const preview = selectBriefing(b, (id) => userState[id]?.read === "read", messages);
-  const toggleComm = (c: Community) => set({ communities: b.communities.includes(c) ? b.communities.filter((x) => x !== c) : [...b.communities, c] });
-  const allOn = b.communities.length === COMMUNITIES.length;
 
   const generate = () => {
     log("Create Briefing", b.name, `Briefing generated from ${preview.length} messages.`);
@@ -40,7 +26,7 @@ export default function BriefingBuilder() {
       <PageHeader
         icon={FileText}
         title="Tailored Briefing Builder"
-        subtitle="Create a customized briefing from relevant messages, topics, and timeframes."
+        subtitle="Create a customized briefing from relevant messages, message types, and timeframes."
         actions={
           <>
             <Button icon={FolderOpen} onClick={() => { setBriefing(DEFAULT_BRIEFING); notify("Loaded template: Watch Turnover"); }}>Load Template</Button>
@@ -63,28 +49,12 @@ export default function BriefingBuilder() {
           </section>
 
           <section>
-            <h2 className="text-lg font-bold">2. Communities / Topics</h2>
-            <p className="mb-2 text-sm text-muted">Select the communities and topics to include in this briefing.</p>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              {COMMUNITIES.map((c) => {
-                const on = b.communities.includes(c);
-                return (
-                  <button
-                    key={c}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => toggleComm(c)}
-                    className={cx("flex items-center gap-2 rounded-md border px-3 py-3 text-left text-sm", on ? "border-navy-600 bg-navy-100 font-semibold" : "border-line bg-white hover:bg-navy-50")}
-                  >
-                    {on ? <CheckSquare className="size-5 text-navy-600" /> : <Square className="size-5 text-slate-400" />}
-                    {c}
-                  </button>
-                );
-              })}
-              <button type="button" onClick={() => set({ communities: allOn ? [] : COMMUNITIES })} className="rounded-md border border-line bg-white px-3 py-3 text-sm hover:bg-navy-50">
-                {allOn ? "Clear All" : "All Communities"}
-              </button>
+            <h2 className="text-lg font-bold">2. Message Types</h2>
+            <p className="mb-2 text-sm text-muted">Pick the MSGID types to include. A type covers all of its subtags; leave everything clear to include all traffic.</p>
+            <div className="max-h-80 overflow-y-auto rounded-md border border-line p-3">
+              <MessageTypePicker value={b.messageTypes} onChange={(v) => set({ messageTypes: v })} counts={(k) => countUnder(k, messages)} />
             </div>
+            {b.messageTypes.length > 0 && <Button size="sm" className="mt-2" onClick={() => set({ messageTypes: [] })}>Clear all</Button>}
           </section>
 
           <section>
@@ -121,7 +91,7 @@ export default function BriefingBuilder() {
                 <div className="min-w-0 flex-1">
                   <Link href={`/messages/${m.id}`} className="font-semibold text-link hover:underline">{m.subject}</Link> <LifecycleBadge l={m.lifecycle} />
                   <div className="text-[13px]">{m.reference} | {m.source} | {m.dtg}</div>
-                  <div className="mt-1 flex flex-wrap gap-1">{m.communities.map((c) => <Tag key={c}>{c}</Tag>)}</div>
+                  <div className="mt-1 flex flex-wrap gap-1"><Tag title={keyPath(keyOf(m))}>{keyOf(m)}</Tag></div>
                 </div>
                 <div className="text-right">
                   <ImportanceBadge i={m.importance} />
@@ -129,7 +99,7 @@ export default function BriefingBuilder() {
                 </div>
               </li>
             ))}
-            {!preview.length && <li className="py-10 text-center text-sm text-muted">No messages match. Widen the date range or topics.</li>}
+            {!preview.length && <li className="py-10 text-center text-sm text-muted">No messages match. Widen the date range or message types.</li>}
           </ul>
         </Panel>
       </div>

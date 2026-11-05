@@ -19,29 +19,12 @@ export type ReadState = "new" | "unread" | "read";
 
 export type Importance = "High" | "Medium" | "Low";
 
-export type MessageType =
-  | "NAVADMIN"
-  | "ALNAV"
-  | "OPNAVINST"
-  | "MARADMIN"
-  | "NAVSEAINST"
-  | "COMSUBLANT MSG"
-  | "COMSUBFOR INST"
-  | "FLEET MSG"
-  | "SAFETY MSG";
+/** Purpose of a message. Derived from its type (see message-types.ts). */
+export type MessageCategory = "Operational" | "Administrative";
 
-export type Community =
-  | "Submarine Warfare"
-  | "Surface Warfare"
-  | "Aviation"
-  | "Cybersecurity"
-  | "Readiness"
-  | "Personnel"
-  | "Training & Education"
-  | "Maintenance"
-  | "Safety"
-  | "Policy"
-  | "Expeditionary Forces";
+/** MSGID field 2. The catalog lives in message-types.ts. */
+export type { MessageType } from "./message-types";
+import type { MessageType } from "./message-types";
 
 export interface Attachment {
   name: string;
@@ -91,7 +74,8 @@ export interface Message {
   relatesTo?: string;
   /** Reference that superseded or cancelled this one */
   replacedBy?: string;
-  communities: Community[];
+  /** Subtag after the colon in MSGID field 2, e.g. ELECTRICAL in MSGID/SAFETY:ELECTRICAL/... */
+  subtag?: string;
   attachments: Attachment[];
   sections: MessageSection[];
   /**
@@ -148,10 +132,10 @@ export type Frequency = "Real-time" | "Daily Digest" | "Weekly";
 export interface Subscription {
   id: string;
   name: string;
-  category: Community;
   description: string;
   criteria: {
-    messageTypes: MessageType[];
+    /** Subscription keys, "SAFETY" or "SAFETY:ELECTRICAL"; a type covers all its subtags. */
+    messageTypes: string[];
     originators?: string[];
     keywords?: string[];
     precedence?: Precedence[];
@@ -264,6 +248,8 @@ export interface Draft {
   subject: string;
   type: MessageType;
   originator: string;
+  /** Subtag after the colon in MSGID field 2, for a topic type. */
+  subtag?: string;
   precedence: Precedence;
   classification: Classification;
   to: string[];

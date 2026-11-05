@@ -12,15 +12,18 @@ import { currentMessage, actionDeadline, remaining } from "@/lib/watch-workspace
 import { Button, Panel, PrecedenceBadge } from "@/components/ui";
 import { MessageReaderNavigation } from "@/components/message";
 import { MessageDetail } from "@/app/(workspace)/messages/[id]/detail";
-import type { Community, Message } from "@/lib/types";
+import { MESSAGE_TYPE_INFO } from "@/lib/message-types";
+import type { Message, MessageType } from "@/lib/types";
 
 const HOUR = 3_600_000;
-const TOPICS: Community[] = ["Readiness", "Training & Education", "Safety", "Cybersecurity", "Personnel", "Maintenance", "Policy", "Submarine Warfare"];
-type View = { id: string; name: string; topics: Community[]; personal?: boolean; description: string };
+// Views select MSGID types (field 2); a type catches all of its subtags.
+const TOPICS: MessageType[] = ["READINESS", "TRAINING", "SAFETY", "CYBER", "PERSONNEL", "MAINTENANCE", "POLICY", "SUBMARINE"];
+const topicName = (t: MessageType) => MESSAGE_TYPE_INFO[t].name;
+type View = { id: string; name: string; topics: MessageType[]; personal?: boolean; description: string };
 const EXAMPLES: View[] = [
   { id: "watch", name: "Watch Officer", topics: [], description: "Traffic, outstanding requirements, and changes for the incoming watch." },
-  { id: "training", name: "Training Officer", topics: ["Training & Education"], description: "Training-related traffic and recorded requirements." },
-  { id: "safety", name: "Safety Officer", topics: ["Safety"], description: "Safety messages and recorded follow-up requirements." },
+  { id: "training", name: "Training Officer", topics: ["TRAINING"], description: "Training-related traffic and recorded requirements." },
+  { id: "safety", name: "Safety Officer", topics: ["SAFETY"], description: "Safety messages and recorded follow-up requirements." },
 ];
 const input = "mt-1 block w-full rounded-md border border-line bg-white px-3 py-2 text-sm";
 const textLink = "text-left text-link hover:underline";
@@ -59,7 +62,7 @@ export function PersonalizedHome() {
   const [manage, setManage] = useState(false);
   const [createRequest, setCreateRequest] = useState(0);
   const [name, setName] = useState("");
-  const [topics, setTopics] = useState<Community[]>([]);
+  const [topics, setTopics] = useState<MessageType[]>([]);
   const [notice, setNotice] = useState("");
   const [noticeTone, setNoticeTone] = useState<"success" | "warning">("success");
   const [selected, setSelected] = useState<string | null>(null);
@@ -102,7 +105,7 @@ export function PersonalizedHome() {
   const start = end - Number(hours) * HOUR;
   const known = messages.filter((m) => Date.parse(m.received) <= end);
   const mine = (m: Message) => !!m.actionItem?.assignedTo && [user.name.toLowerCase(), user.login.toLowerCase()].includes(m.actionItem.assignedTo.toLowerCase());
-  const matches = (m: Message) => !view.topics.length || m.communities.some((t) => view.topics.includes(t));
+  const matches = (m: Message) => !view.topics.length || view.topics.includes(m.type);
   const relevant = known.filter((m) => matches(m) && (scope === "all" || (scope === "mine" ? mine(m) : !mine(m))) && Date.parse(m.received) >= start).sort((a,b) => Date.parse(b.received) - Date.parse(a.received));
   const pending = known.filter((m) => needsOwnAck(m) && currentMessage(m) && !userState[m.id]?.acknowledgedAt);
   const taskDeadlines = known.filter((m) => currentMessage(m) && m.actionItem).map((m) => ({ message: m, text: m.actionItem!.text, owner: m.actionItem!.assignedTo || "Unassigned", ...actionDeadline(m.actionItem!.suspense) }));
@@ -149,11 +152,11 @@ export function PersonalizedHome() {
       <p className="mb-3 text-sm text-muted">Official duty assignments will come from administrators. These three example duties demonstrate the design. Personal views and defaults below are saved only in this browser.</p>
       <form onSubmit={createPersonalView} className="space-y-3 rounded-lg bg-slate-50 p-3">
         <label className="block text-sm font-semibold">Personal view name<input ref={nameInput} required maxLength={60} className={input} placeholder="e.g. Readiness & training" value={name} onChange={(e) => setName(e.target.value)} /></label>
-        <fieldset><legend className="mb-2 text-xs text-muted">Include topics · select at least one</legend><div className="flex flex-wrap gap-2">{TOPICS.map((t) => <label key={t} className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs ${topics.includes(t) ? "border-navy-700 bg-navy-50" : "border-line bg-white"}`}><input type="checkbox" checked={topics.includes(t)} onChange={(e) => setTopics(e.target.checked ? [...topics,t] : topics.filter(x=>x!==t))} />{t}</label>)}</div></fieldset>
+        <fieldset><legend className="mb-2 text-xs text-muted">Include topics · select at least one</legend><div className="flex flex-wrap gap-2">{TOPICS.map((t) => <label key={t} className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs ${topics.includes(t) ? "border-navy-700 bg-navy-50" : "border-line bg-white"}`}><input type="checkbox" checked={topics.includes(t)} onChange={(e) => setTopics(e.target.checked ? [...topics,t] : topics.filter(x=>x!==t))} />{topicName(t)}</label>)}</div></fieldset>
         <p id="personal-view-help" className="text-xs text-muted">{preferences.personal.length >= 8 ? "You have reached the limit of 8 personal views. Remove one below to create another." : !name.trim() || !topics.length ? "Enter a name and select at least one topic to enable Create personal view." : "The new view will open immediately. Your default will stay unchanged until you choose Set as default."}</p>
         <Button aria-describedby="personal-view-help" type="submit" size="sm" variant="primary" icon={Plus} disabled={!name.trim() || !topics.length || preferences.personal.length >= 8}>Create personal view</Button>
       </form>
-      {preferences.personal.map((v) => <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm" key={v.id}><span>{v.name} · {v.topics.join(", ")}</span><button className="text-xs text-link underline" onClick={() => { const next = { defaultId: preferences.defaultId === v.id ? "watch" : preferences.defaultId, personal: preferences.personal.filter(p=>p.id!==v.id) }; if(view.id===v.id)setView("watch"); save(next); }}>Remove personal view</button></div>)}
+      {preferences.personal.map((v) => <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm" key={v.id}><span>{v.name} · {v.topics.map(topicName).join(", ")}</span><button className="text-xs text-link underline" onClick={() => { const next = { defaultId: preferences.defaultId === v.id ? "watch" : preferences.defaultId, personal: preferences.personal.filter(p=>p.id!==v.id) }; if(view.id===v.id)setView("watch"); save(next); }}>Remove personal view</button></div>)}
     </Panel></div>}
 
     <div className="grid gap-3 sm:grid-cols-3">
@@ -173,7 +176,7 @@ export function PersonalizedHome() {
         <div ref={traffic} className="scroll-mt-4"><Panel title={`Relevant messages · ${visible.length}`} action={<button className="text-xs text-link underline" onClick={() => { setScope("all");setFilter("all");setSearch(""); }}>Reset filters</button>}>
           <div className="mb-3 flex flex-wrap gap-1.5" aria-label="Message scope">{[{id:"all",label:"All relevant"},{id:"mine",label:"Mine"},{id:"department",label:"My department"},{id:"command",label:"Command-wide"}].map((s) => <button key={s.id} disabled={s.id==="department"} title={s.id==="department"?"Department assignments are not connected yet":undefined} aria-pressed={scope===s.id} onClick={() => setScope(s.id)} className={`rounded-full px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${scope===s.id?"bg-navy-800 text-white":"bg-slate-100 text-muted"}`}>{s.label}</button>)}</div>
           <div className="mb-2 flex flex-wrap gap-3 border-b border-line pb-3"><input aria-label="Search relevant messages" placeholder="Search this view…" className="min-w-0 flex-1 rounded-md border border-line px-3 py-2 text-sm" value={search} onChange={(e)=>setSearch(e.target.value)} /><select aria-label="Message status filter" className="rounded-md border border-line bg-white px-2 text-sm" value={filter} onChange={(e)=>setFilter(e.target.value)}><option value="all">All messages</option><option value="unread">Unread</option><option value="changed">New direction / changes</option></select></div>
-          <ul className="divide-y divide-line">{visible.map((m) => <li key={m.id} className="py-3.5"><div className="flex items-start gap-3"><span aria-label={userState[m.id]?.read==="read"?"Read":"Unread"} className={`mt-1.5 size-2 shrink-0 rounded-full ${userState[m.id]?.read==="read"?"bg-slate-200":"bg-blue-600"}`} /><div className="min-w-0 flex-1"><div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-muted"><span>{m.reference}</span><span>· {fmtTime(m.received)}</span>{m.lifecycle!=="ACTIVE"&&<span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-ink">{m.lifecycle}</span>}</div><button className={`${textLink} text-sm font-semibold leading-snug`} onClick={()=>open(m.id)}>{m.subject}</button><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><span className="text-[11px] text-muted">{mine(m)?"Mine · exact recorded owner match":view.topics.length?`Topic match · ${m.communities.filter(t=>view.topics.includes(t)).join(", ")}`:"Command-wide · watch traffic"}</span><PrecedenceBadge p={m.precedence}/></div></div><button className="mt-5 shrink-0 text-muted hover:text-link" aria-label={`Read ${m.reference}`} onClick={()=>open(m.id)}><ChevronRight className="size-4" /></button></div></li>)}</ul>
+          <ul className="divide-y divide-line">{visible.map((m) => <li key={m.id} className="py-3.5"><div className="flex items-start gap-3"><span aria-label={userState[m.id]?.read==="read"?"Read":"Unread"} className={`mt-1.5 size-2 shrink-0 rounded-full ${userState[m.id]?.read==="read"?"bg-slate-200":"bg-blue-600"}`} /><div className="min-w-0 flex-1"><div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-muted"><span>{m.reference}</span><span>· {fmtTime(m.received)}</span>{m.lifecycle!=="ACTIVE"&&<span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-ink">{m.lifecycle}</span>}</div><button className={`${textLink} text-sm font-semibold leading-snug`} onClick={()=>open(m.id)}>{m.subject}</button><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><span className="text-[11px] text-muted">{mine(m)?"Mine · exact recorded owner match":view.topics.length?`Topic match · ${topicName(m.type as MessageType)}`:"Command-wide · watch traffic"}</span><PrecedenceBadge p={m.precedence}/></div></div><button className="mt-5 shrink-0 text-muted hover:text-link" aria-label={`Read ${m.reference}`} onClick={()=>open(m.id)}><ChevronRight className="size-4" /></button></div></li>)}</ul>
           {!visible.length&&<div className="py-8 text-center"><Mail className="mx-auto mb-2 size-6 text-muted" aria-hidden/><p className="text-sm font-semibold">No matching traffic</p><p className="mt-1 text-xs text-muted">Try 7 days or reset filters. Mandatory items stay above.</p></div>}
         </Panel></div>
       </div>

@@ -14,7 +14,8 @@
 //   BT
 //   UNCLAS                           classification line
 //   SUBJ/SUBMARINE DEPLOYMENT .../   sets may wrap; each ends with //
-//   MSGID/GENADMIN/COMSUBLANT N3/COMSUBLANT 078/26//   originator / serial
+//   MSGID/GENADMIN/COMSUBLANT N3/COMSUBLANT 078/26//   type / originator / serial
+//   MSGID/SAFETY:ELECTRICAL/COMSUBLANT N3/...//        topic types add :SUBTAG to the type
 //   REF/A/MSG/COMSUBLANT 061/26//
 //   NARR/THIS MSG SUPERSEDES REF A.//                   optional lifecycle directive
 //   ACK/261830Z OCT 26//                                optional: acknowledgement due
@@ -26,6 +27,7 @@
 //   BT
 //   #1001                            optional channel serial
 //   NNNN                             optional end of message
+import { findSubtag, isMessageType, MESSAGE_TYPE_INFO } from "./message-types";
 import type { Classification, Lifecycle, MessageSection, MessageType, Precedence } from "./types";
 
 const PROSIGN: Record<string, Precedence> = { Z: "FLASH", O: "IMMEDIATE", P: "PRIORITY", R: "ROUTINE" };
@@ -61,6 +63,8 @@ export interface ParsedMessage {
   /** Message serial from MSGID, normalised (see normRef) */
   reference: string;
   type: MessageType;
+  /** The subtag after the colon in MSGID field 2, e.g. ELECTRICAL in SAFETY:ELECTRICAL. */
+  subtag?: string;
   subject: string;
   references: string[];
   directive?: { kind: Directive; target: string };
@@ -97,21 +101,45 @@ export const normRef = (s: string) => s.trim().replace(/\s+/g, " ").toUpperCase(
 export const idFor = (reference: string) =>
   reference.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-/** Message type from the serial, e.g. "NAVADMIN 236/26" -> NAVADMIN. */
-export function typeOf(reference: string, originator = ""): MessageType {
-  if (/\bSAFETY\b/i.test(originator)) return "SAFETY MSG";
-  const known: [RegExp, MessageType][] = [
-    [/^NAVADMIN\b/, "NAVADMIN"],
-    [/^ALNAV\b/, "ALNAV"],
-    [/^OPNAVINST\b/, "OPNAVINST"],
-    [/^MARADMIN\b/, "MARADMIN"],
-    [/^NAVSEAINST\b/, "NAVSEAINST"],
-    [/^COMSUBFOR INST\b/, "COMSUBFOR INST"],
-    [/^COMSUBLANT\b/, "COMSUBLANT MSG"],
-    [/^SAFETY\b/, "SAFETY MSG"],
-  ];
-  for (const [re, t] of known) if (re.test(reference.toUpperCase())) return t;
-  return "FLEET MSG";
+/**
+ * Message type. Service-wide general messages and instructions are known by
+ * their serial ("NAVADMIN 236/26" -> NAVADMIN, NTP 3(J) para 306d). Otherwise
+ * MSGID field 2 names the type ("MSGID/CASREP/..." -> CASREP). Anything else is
+ * GENADMIN, the format NTP 3(J) para 305 uses for most narrative traffic.
+ */
+export function typeOf(reference: string, field2 = ""): MessageType {
+  const ref = reference.toUpperCase();
+  const byTitle = (Object.keys(MESSAGE_TYPE_INFO) as MessageType[]).find(
+    (t) => MESSAGE_TYPE_INFO[t].byTitle && (ref === t || ref.startsWith(`${t} `)),
+  );
+  if (byTitle) return byTitle;
+  const f = field2.trim().toUpperCase();
+  return isMessageType(f) && !MESSAGE_TYPE_INFO[f].byTitle ? f : "GENADMIN";
+}
+
+/**
+ * Splits the fields after MSGID/ into type, subtag, originator and serial.
+ * Field 2 is one field, TYPE or TYPE:SUBTAG. A subtag is kept only when it is
+ * one the type defines.
+ */
+export function splitMsgid(fields: string[]) {
+  const [rawType, rawSub = ""] = (fields[0] ?? "").split(":");
+  const field2 = rawType.trim().toUpperCase();
+  const sub = isMessageType(field2) && rawSub.trim() ? findSubtag(field2, rawSub) : undefined;
+  return { field2, subtag: sub?.code, originator: (fields[1] ?? "").trim(), serial: fields.slice(2).join("/").trim() };
+}
+
+/**
+ * The subscription key a rendered message's MSGID line names ("SAFETY:ELECTRICAL"),
+ * or undefined when it has no MSGID line or field 2 is not a type this command drafts.
+ * Drafts take their type from this, so the stored type always matches the text.
+ */
+export function msgidKey(text: string): string | undefined {
+  const line = /^MSGID\/(.*?)(?:\/\/)?\s*$/m.exec(text);
+  if (!line) return undefined;
+  const { field2, subtag } = splitMsgid(line[1].split("/"));
+  if (!isMessageType(field2) || MESSAGE_TYPE_INFO[field2].receiveOnly) return undefined;
+  return subtag ? `${field2}:${subtag}` : field2;
 }
 
 /** The lifecycle a new message carries itself, from its directive. */
@@ -188,6 +216,8 @@ export function parseNavalMessage(raw: string): ParsedMessage {
   let subject = "";
   let originator = header.FM;
   let serial = "";
+  let field2 = "";
+  let subtag: string | undefined;
   let narr = "";
   let ackDue: string | undefined;
   let poc: string | undefined;
@@ -197,9 +227,12 @@ export function parseNavalMessage(raw: string): ParsedMessage {
     let m: RegExpExecArray | null;
     if ((m = /^SUBJ\/(.*)$/.exec(body))) subject = m[1].trim();
     // The serial itself may contain a slash ("COMSUBLANT 078/26"), so it takes the rest of the set.
-    else if ((m = /^MSGID\/[^/]*\/([^/]*)\/(.*)$/.exec(body))) {
-      originator = m[1].trim() || originator;
-      serial = m[2].trim();
+    else if ((m = /^MSGID\/(.*)$/.exec(body))) {
+      const id = splitMsgid(m[1].split("/"));
+      field2 = id.field2;
+      subtag = id.subtag;
+      originator = id.originator || originator;
+      serial = id.serial;
     } else if ((m = /^REF\/([A-Z])\/[^/]*\/(.*)$/.exec(body))) refs.push({ letter: m[1], ref: normRef(m[2]) });
     else if ((m = /^NARR\/(.*)$/.exec(body))) narr = m[1];
     else if ((m = /^ACK\/(.*)$/.exec(body))) ackDue = fromDtg(m[1]) ?? fail(`ACK due "${m[1]}" is not a valid date-time group.`);
@@ -235,6 +268,7 @@ export function parseNavalMessage(raw: string): ParsedMessage {
   if (!sections.length) fail("The remarks are empty.");
 
   const reference = normRef(serial);
+  const type = typeOf(reference, field2);
   return {
     precedence,
     dtg,
@@ -248,7 +282,8 @@ export function parseNavalMessage(raw: string): ParsedMessage {
     ],
     classification,
     reference,
-    type: typeOf(reference, originator),
+    type,
+    subtag: type === field2 ? subtag : undefined,
     subject,
     references: refs.map((r) => r.ref),
     directive,

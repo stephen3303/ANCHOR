@@ -7,17 +7,18 @@ import { validateTemplateDefinition, renderGeneratedMessage, isCommandChoice, ty
 import { validateMessageInputs, UUID_PATTERN, PRECEDENCES, MessageInputError } from "@/lib/message-inputs";
 import { resolveGeneratedInputs } from "@/lib/generated-inputs";
 import { MESSAGE_FORMATTING_PROFILE } from "@/lib/message-format";
-import { DRAFT_TYPES } from "@/lib/routing";
+import { DRAFT_KEYS, keyParts } from "@/lib/message-types";
+import { msgidKey } from "@/lib/naval";
 import { accessArgs, appendRoutingEvent, MESSAGE_ACCESS } from "./routing-data";
 import type { AppUser } from "@/lib/users";
-import type { Message, MessageType, Precedence } from "@/lib/types";
+import type { Message, Precedence } from "@/lib/types";
 
 export async function readMessage(id: string, user: AppUser): Promise<Message | null> {
   if (!id || id.length > 100) return null;
   const { rows: [row] } = await database().query<{ record: Message }>(`SELECT m.record FROM outgoing_messages m WHERE ${MESSAGE_ACCESS} AND m.id = $4`, [...accessArgs(user), id]);
   return row?.record ?? null;
 }
-export interface MessageInputs { templateVersionId: string; subject: string; precedence: Precedence; messageType: MessageType; values: TemplateValues }
+export interface MessageInputs { templateVersionId: string; subject: string; precedence: Precedence; /** Subscription key, MSGID field 2: "SAFETY:ELECTRICAL" or "GENADMIN". */ messageType: string; values: TemplateValues }
 interface CreateRequest extends MessageInputs { requestId: string }
 export function parseMessageInputs(body: unknown): MessageInputs {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new ApiError(400, "Expected a message object.");
@@ -25,11 +26,11 @@ export function parseMessageInputs(body: unknown): MessageInputs {
   if (typeof input.templateVersionId !== "string" || !UUID_PATTERN.test(input.templateVersionId)) throw new ApiError(400, "A valid template-version UUID is required.");
   if (typeof input.subject !== "string" || !input.subject.trim() || input.subject.trim().length > 200 || /[\r\n\0]/.test(input.subject)) throw new MessageInputError({ _subject: "Enter a subject of 1–200 characters without line breaks." });
   if (!PRECEDENCES.includes(input.precedence as Precedence)) throw new ApiError(400, "Choose a supported precedence.");
-  const messageType = (input.messageType ?? "COMSUBLANT MSG") as MessageType;
-  if (!DRAFT_TYPES.includes(messageType)) throw new ApiError(400, "Choose a supported outgoing message type.");
+  if (input.messageType !== undefined && (typeof input.messageType !== "string" || !DRAFT_KEYS.includes(input.messageType))) throw new ApiError(400, "Choose a supported outgoing message type.");
   if (!input.values || typeof input.values !== "object" || Array.isArray(input.values) || Object.keys(input.values).length > 100) throw new ApiError(400, "Submit at most 100 fields.");
   const values = Object.fromEntries(Object.entries(input.values).sort(([a], [b]) => a.localeCompare(b)));
   if (Object.values(values).some((value) => typeof value !== "string" && typeof value !== "boolean" && !(Array.isArray(value) && value.length <= 100 && value.every((item) => typeof item === "string")))) throw new ApiError(400, "Inputs must be text, booleans, or lists of option/command IDs.");
+  const messageType = (input.messageType as string | undefined) ?? "GENADMIN";
   return { templateVersionId: input.templateVersionId.toLowerCase(), subject: input.subject.trim(), precedence: input.precedence as Precedence, messageType, values };
 }
 function parseRequest(body: unknown): CreateRequest {
@@ -71,7 +72,9 @@ export async function renderSnapshot(client: PoolClient, input: MessageInputs, u
   commandFields.forEach((field) => { const names = selections(field.name).map((id) => commands.get(id)!.name); resolved[field.name] = field.control === "command-multiple" ? names : names[0] ?? ""; });
   const text = renderGeneratedMessage(definition.text, resolved, definition.fields, 1000000);
   if (Buffer.byteLength(text, "utf8") > 1000000) throw new ApiError(400, "Generated message exceeds 1 MB.");
-  return { version, values, text, now, sections: [{ heading: "Template text", body: [text] }],
+  // The template's Type writes MSGID field 2, so the rendered line decides the
+  // message type when it names one; the chosen type is only a fallback.
+  return { version, values, text, now, messageKey: msgidKey(text) ?? input.messageType, sections: [{ heading: "Template text", body: [text] }],
     metadata: { formatting: MESSAGE_FORMATTING_PROFILE, rendererVersion: version.renderer_version, templateVersion: version.version, resolvedAt: generated.resolvedAt, generatedValues: generated.values,
       generators: definition.fields.filter((field) => field.generator).map((field) => ({ name: field.name, ...field.generator })), sender: { userId: user.id, commandId: user.commandId, commandName: user.commandName } },
     references: commandFields.flatMap((field) => selections(field.name).map((commandId, position) => ({ field: field.name, position, sourceId, commandId, snapshot: commands.get(commandId) }))),
@@ -98,12 +101,12 @@ export async function createMessage(body: unknown, user: AppUser): Promise<{ mes
     const { rows: [draft] } = await client.query(`INSERT INTO message_drafts
       (template_version_id,created_by,subject,message_type,originator,precedence,classification,input_values,rendered_document,rendered_text,render_metadata)
       VALUES ($1,$2,$3,$4,$5,$6,'UNCLASSIFIED',$7::jsonb,$8::jsonb,$9,$10::jsonb) RETURNING id`,
-    [input.templateVersionId, user.id, input.subject, input.messageType, user.commandName, input.precedence, JSON.stringify(snapshot.values), JSON.stringify({ sections: snapshot.sections, body: snapshot.text }), snapshot.text, JSON.stringify(snapshot.metadata)]);
+    [input.templateVersionId, user.id, input.subject, snapshot.messageKey, user.commandName, input.precedence, JSON.stringify(snapshot.values), JSON.stringify({ sections: snapshot.sections, body: snapshot.text }), snapshot.text, JSON.stringify(snapshot.metadata)]);
     await saveReferences(client, draft.id, snapshot);
     const message: Message = { id: draft.id, kind: "draft", draftId: draft.id, renderedText: snapshot.text, rawText: snapshot.text, templateName: snapshot.version.name,
-      subject: input.subject, reference: `DRAFT ${draft.id.slice(0,8).toUpperCase()}`, dtg: "", received: snapshot.now.toISOString(), type: input.messageType,
+      subject: input.subject, reference: `DRAFT ${draft.id.slice(0,8).toUpperCase()}`, dtg: "", received: snapshot.now.toISOString(), ...keyParts(snapshot.messageKey),
       source: "Unreleased draft", originator: user.commandName, to: "", info: "", precedence: input.precedence, classification: "UNCLASSIFIED", importance: "Medium", lifecycle: "ACTIVE",
-      communities: [], attachments: [], sections: snapshot.sections, ackRequired: false, c2oixId: "", sha256: "", sizeKb: Buffer.byteLength(snapshot.text)/1024,
+      attachments: [], sections: snapshot.sections, ackRequired: false, c2oixId: "", sha256: "", sizeKb: Buffer.byteLength(snapshot.text)/1024,
       retention: "Local prototype", distribution: [], addressees: [], related: [] };
     await client.query(`INSERT INTO outgoing_messages (id,draft_id,created_by,request_id,request_hash,received_at,record,command_id,workflow_status)
       VALUES ($1::text,$1::uuid,$2,$3,$4,$5,$6::jsonb,$7,'drafting')`, [message.id,user.id,input.requestId,fingerprint,snapshot.now,JSON.stringify(message),user.commandId]);

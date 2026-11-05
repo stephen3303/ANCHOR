@@ -24,7 +24,7 @@ import { useTopicSubscriptions, type TopicSubscriptionState } from "./topic-subs
 import { hasRole, MESSAGE_ADMIN } from "./roles";
 import type { ActionUpdate, WatchIssue } from "./watch-workspace";
 import { isSimMessageId } from "./sim";
-import type { AckReceipt, Community, Message, MessageUserState, Subscription, SyncItem } from "./types";
+import type { AckReceipt, Message, MessageUserState, Subscription, SyncItem } from "./types";
 
 /** Where the message list came from: still loading, the server's store, or the bundled demo data. */
 export type MessageSource = "loading" | "server" | "bundled";
@@ -45,7 +45,8 @@ export interface BriefingConfig {
   purpose: string;
   range: string;
   format: string;
-  communities: Community[];
+  /** Subscription keys to include, "SAFETY" or "SAFETY:ELECTRICAL" (message-types.ts); empty means all. */
+  messageTypes: string[];
   highOnly: boolean;
   actionOnly: boolean;
   unreadOnly: boolean;
@@ -58,7 +59,7 @@ export const DEFAULT_BRIEFING: BriefingConfig = {
   purpose: "Watch Turnover",
   range: "Last 7 days",
   format: "Executive Summary",
-  communities: ["Submarine Warfare", "Cybersecurity", "Readiness", "Policy"],
+  messageTypes: ["SUBMARINE", "READINESS", "SAFETY", "OPERATIONS", "NAVADMIN"],
   highOnly: false,
   actionOnly: false,
   unreadOnly: false,

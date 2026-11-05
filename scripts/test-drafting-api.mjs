@@ -45,7 +45,7 @@ try {
   assert.equal(routingSeed.status, 0, routingSeed.stderr);
   sql(routingSeed.stdout); sql(routingSeed.stdout);
   const seededProfile = JSON.parse(sql("SELECT profile::text FROM users WHERE login = 'LTaylor';"));
-  sql("INSERT INTO commands (name) SELECT 'TEST COMMAND ' || lpad(n::text, 2, '0') FROM generate_series(1, 30) n;");
+  sql("INSERT INTO commands (name) SELECT 'TEST COMMAND ' || lpad(n::text, 2, '0') FROM generate_series(1, 60) n;");
 
   const socket = createServer();
   await new Promise((resolve) => socket.listen(0, "127.0.0.1", resolve));
@@ -140,11 +140,12 @@ try {
   assert.equal((await fetch(`${base}/api/message-templates/not-an-id`)).status, 400);
   assert.equal((await fetch(`${base}/api/message-templates/00000000-0000-0000-0000-000000000000`)).status, 404);
   const commands = await (await fetch(`${base}/api/reference-data/commands?q=TEST`)).json();
-  assert.equal(commands.commands.length, 25);
-  assert.equal(commands.nextCursor, "25");
-  const secondPage = await (await fetch(`${base}/api/reference-data/commands?q=TEST&cursor=25`)).json();
-  assert.equal(secondPage.commands.length, 5);
+  assert.equal(commands.commands.length, 50);
+  assert.equal(commands.nextCursor, "50");
+  const secondPage = await (await fetch(`${base}/api/reference-data/commands?q=TEST&cursor=50`)).json();
+  assert.equal(secondPage.commands.length, 10);
   assert.equal(secondPage.nextCursor, null);
+  assert.equal(new Set([...commands.commands, ...secondPage.commands].map((command) => command.id)).size, 60);
   assert.equal((await fetch(`${base}/api/reference-data/commands?cursor=-1`)).status, 400);
   const messagePayload = { requestId: randomUUID(), templateVersionId: template.versionId, subject: "Integration message draft", precedence: "PRIORITY", values: { Recipients: [commands.commands[1].id, commands.commands[0].id], Status: "Ready", Remarks: "Saved body {{ not-recursively-expanded }}" } };
   assert.equal((await postMessage({ ...messagePayload, values: { Status: "Ready" } })).status, 400);
@@ -377,6 +378,49 @@ try {
   console.log("Custom routes passed: authorization, membership/role validation, adding/removing/reordering, resetting approvals, restoring defaults, and editing until publication.");
   console.log("Persistent routing passed: authenticated sequential approvals, returns/edits, immutable snapshots/history, stale revisions, role revocation, withdrawal, visibility and concurrent release sequencing.");
 
+  // Wrapping happens after substitution, is persisted, and never changes at
+  // release. Legacy overlong drafts must be resaved, not silently reformatted
+  // after a reviewer has approved them.
+  const paragraph = Array(30).fill("word").join(" ");
+  const longRemarks = `${paragraph}\n${"X".repeat(70)}`;
+  const wrapInputs = { subject: "Wrapped message", precedence: "ROUTINE", values: { ...messagePayload.values, Remarks: longRemarks } };
+  const wrapResponse = await postMessage({ ...wrapInputs, requestId: randomUUID(), templateVersionId: template.versionId });
+  assert.equal(wrapResponse.status, 201, await wrapResponse.clone().text());
+  const wrapMessage = (await wrapResponse.json()).message;
+  const wrappedRemarks = `${Array(14).fill("word").join(" ")}\n${Array(14).fill("word").join(" ")}\nword word\n${"X".repeat(69)}\nX`;
+  assert.ok(wrapMessage.rawText.endsWith(wrappedRemarks));
+  assert.ok(wrapMessage.rawText.split("\n").every((line) => Array.from(line).length <= 69));
+  assert.equal((await readDraft(wrapMessage.id)).inputValues.Remarks, longRemarks, "Wrapping must not rewrite original form inputs");
+  assert.equal(JSON.parse(sql(`SELECT render_metadata::text FROM message_drafts WHERE id='${wrapMessage.id}';`)).formatting.lineLength, 69);
+  const legacyText = "Z".repeat(70);
+  const legacySnapshot = () => sql(`UPDATE outgoing_messages SET record=jsonb_set(jsonb_set(record,'{rawText}',to_jsonb('${legacyText}'::text)),'{renderedText}',to_jsonb('${legacyText}'::text)) WHERE id='${wrapMessage.id}'; UPDATE message_drafts SET rendered_text='${legacyText}',rendered_document=jsonb_build_object('body','${legacyText}') WHERE id='${wrapMessage.id}';`);
+  legacySnapshot();
+  let wrappingDraft = await readDraft(wrapMessage.id);
+  assert.equal((await patchDraft(wrapMessage.id, { action: "submit", revision: wrappingDraft.revision })).status, 409);
+  await transition(wrapMessage.id, "edit", sessionCookie, wrapInputs);
+  await transition(wrapMessage.id, "route", sessionCookie, { steps: [releaseStep] });
+  await transition(wrapMessage.id, "submit");
+  legacySnapshot();
+  wrappingDraft = await readDraft(wrapMessage.id);
+  assert.equal((await patchDraft(wrapMessage.id, { action: "release", revision: wrappingDraft.revision }, walsh)).status, 409);
+  assert.ok(!(await readMessages()).messages.some((message) => message.id === wrapMessage.id));
+  await transition(wrapMessage.id, "edit", sessionCookie, wrapInputs);
+  await transition(wrapMessage.id, "submit");
+  const wrappedPublication = await transition(wrapMessage.id, "release", walsh);
+  assert.equal(wrappedPublication.message.rawText, wrapMessage.rawText);
+  const wrappedArtifact = await (await fetch(`${base}/api/messages/${wrapMessage.id}/artifact`, { headers: { Cookie: sessionCookie } })).json();
+  assert.equal(wrappedArtifact.rawText, wrapMessage.rawText); assert.equal(wrappedArtifact.intact, true);
+  const standardVersionId = sql("SELECT v.id FROM message_template_versions v JOIN message_templates t ON t.id=v.template_id WHERE t.key='standard-message' AND v.published_at IS NOT NULL ORDER BY v.version DESC LIMIT 1;").trim();
+  const legacyProfile = sql(`SELECT formatting_profile::text FROM message_template_versions WHERE id='${standardVersionId}';`);
+  const standardCreate = await postMessage({ requestId: randomUUID(), templateVersionId: standardVersionId, subject: "Standard template wrapping", precedence: "ROUTINE", values: {
+    Precedence: "R - Routine", "Message DateTime": "050800Z NOV 26", "Recipient Commands": [commands.commands[0].id], "Info Commands": [commands.commands[1].id], Classification: "UNCLASSIFIED", "Msg Type": "GENADMIN", Subject: "Standard template wrapping", "Point of Contact": "LT Taylor", Body: "Y".repeat(70), "Message Number": "1",
+  } });
+  assert.equal(standardCreate.status, 201, await standardCreate.clone().text());
+  const standardMessage = (await standardCreate.json()).message;
+  assert.ok(standardMessage.rawText.split("\n").every((line) => Array.from(line).length <= 69));
+  assert.equal(sql(`SELECT formatting_profile::text FROM message_template_versions WHERE id='${standardVersionId}';`), legacyProfile, "Existing immutable template profiles must not be rewritten");
+  console.log("69-character formatting passed: word wrap, hard breaks, preserved inputs, legacy resave requirement, and exact approved publication bytes.");
+
   for (const separator of ["semicolon", "space", "newline"]) {
     const separated = { ...definition, fields: definition.fields.map((field, index) => index === 0 ? { ...field, separator } : field) };
     const published = await publish(separated);
@@ -490,9 +534,24 @@ try {
       await page.getByRole("combobox", { name: "Message template", exact: true }).selectOption(template.id);
       await page.getByRole("textbox", { name: "Message subject", exact: true }).fill("Browser-created draft");
       const recipients = page.getByRole("group", { name: /^Recipients/ });
-      await recipients.getByRole("textbox", { name: "Search commands" }).fill(commands.commands[0].name);
+      await recipients.getByRole("textbox", { name: "Search commands" }).fill("test");
+      await expect(recipients.getByRole("checkbox")).toHaveCount(50);
+      await expect(recipients.locator("mark")).toHaveCount(50);
+      await expect(recipients.locator("mark").first()).toHaveText("TEST");
+      await recipients.getByRole("button", { name: "Next results", exact: true }).click();
+      await expect(recipients.getByRole("checkbox")).toHaveCount(10);
+      await recipients.getByRole("button", { name: "Previous results", exact: true }).click();
+      await expect(recipients.getByRole("checkbox")).toHaveCount(50);
+      await recipients.getByRole("textbox", { name: "Search commands" }).fill(commands.commands[0].name.toLowerCase());
+      await expect(recipients.locator("mark")).toHaveCount(1);
+      await expect(recipients.locator("mark")).toHaveText(commands.commands[0].name);
       await recipients.getByRole("checkbox", { name: commands.commands[0].name, exact: true }).check();
       await page.getByRole("combobox", { name: "Status", exact: true }).selectOption("Ready");
+      await page.getByRole("textbox", { name: "Remarks", exact: true }).fill(longRemarks);
+      await expect(page.locator("pre")).toContainText(wrappedRemarks);
+      const plaintextPreview = await page.locator("pre").textContent();
+      assert.ok(plaintextPreview.includes(wrappedRemarks));
+      assert.ok(plaintextPreview.split("\n").every((line) => Array.from(line).length <= 69));
       await page.getByRole("textbox", { name: "Remarks", exact: true }).fill("Created through the browser");
       const saved = page.waitForResponse((response) => response.url() === `${base}/api/messages` && response.request().method() === "POST");
       await page.getByRole("button", { name: "Save draft", exact: true }).click();

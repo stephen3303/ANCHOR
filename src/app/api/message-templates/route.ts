@@ -1,3 +1,4 @@
+import { MESSAGE_FORMATTING_PROFILE } from "@/lib/message-format";
 import { randomUUID } from "node:crypto";
 import { connection } from "next/server";
 import { compileTemplate, isCommandChoice, validateTemplateDefinition } from "@/lib/message-templates";
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
           (template_id, version, input_schema, ui_schema, output_definition, formatting_profile, renderer_version, created_by, published_at)
         VALUES ($1, 1, $2::jsonb, $3::jsonb, $4::jsonb, $5::jsonb, 'named-v1', $6, now())
         RETURNING id AS "versionId", version, published_at AS "publishedAt"
-      `, [template.id, JSON.stringify(compiled.inputSchema), JSON.stringify(compiled.uiSchema), JSON.stringify(compiled.outputDefinition), JSON.stringify({ version: 1, wordWrap: false, newline: "LF" }), author]);
+      `, [template.id, JSON.stringify(compiled.inputSchema), JSON.stringify(compiled.uiSchema), JSON.stringify(compiled.outputDefinition), JSON.stringify(MESSAGE_FORMATTING_PROFILE), author]);
       await client.query("COMMIT");
       return Response.json({ template: { ...template, ...version, variableCount: definition.fields.length } }, { status: 201 });
     } catch (error) {

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { MESSAGE_FORMATTING_PROFILE } from "../src/lib/message-format";
 import { DEMO_USERS } from "../src/lib/demo-users";
 import { compileTemplate, validateTemplateDefinition } from "../src/lib/message-templates";
 
@@ -32,7 +33,7 @@ BEGIN
   INSERT INTO message_template_versions
     (template_id, version, input_schema, ui_schema, output_definition, formatting_profile, renderer_version, created_by, published_at)
     VALUES (template, 1, ${json(compiled.inputSchema)}, ${json(compiled.uiSchema)}, ${json(compiled.outputDefinition)},
-      ${json({ version: 1, wordWrap: false, newline: "LF" })}, 'named-v1', author, now());
+      ${json(MESSAGE_FORMATTING_PROFILE)}, 'named-v1', author, now());
 END $seed$;
 COMMIT;`;
 

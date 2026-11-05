@@ -6,6 +6,7 @@ import { ActAs, HolderNote, fieldCls } from "@/components/routing";
 import { DraftRoutingEditor } from "@/components/draft-routing-editor";
 import { DraftComposer } from "@/components/draft-composer";
 import { Button, EmptyState, PageHeader, Panel, Pill, PrecedenceBadge, Tabs, cx } from "@/components/ui";
+import { hasOverlongMessageLine } from "@/lib/message-format";
 import { fmtDateTime } from "@/lib/format";
 import { DRAFT_STATUS, STEP_STATUS, currentStep, selectWorkflow } from "@/lib/routing";
 import { useRouting } from "@/lib/routing-store";
@@ -72,6 +73,7 @@ function Workspace({draft}: {draft: ApiDraft}) {
       {draft.status === "released" ? <div className="mt-3 rounded bg-green-50 p-3 text-sm text-green-900"><p>Released in ANCHOR: {draft.localSequence} · {draft.dtg}</p><p>Now visible in Messages. External transmission has not been performed by this workflow.</p><Button className="mt-2" href={`/messages/${draft.id}`}>View released message</Button></div>
         : <p className="mt-3 rounded bg-amber-50 p-3 text-sm text-amber-900">Not released or transmitted. Hidden from the Messages list. The drafter can edit until publication. Saving text or routing changes stops review and clears all approvals; resubmit afterward.</p>}
       <pre className="mt-4 max-h-[640px] overflow-auto whitespace-pre-wrap break-words rounded border border-line bg-slate-50 p-4 font-mono text-sm">{draft.renderedText}</pre>
+      {draft.status !== "released" && hasOverlongMessageLine(draft.renderedText ?? "") && <p role="alert" className="mt-3 rounded bg-amber-50 p-3 text-sm text-amber-900">This older draft has lines over 69 characters. The drafter must save edits to apply wrapping and obtain fresh approvals before publication.</p>}
       {offline && <p role="alert" className="mt-3 text-red-700">Reconnect before saving or acting. Approval actions are never queued offline.</p>}
       <div className="mt-4 flex flex-wrap gap-2">
         {editable && <Button disabled={routing.busy || offline || !!editingRoute} onClick={() => setEditing(draft)}>Edit template fields</Button>}

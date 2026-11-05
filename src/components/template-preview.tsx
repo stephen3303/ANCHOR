@@ -4,7 +4,8 @@ import { useEffect, useId, useState } from "react";
 import { Button } from "@/components/ui";
 import { fmtDateTime, ZULU_DATETIME_PATTERN } from "@/lib/format";
 import { GENERATED_OUTPUTS, type GeneratedInputResult } from "@/lib/generated-inputs";
-import { renderTemplatePreview, type TemplateDefinition, type TemplateValues } from "@/lib/message-templates";
+import { commandMatchParts, COMMAND_SEARCH_PAGE_SIZE } from "@/lib/command-search";
+import { renderGeneratedMessage, type TemplateDefinition, type TemplateValues } from "@/lib/message-templates";
 
 export const templateInputClass = "w-full rounded-md border border-line bg-white px-3 py-2 text-sm focus:outline-2 focus:outline-navy-600";
 interface CommandOption { id: string; name: string }
@@ -49,12 +50,12 @@ function CommandPicker({ multiple, onChange, initial = [] }: { multiple: boolean
           <div className="max-h-44 space-y-1 overflow-y-auto">
             {results.commands.map((command) => <label key={command.id} className="flex cursor-pointer items-start gap-2 text-sm">
               <input type="checkbox" className="mt-1 accent-navy-700" checked={selected.some((item) => item.id === command.id)} onChange={() => update(command)} />
-              {command.name}
+              <span>{commandMatchParts(command.name, query).map((part, index) => part.match ? <mark key={index} className="rounded-sm bg-yellow-200 text-inherit">{part.text}</mark> : part.text)}</span>
             </label>)}
             {!results.commands.length && <p className="text-sm text-muted">No commands match this search.</p>}
           </div>
           <div className="flex gap-2">
-            {page !== "0" && <Button size="sm" onClick={() => setPage(String(Math.max(0, Number(page) - 25)))}>Previous results</Button>}
+            {page !== "0" && <Button size="sm" onClick={() => setPage(String(Math.max(0, Number(page) - COMMAND_SEARCH_PAGE_SIZE)))}>Previous results</Button>}
             {results.nextCursor && <Button size="sm" onClick={() => setPage(results.nextCursor!)}>Next results</Button>}
           </div>
         </>
@@ -108,7 +109,7 @@ export function TemplateForm({ definition, onSubmit, disabled = false, fieldErro
   const set = (name: string, value: string | string[] | boolean) => setValues((current) => ({ ...current, [name]: value }));
   let previewText = "";
   let previewError = "";
-  try { previewText = renderTemplatePreview(definition.text, resolvedValues, definition.fields, 1000000); }
+  try { previewText = renderGeneratedMessage(definition.text, resolvedValues, definition.fields, 1000000); }
   catch (reason) { previewError = reason instanceof Error ? reason.message : "Could not render the preview."; }
   return (
     <div className="space-y-4">
@@ -160,6 +161,7 @@ export function TemplateForm({ definition, onSubmit, disabled = false, fieldErro
       </div>
       <div>
         <h3 className="mb-2 text-sm font-semibold">Generated plaintext preview</h3>
+        <p className="mb-2 text-xs text-muted">Lines wrap at 69 characters; longer unbroken text continues on the next line.</p>
         <pre className="max-h-[640px] overflow-auto whitespace-pre-wrap break-words rounded-md border border-line bg-slate-50 p-4 font-mono text-sm">{previewText}</pre>
         {previewError && <p role="alert" className="text-sm text-red-700">{previewError}</p>}
       </div>

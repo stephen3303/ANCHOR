@@ -21,6 +21,7 @@ import { appendEvent, chainLog, type ChainedAuditEvent } from "./audit";
 import { useCurrentUser } from "./current-user";
 import { hasRole, MESSAGE_ADMIN } from "./roles";
 import type { ActionUpdate, WatchIssue } from "./watch-workspace";
+import { isSimMessageId } from "./sim";
 import type { AckReceipt, Community, Message, MessageUserState, Subscription, SyncItem } from "./types";
 
 /** Where the message list came from: still loading, the server's store, or the bundled demo data. */
@@ -74,6 +75,10 @@ interface Store {
   ackReceipts: Record<string, AckReceipt[]>;
   /** Reload messages, reading state and acknowledgements from the server. */
   refreshMessages: () => Promise<void>;
+  /** Put traffic the simulated C2OIX circuit delivered into the inbox (kept in this browser, not on the server). */
+  addSimMessage: (m: Message) => void;
+  /** Take every simulated message back out of the inbox so it can be delivered again. */
+  clearSimMessages: () => void;
   userState: Record<string, MessageUserState>;
   markRead: (id: string) => void;
   markUnread: (id: string) => void;
@@ -125,6 +130,9 @@ const nextId = (p: string) => `${p}-${Date.now()}-${seq++}`;
 export function StoreProvider({ children }: { children: ReactNode }) {
   const CURRENT_USER = useCurrentUser();
   const [messages, setMessages] = useState<Message[]>(MESSAGES);
+  // Traffic delivered by the simulated C2OIX circuit. Kept apart so a server refresh doesn't drop it.
+  const [simMessages, setSimMessages] = useState<Message[]>([]);
+  const allMessages = useMemo(() => (simMessages.length ? [...simMessages, ...messages] : messages), [simMessages, messages]);
   const [messageSource, setMessageSource] = useState<MessageSource>("loading");
   const [ackReceipts, setAckReceipts] = useState(ACK_RECEIPTS);
   const [userState, setUserState] = useState(INITIAL_USER_STATE);
@@ -190,6 +198,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setUserState((local) => {
         const next: Record<string, MessageUserState> = data.userState;
         for (const id of pendingAcks.current) if (local[id]?.acknowledgedAt && next[id]) next[id] = { ...next[id], acknowledgedAt: local[id].acknowledgedAt };
+        // Simulated traffic only exists here; keep its reading state.
+        for (const [id, st] of Object.entries(local)) if (isSimMessageId(id)) next[id] = st;
         return next;
       });
       setAckReceipts(data.ackReceipts);
@@ -217,7 +227,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   /** Write reading state through to the server; a failure only costs the server copy, so say so and carry on. */
   const saveState = useCallback(
     (id: string, change: { read: MessageUserState["read"] }) => {
-      if (messageSource !== "server") return;
+      if (messageSource !== "server" || isSimMessageId(id)) return;
       messageApi(`/api/messages/${encodeURIComponent(id)}/state`, "PATCH", change).catch((e: Error) => notify(`Not saved to the server: ${e.message}`));
     },
     [messageSource, notify],
@@ -232,14 +242,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  /** Send what queued while offline. Runs on demand and whenever connectivity returns. */
+  const runSync = useCallback(() => {
+    // Acknowledgements made offline go to the server now; any that fail stay pending.
+    const acks = messageSource === "server" ? [...pendingAcks.current] : [];
+    void Promise.allSettled(acks.map(sendAck)).then((results) => {
+      const failed = results.filter((r) => r.status === "rejected").length;
+      if (failed) notify(`${failed} acknowledgement${failed === 1 ? "" : "s"} could not be sent to the server; try Sync again`);
+    });
+    const n = syncQueue.length;
+    setSyncQueue([]);
+    setLastSync(new Date());
+    if (n) log("Sync", `Offline cache (${n} items)`, "Queued items replicated. Hashes verified.");
+    return n;
+  }, [messageSource, sendAck, syncQueue.length, log, notify]);
+
   const store: Store = useMemo(
     () => ({
-      messages,
+      messages: allMessages,
       messageSource,
-      messageById: (id) => messages.find((m) => m.id === id),
-      messageByRef: (ref) => messages.find((m) => m.reference === ref),
+      messageById: (id) => allMessages.find((m) => m.id === id),
+      messageByRef: (ref) => allMessages.find((m) => m.reference === ref),
       ackReceipts,
       refreshMessages,
+      addSimMessage: (m) => {
+        setSimMessages((list) => (list.some((x) => x.id === m.id) ? list : [m, ...list]));
+        setUserState((st) => (st[m.id] ? st : { ...st, [m.id]: { read: "new" } }));
+      },
+      clearSimMessages: () => {
+        setSimMessages([]);
+        setUserState((st) => Object.fromEntries(Object.entries(st).filter(([id]) => !isSimMessageId(id))));
+      },
       userState,
       markRead: (id) => {
         if (userState[id]?.read === "read") return;
@@ -257,7 +290,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (messageSource === "server") messageApi("/api/messages/read-all", "POST", {}).catch((e: Error) => notify(`Not saved to the server: ${e.message}`));
       },
       acknowledge: (id) => {
-        const m = messages.find((x) => x.id === id);
+        const m = allMessages.find((x) => x.id === id);
         if (!hasRole(CURRENT_USER, MESSAGE_ADMIN)) return notify("Only the Message Admin sends acknowledgements.");
         if (online) {
           sendAck(id).then(
@@ -313,7 +346,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       offline,
       setOffline: (v) => {
         setOfflineState(v);
-        notify(v ? "EMCON / offline mode: working from local store" : "Connectivity restored");
+        if (v) return notify("EMCON / offline mode: working from local store");
+        // Policy: queued work syncs as soon as connectivity returns.
+        const n = runSync();
+        notify(n ? `Connectivity restored. Synced ${n} queued item${n === 1 ? "" : "s"}.` : "Connectivity restored");
       },
       syncQueue,
       syncNow: () => {
@@ -321,17 +357,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           notify("Cannot sync while offline");
           return;
         }
-        // Acknowledgements made offline go to the server now; any that fail stay pending.
-        const acks = messageSource === "server" ? [...pendingAcks.current] : [];
-        void Promise.allSettled(acks.map(sendAck)).then((results) => {
-          const failed = results.filter((r) => r.status === "rejected").length;
-          if (failed) notify(`${failed} acknowledgement${failed === 1 ? "" : "s"} could not be sent to the server; try Sync again`);
-        });
-        const n = syncQueue.length;
-        setSyncQueue([]);
-        setLastSync(new Date());
-        log("Sync", `Offline cache (${n} items)`, "Queued items replicated. Hashes verified.");
-        notify(`Synced ${n} items`);
+        notify(`Synced ${runSync()} items`);
       },
       queueLocal: (type, description) => {
         queue(type, description);
@@ -387,7 +413,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toast,
       notify,
     }),
-    [CURRENT_USER, messages, messageSource, ackReceipts, refreshMessages, online, saveState, sendAck, userState, subscriptions, approvals, offline, syncQueue, lastSync, audit, original, watchNotes, watchNotesUpdated, watchIssues, watchActionUpdates, checklist, briefing, toast, log, notify, queue],
+    [CURRENT_USER, allMessages, runSync, messageSource, ackReceipts, refreshMessages, online, saveState, sendAck, userState, subscriptions, approvals, offline, syncQueue, lastSync, audit, original, watchNotes, watchNotesUpdated, watchIssues, watchActionUpdates, checklist, briefing, toast, log, notify, queue],
   );
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;

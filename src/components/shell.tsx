@@ -18,7 +18,6 @@ import {
   Menu,
   Network,
   Search,
-  Server,
   Settings,
   ShieldCheck,
   UserCog,
@@ -33,7 +32,9 @@ import { useStore } from "@/lib/store";
 import { useRouting } from "@/lib/routing-store";
 import { needsOwnAck } from "@/lib/data";
 import { useUserSession } from "@/lib/current-user";
-import { fmtDate, fmtTime } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtTime } from "@/lib/format";
+import { useSim } from "@/lib/sim-store";
+import { NODES, STATIONS } from "@/lib/sim";
 import { useNow } from "@/lib/use-now";
 import { cx } from "./ui";
 
@@ -47,11 +48,9 @@ const NAV: { href: string; label: string; icon: typeof Home; badge?: "unread" | 
   { href: "/watch-turnover", label: "Watch Turnover", icon: ClipboardList },
   { href: "/drafting", label: "Drafting & Release", icon: FilePenLine, badge: "routing" as const },
   { href: "/transmissions", label: "Transmission Queue", icon: RadioTower },
-  { href: "/offline", label: "Offline Mode", icon: WifiOff, badge: "sync" as const },
   { href: "/reports", label: "Reports", icon: BarChart3, role: REPORT_VIEWER },
   { href: "/audit", label: "Audit & Integrity", icon: ShieldCheck, role: AUDITOR },
-  { href: "/simulators", label: "Server Simulators", icon: Server },
-  { href: "/topology", label: "Network Topology", icon: Waypoints },
+  { href: "/network", label: "Comms & Network", icon: Waypoints, badge: "sync" as const },
   { href: "/admin", label: "Admin", icon: UserCog, badge: "approvals" as const },
   { href: "/profile", label: "Profile & Settings", icon: Settings },
 ];
@@ -96,13 +95,7 @@ function Header({ onMenu }: { onMenu: () => void }) {
             {offline && <div className="text-[11px] text-white/80">Local operations active</div>}
           </div>
         </div>
-        <div className="hidden items-center gap-2 border-l border-white/25 pl-4 xl:flex">
-          <Globe className="size-7" aria-hidden />
-          <div className="leading-tight">
-            <div className="text-sm font-semibold">{watchView ? "DEMO FEED · UNVERIFIED" : offline ? "DISCONNECTED AFLOAT" : "C2OIX FEED ONLINE"}</div>
-            <div className="text-[11px] text-white/80">{watchView ? "Successful ingest not recorded" : offline ? "No external network" : "Last ingest 2 min ago"}</div>
-          </div>
-        </div>
+        <ConnectionStatus watchView={watchView} />
         <div className="border-l border-white/25 pl-4">
           {watchView ? <span className="hidden text-xs lg:block">Reporting clock<br />shown below</span> : <Clock />}
         </div>
@@ -133,6 +126,54 @@ function Header({ onMenu }: { onMenu: () => void }) {
         </div>
       </div>
     </header>
+  );
+}
+
+/** Header connection status: the C2OIX circuit, the workstation links and the sync queue in one place. */
+function ConnectionStatus({ watchView }: { watchView: boolean }) {
+  const { offline, syncQueue, syncNow, lastSync } = useStore();
+  const { links } = useSim();
+  const [open, setOpen] = useState(false);
+  const reachable = STATIONS.filter((s) => links[s].state === "up");
+  const rows: { label: string; value: string; ok: boolean }[] = [
+    { label: "C2OIX circuit", value: offline ? "Down (EMCON)" : "Up", ok: !offline },
+    { label: "ANCHOR server", value: "Online", ok: true },
+    ...STATIONS.map((s) => ({ label: `${NODES[s].code} ${NODES[s].name.replace(" workstation", "")}`, value: links[s].state === "up" ? "Connected" : "Offline", ok: links[s].state === "up" })),
+  ];
+  return (
+    <div className="relative hidden border-l border-white/25 pl-4 xl:block">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex items-center gap-2 rounded-md p-1 text-left hover:bg-white/10">
+        <Globe className="size-7" aria-hidden />
+        <span className="leading-tight">
+          <span className="block text-sm font-semibold">{watchView ? "DEMO FEED · UNVERIFIED" : offline ? "DISCONNECTED AFLOAT" : "C2OIX FEED ONLINE"}</span>
+          <span className="block text-[11px] text-white/80">
+            {watchView ? "Successful ingest not recorded" : `${reachable.length} of 3 workstations${syncQueue.length ? ` · ${syncQueue.length} to sync` : ""}`}
+          </span>
+        </span>
+        <ChevronDown className="size-4" aria-hidden />
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-2 w-72 rounded-md border border-line bg-white p-3 text-sm text-ink shadow-lg" onMouseLeave={() => setOpen(false)}>
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Connection status</div>
+          <ul className="space-y-1">
+            {rows.map((r) => (
+              <li key={r.label} className="flex items-center justify-between gap-2">
+                <span>{r.label}</span>
+                <span className={cx("font-semibold", r.ok ? "text-green-700" : "text-red-700")}>{r.value}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 border-t border-line pt-2">
+            <div className="flex items-center justify-between gap-2">
+              <span>{syncQueue.length ? `${syncQueue.length} item${syncQueue.length === 1 ? "" : "s"} queued for sync` : "Fully synced"}</span>
+              <button type="button" className="font-semibold text-link hover:underline disabled:cursor-not-allowed disabled:text-muted disabled:no-underline" disabled={offline || !syncQueue.length} onClick={syncNow}>Sync now</button>
+            </div>
+            <div className="text-xs text-muted" suppressHydrationWarning>Last sync {fmtDateTime(lastSync)}{offline ? " · syncs when the circuit returns" : ""}</div>
+          </div>
+          <Link href="/network" onClick={() => setOpen(false)} className="mt-3 block font-semibold text-link hover:underline">Open Comms & Network</Link>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -212,7 +253,7 @@ function AlertStrip() {
         <div className="no-print flex items-center gap-2 bg-amber-100 px-4 py-2 text-sm text-amber-900">
           <WifiOff className="size-4" aria-hidden />
           <strong>EMCON / offline.</strong> You are working from the local data store. Changes are queued and will sync when connectivity returns.
-          <Link href="/offline" className="ml-auto font-semibold underline">Offline status</Link>
+          <Link href="/network" className="ml-auto font-semibold underline">Comms & Network</Link>
         </div>
       )}
       {pending.length > 0 && messageSource !== "loading" && (

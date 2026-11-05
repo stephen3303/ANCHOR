@@ -44,7 +44,7 @@ export default function TransmissionsPage() {
       {error && <p role="alert" className="mb-4 rounded bg-red-50 p-3 text-red-800">{error}</p>}
       {failure && <p role="alert" className="mb-4 rounded bg-red-50 p-3 text-red-800">{failure}</p>}
       {!isMessageAdmin && <p className="mb-4 text-sm text-muted">Only the Message Admin transmits. The person who released a message, or the Release Authority, can withdraw the release until it is transmitted.</p>}
-      {isMessageAdmin && offline && <p role="alert" className="mb-4 rounded bg-amber-50 p-3 text-sm text-amber-900">The C2OIX circuit is down. Restore it on Network Topology before transmitting.</p>}
+      {isMessageAdmin && offline && <p role="alert" className="mb-4 rounded bg-amber-50 p-3 text-sm text-amber-900">The C2OIX circuit is down. Restore it on Comms & Network before transmitting.</p>}
       {loading && <p role="status">Loading the transmission queue…</p>}
 
       <Panel title={`Awaiting transmission (${queued.length})`} icon={Send} className="mb-4" bodyClassName="p-0">

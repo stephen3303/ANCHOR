@@ -141,6 +141,13 @@ try {
   const { template } = await response.json();
   const templateTopic = (await readTopics()).find((topic) => topic.name === "TEST");
   assert.ok(templateTopic); assert.equal(templateTopic.messageCount, 0); assert.equal(templateTopic.subscribed, false);
+  assert.deepEqual(templateTopic.templates, ["API test template"], "Each type names the templates that draft it");
+  sql("INSERT INTO message_topics(name) VALUES ('TEST:SUBTAG');");
+  const parentTopics = await readTopics();
+  assert.ok(parentTopics.some((topic) => topic.name === "TEST:SUBTAG"));
+  assert.equal(parentTopics.filter((topic) => topic.name === "TEST").length, 1, "A TYPE:SUBTAG topic reuses its existing parent type");
+  sql("INSERT INTO message_topics(name) VALUES ('PARENTLESS:ONE');");
+  assert.ok((await readTopics()).some((topic) => topic.name === "PARENTLESS"), "A TYPE:SUBTAG topic registers its parent type");
   assert.equal((await changeTopic(templateTopic.id, true)).status, 200, "Users may subscribe before any matching message is sent");
   assert.deepEqual((await (await fetch(`${base}/api/messages?view=subscriptions`, { headers: { Cookie: sessionCookie } })).json()).messages, []);
   assert.equal(sql(`SELECT created_by FROM message_templates WHERE id = '${template.id}';`).trim(), seededUser.id);

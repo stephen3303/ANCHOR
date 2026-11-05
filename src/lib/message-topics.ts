@@ -7,6 +7,8 @@ export interface MessageTopic {
   name: string;
   messageCount: number;
   subscribed: boolean;
+  /** Active templates whose fixed Type is this topic. */
+  templates?: string[];
 }
 
 /**

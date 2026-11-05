@@ -14,6 +14,8 @@ import type {
 } from "./types";
 import { AUDITOR, REPORT_VIEWER, rolesFor, SUBSCRIPTION_APPROVER, SYSTEM_ADMIN } from "./roles";
 import { formatReferences, isSerialOnly, normDtg, type MessageReference } from "./references";
+import { buildExamples, type BuiltExample } from "./example-traffic";
+import { idFor, ownLifecycle, targetLifecycle } from "./naval";
 
 export const CURRENT_USER = {
   name: "LT Taylor",
@@ -734,8 +736,91 @@ const seeds: Seed[] = [
   },
 ];
 
+// A message addressed to a group is tracked for acknowledgement from every
+// member command. Hull names and numbers are fictional.
+const SSNS_LANT = ["Pilot Unit (SSN)", "USS Stonefish (SSN-901)", "USS Ironfin (SSN-903)", "USS Lanternfish (SSN-905)"];
+const SSNS_PAC = ["USS Thornback (SSN-907)", "USS Ghostfin (SSN-909)"];
+
+export const COMMAND_GROUPS: AddressGroup[] = [
+  { id: "grp-alsubs", name: "ALSUBS", members: [...SSNS_LANT, ...SSNS_PAC] },
+  { id: "grp-comsublant-units", name: "All COMSUBLANT Units", members: [...SSNS_LANT, "SUBRON 4", "SUBRON 6"] },
+  { id: "grp-subron-cdrs", name: "SUBRON Commanders", members: ["SUBRON 4", "SUBRON 6"] },
+  { id: "grp-subfor-units", name: "All Submarine Force Units", members: [...SSNS_LANT, ...SSNS_PAC, "SUBRON 4", "SUBRON 6", "COMSUBLANT", "COMSUBPAC"] },
+];
+
+/* ---------- example traffic for each template ---------- */
+
+const IMPORTANCE: Record<Message["precedence"], Message["importance"]> = { FLASH: "High", IMMEDIATE: "High", PRIORITY: "Medium", ROUTINE: "Low" };
+
+/** Every example, built against the demo traffic it may cite. See example-traffic.ts. */
+const EXAMPLES: BuiltExample[] = buildExamples(seeds.map((s) => ({
+  reference: s.reference,
+  originator: s.originator,
+  dtg: s.dtg,
+  type: s.subtag ? `${s.type}:${s.subtag}` : s.type,
+  subject: s.subject,
+})));
+
+/** Example traffic the simulated C2OIX repository holds until the Message Admin releases it. */
+export const EXAMPLE_SIM_TRAFFIC = EXAMPLES.filter((e) => e.spec.sim);
+
+function exampleMessages(): Message[] {
+  const stored = EXAMPLES.filter((e) => !e.spec.sim);
+  const records = stored.map(({ spec, raw, parsed: p }, i): Message => ({
+    id: idFor(p.reference),
+    dtg: p.dtg,
+    received: p.received,
+    subject: spec.subj,
+    reference: p.reference,
+    type: p.type,
+    ...(p.subtag ? { subtag: p.subtag } : {}),
+    originator: p.originator,
+    source: sourceCode(p.originator),
+    to: p.to,
+    info: p.info,
+    precedence: p.precedence,
+    classification: p.classification,
+    importance: IMPORTANCE[p.precedence],
+    lifecycle: ownLifecycle(p),
+    ...(p.directive ? { relatesTo: p.directive.target } : {}),
+    attachments: [],
+    sections: [
+      ...spec.rmks.map(([heading, body]) => ({ heading, body: typeof body === "string" ? [body] : body })),
+      { heading: "Point of Contact", body: [spec.poc] },
+    ],
+    rawText: raw,
+    ackRequired: !!p.ackDue,
+    ...(p.ackDue ? { ackDue: p.ackDue } : {}),
+    c2oixId: `C2OIX-26-EX${String(i + 1).padStart(4, "0")}`,
+    sha256: mockSha(p.reference + p.dtg),
+    sizeKb: Math.max(1, Math.ceil(raw.length / 1024)),
+    retention: "Permanent",
+    distribution: ["COMSUBLANT N3", "COMSUBLANT N6", "COMSUBLANT Staff", "Comms Division"],
+    addressees: p.addressees.map(({ name, role }) => {
+      const group = COMMAND_GROUPS.find((g) => g.name.toUpperCase() === name.toUpperCase());
+      return group ? { name: group.name, role, kind: "group" as const } : { name, role, kind: "command" as const };
+    }),
+    related: p.references.map(idFor),
+    refs: p.refs,
+  }));
+  // A correction or supersession marks the example it replaces.
+  for (const m of records) {
+    const d = stored.find((e) => e.parsed.reference === m.reference)!.parsed.directive;
+    const effect = d && targetLifecycle(d.kind);
+    const target = d && records.find((t) => t.reference === d.target);
+    if (effect && target) Object.assign(target, { lifecycle: effect, replacedBy: m.reference });
+  }
+  return records;
+}
+
+/** "USS IRONFIN" for a ship, otherwise the first word: "COMSUBLANT N7" -> "COMSUBLANT". */
+const sourceCode = (originator: string) => {
+  const w = originator.toUpperCase().split(/\s+/);
+  return /^(USS|USNS)$/.test(w[0]) && w[1] ? `${w[0]} ${w[1]}` : w[0];
+};
+
 export const MESSAGES: Message[] = seeds
-  .map((s, i) => ({
+  .map((s, i): Message => ({
     distribution: [
       "COMSUBLANT N3",
       "COMSUBLANT N6",
@@ -751,6 +836,7 @@ export const MESSAGES: Message[] = seeds
     c2oixId: `C2OIX-26-${String(48210 + i * 37).padStart(6, "0")}`,
     sha256: mockSha(s.id + s.dtg),
   }))
+  .concat(exampleMessages())
   .sort((a, b) => b.received.localeCompare(a.received));
 
 /**
@@ -1024,18 +1110,6 @@ export function actionItems(messages: Message[] = MESSAGES): ActionItem[] {
 }
 
 // Command-level pub/sub: which commands are subscribed to each address group.
-// A message addressed to a group is tracked for acknowledgement from every
-// member command. Hull names and numbers are fictional.
-const SSNS_LANT = ["Pilot Unit (SSN)", "USS Stonefish (SSN-901)", "USS Ironfin (SSN-903)", "USS Lanternfish (SSN-905)"];
-const SSNS_PAC = ["USS Thornback (SSN-907)", "USS Ghostfin (SSN-909)"];
-
-export const COMMAND_GROUPS: AddressGroup[] = [
-  { id: "grp-alsubs", name: "ALSUBS", members: [...SSNS_LANT, ...SSNS_PAC] },
-  { id: "grp-comsublant-units", name: "All COMSUBLANT Units", members: [...SSNS_LANT, "SUBRON 4", "SUBRON 6"] },
-  { id: "grp-subron-cdrs", name: "SUBRON Commanders", members: ["SUBRON 4", "SUBRON 6"] },
-  { id: "grp-subfor-units", name: "All Submarine Force Units", members: [...SSNS_LANT, ...SSNS_PAC, "SUBRON 4", "SUBRON 6", "COMSUBLANT", "COMSUBPAC"] },
-];
-
 /** True when this command originated the message (it tracks acknowledgements rather than giving one). */
 export const sentByOwnCommand = (m: Message) => m.source === CURRENT_USER.commandSource;
 

@@ -95,7 +95,7 @@ export async function revokeRelease(user: AppUser, id: string, comment: string) 
     const { tx, row, message: released } = await lockQueued(client, user, id);
     if (row.released_by !== user.id && !hasRole(user, RELEASE_AUTHORITY)) throw new ApiError(403, "Only the person who released this message, or the Release Authority, can withdraw the release.");
     const at = new Date();
-    const message: Message = { ...released, kind: "draft", reference: `DRAFT ${row.id.slice(0, 8).toUpperCase()}`, dtg: "", source: "Unreleased draft" };
+    const message: Message = { ...released, kind: "draft", reference: `DRAFT ${row.id.slice(0, 8).toUpperCase()}`, dtg: "", withdrawnDtg: released.dtg, source: "Unreleased draft" };
     for (const key of ["localSequence", "msn", "releasedAt", "releasedBy", "releaseDesignation", "c2oixId", "sha256"] as const) delete message[key];
     const route = (row.routing_route as RouteStep[]).map((step) => step.action === "release" ? { ...step, status: "returned" as const, actedAt: at.toISOString(), comment } : step);
     const releaseStep = route.find((step) => step.action === "release");

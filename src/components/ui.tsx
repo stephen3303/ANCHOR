@@ -105,7 +105,7 @@ export function Button({ variant = "secondary", size = "md", icon: Icon, href, c
   );
   if (href)
     return (
-      <Link href={href} className={cls}>
+      <Link href={href} className={cls} aria-label={rest["aria-label"]}>
         {inner}
       </Link>
     );

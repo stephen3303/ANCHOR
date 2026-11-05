@@ -24,6 +24,7 @@ import { useTopicSubscriptions, type TopicSubscriptionState } from "./topic-subs
 import { hasRole, MESSAGE_ADMIN } from "./roles";
 import type { ActionUpdate, WatchIssue } from "./watch-workspace";
 import { isSimMessageId } from "./sim";
+import { buildReferenceIndex, type ReferenceIndex } from "./reference-links";
 import type { AckReceipt, Message, MessageUserState, Subscription, SyncItem } from "./types";
 
 /** Where the message list came from: still loading, the server's store, or the bundled demo data. */
@@ -74,6 +75,8 @@ interface Store extends TopicSubscriptionState {
   messageSource: MessageSource;
   messageById: (id: string) => Message | undefined;
   messageByRef: (ref: string) => Message | undefined;
+  /** Each message's REF sets linked to the held messages they name, and the messages citing it. */
+  references: ReferenceIndex;
   /** Acknowledgements received from other commands for traffic this command sent, by message id. */
   ackReceipts: Record<string, AckReceipt[]>;
   /** Reload messages, reading state, acknowledgements and personal topics. */
@@ -136,6 +139,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Traffic delivered by the simulated C2OIX circuit. Kept apart so a server refresh doesn't drop it.
   const [simMessages, setSimMessages] = useState<Message[]>([]);
   const allMessages = useMemo(() => (simMessages.length ? [...simMessages, ...messages] : messages), [simMessages, messages]);
+  const references = useMemo(() => buildReferenceIndex(allMessages), [allMessages]);
   const [messageSource, setMessageSource] = useState<MessageSource>("loading");
   const [ackReceipts, setAckReceipts] = useState(ACK_RECEIPTS);
   const [userState, setUserState] = useState(INITIAL_USER_STATE);
@@ -270,6 +274,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ...topicSubscriptions,
       messageById: (id) => allMessages.find((m) => m.id === id),
       messageByRef: (ref) => allMessages.find((m) => m.reference === ref),
+      references,
       ackReceipts,
       refreshMessages,
       addSimMessage: (m) => {
@@ -420,7 +425,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toast,
       notify,
     }),
-    [CURRENT_USER, allMessages, runSync, messageSource, topicSubscriptions, ackReceipts, refreshMessages, online, saveState, sendAck, userState, subscriptions, approvals, offline, syncQueue, lastSync, audit, original, watchNotes, watchNotesUpdated, watchIssues, watchActionUpdates, checklist, briefing, toast, log, notify, queue],
+    [CURRENT_USER, allMessages, references, runSync, messageSource, topicSubscriptions, ackReceipts, refreshMessages, online, saveState, sendAck, userState, subscriptions, approvals, offline, syncQueue, lastSync, audit, original, watchNotes, watchNotesUpdated, watchIssues, watchActionUpdates, checklist, briefing, toast, log, notify, queue],
   );
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;

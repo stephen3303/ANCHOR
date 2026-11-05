@@ -1,4 +1,5 @@
 import "server-only";
+import { unstampReleaseDtg } from "@/lib/message-templates";
 import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import type { AppUser } from "@/lib/users";
@@ -21,14 +22,16 @@ export async function listDrafts(user: AppUser, id?: string): Promise<{ drafts: 
     JOIN users owner ON owner.id = m.created_by
     WHERE ${DRAFT_ACCESS} AND ($4::text IS NULL OR m.id = $4::text) ORDER BY m.updated_at DESC, m.id`, [...accessArgs(user), id ?? null]);
   const { rows: references } = await database().query(`SELECT draft_id, field_key, command_id, snapshot FROM message_draft_references WHERE draft_id = ANY($1::uuid[]) ORDER BY position`, [rows.map((row) => row.draft_id)]);
+  // A released message carries the release DTG in its heading; the saved draft text keeps the marker.
+  const textOf = (row: { released_at: Date | null; record: { rawText?: string }; rendered_text: string }) => row.released_at && row.record.rawText ? row.record.rawText : row.rendered_text;
   const drafts: ApiDraft[] = rows.map((row) => ({
     id: row.id, subject: row.record.subject, type: row.record.type, subtag: row.record.subtag, originator: row.record.originator, precedence: row.record.precedence,
-    classification: row.record.classification, to: [], info: [], paragraphs: [row.rendered_text], drafterId: row.created_by,
+    classification: row.record.classification, to: [], info: [], paragraphs: [textOf(row)], drafterId: row.created_by,
     drafterName: row.drafter_name, status: row.workflow_status, route: row.routing_route, workflowId: row.workflow_id ?? undefined,
     created: row.created_at.toISOString(), updated: row.updated_at.toISOString(), revision: row.routing_revision, customRoute: row.route_custom,
     dtg: row.released_at ? row.record.dtg : undefined, localSequence: row.record.localSequence, msn: row.record.msn,
     releasedAt: row.released_at?.toISOString(), releasedBy: row.released_by ?? undefined, releaseDesignation: row.record.releaseDesignation, transmittedAt: row.record.transmittedAt,
-    renderedText: row.rendered_text, templateVersionId: row.template_version_id, templateName: row.template_name, templateVersion: row.template_version_number, inputValues: row.input_values,
+    renderedText: textOf(row), templateVersionId: row.template_version_id, templateName: row.template_name, templateVersion: row.template_version_number, inputValues: row.input_values,
     commandSelections: Object.fromEntries([...new Set(references.filter((ref) => ref.draft_id === row.draft_id).map((ref) => ref.field_key))].map((field) => [field, references.filter((ref) => ref.draft_id === row.draft_id && ref.field_key === field).map((ref) => ({ id: ref.command_id, name: ref.snapshot.name }))])),
     definition: { name: row.template_name, description: row.description, text: row.output_definition.body,
       fields: row.ui_schema.fields.map((field: { control: string }) => field.control === "number" ? { ...field, control: "text" } : field) },
@@ -39,8 +42,9 @@ export async function listDrafts(user: AppUser, id?: string): Promise<{ drafts: 
     WHERE ${DRAFT_ACCESS} AND ($4::text IS NULL OR m.id = $4::text) ORDER BY e.sequence`, [...accessArgs(user), id ?? null]);
   return { drafts, events: events.map((event) => ({ ...event, at: event.at.toISOString() })) as ApiRoutingEvent[] };
 }
+// The hash covers what the approvers approved, so the release DTG (stamped later) is left out.
 export async function appendRoutingEvent(client: PoolClient, message: Message, user: AppUser, revision: number, type: RoutingEventType, comment: string, stepTitle?: string, at = new Date()) {
-  const snapshotHash = createHash("sha256").update(JSON.stringify({ subject: message.subject, type: message.type, originator: message.originator, precedence: message.precedence, classification: message.classification, text: message.rawText || message.renderedText || "" })).digest("hex");
+  const snapshotHash = createHash("sha256").update(JSON.stringify({ subject: message.subject, type: message.type, originator: message.originator, precedence: message.precedence, classification: message.classification, text: unstampReleaseDtg(message.rawText || message.renderedText || "", message.dtg || message.withdrawnDtg) })).digest("hex");
   await client.query(`INSERT INTO outgoing_message_events (message_id, actor_id, actor_name, event_type, step_title, comment, revision, snapshot_hash, at, route_snapshot)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,(SELECT routing_route FROM outgoing_messages WHERE id=$1))`, [message.id, user.id, user.name, type, stepTitle ?? null, comment, revision, snapshotHash, at]);
 }

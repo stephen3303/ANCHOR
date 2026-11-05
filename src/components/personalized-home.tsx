@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import { ArrowRight, BellRing, CalendarClock, Check, ChevronRight, Home, Mail, Plus, Settings2, Star, X } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { ArrowRight, BellRing, CalendarClock, Check, ChevronRight, Mail, Plus, Settings2, Star, X } from "lucide-react";
 import { useCurrentUser } from "@/lib/current-user";
 import { useStore } from "@/lib/store";
 import { hasRole, MESSAGE_ADMIN } from "@/lib/roles";
@@ -39,9 +39,20 @@ function readPreferences(key: string): Preferences {
   } catch { return { defaultId: "watch", personal: [] }; }
 }
 
+// Personal-view IDs are browser-local UI keys, not credentials. getRandomValues
+// is available on ordinary HTTP origins where randomUUID is not.
+function personalViewId() {
+  if (typeof globalThis.crypto?.randomUUID === "function") return `personal-${globalThis.crypto.randomUUID()}`;
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+    return `personal-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+  }
+  return `personal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function PersonalizedHome() {
   const user = useCurrentUser();
-  const { messages, messageSource, userState, acknowledge, offline, syncQueue } = useStore();
+  const { messages, userState, acknowledge, offline, syncQueue } = useStore();
   const [preferences, setPreferences] = useState<Preferences>({ defaultId: "watch", personal: [] });
   const [viewId, setViewId] = useState("watch");
   const [hours, setHours] = useState("24");
@@ -49,10 +60,15 @@ export function PersonalizedHome() {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [manage, setManage] = useState(false);
+  const [createRequest, setCreateRequest] = useState(0);
   const [name, setName] = useState("");
   const [topics, setTopics] = useState<MessageType[]>([]);
   const [notice, setNotice] = useState("");
+  const [noticeTone, setNoticeTone] = useState<"success" | "warning">("success");
   const [selected, setSelected] = useState<string | null>(null);
+  const manager = useRef<HTMLDivElement>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
+  const viewSelect = useRef<HTMLSelectElement>(null);
   const drawer = useRef<HTMLDialogElement>(null);
   const focusBefore = useRef<HTMLElement | null>(null);
   const traffic = useRef<HTMLDivElement>(null);
@@ -67,10 +83,20 @@ export function PersonalizedHome() {
     if (selected && !drawer.current?.open) drawer.current?.showModal();
     if (!selected && drawer.current?.open) { drawer.current.close(); focusBefore.current?.focus({ preventScroll: true }); }
   }, [selected]);
-  const save = (next: Preferences) => {
+  useEffect(() => {
+    if (!manage || !createRequest) return;
+    const timer = setTimeout(() => {
+      manager.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      nameInput.current?.focus({ preventScroll: true });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [manage, createRequest]);
+  const openManager = () => { setManage(true); setCreateRequest((n) => n + 1); };
+  const save = (next: Preferences, success = "Saved for your account in this browser. Preferences do not sync between devices.") => {
     setPreferences(next);
-    try { localStorage.setItem(key, JSON.stringify(next)); setNotice("Saved for your account in this browser. Preview preferences do not sync between devices."); }
-    catch { setNotice("Browser storage is unavailable. This preview choice will last only for this visit."); }
+    setNoticeTone("success");
+    try { localStorage.setItem(key, JSON.stringify(next)); setNotice(success); }
+    catch { setNoticeTone("warning"); setNotice("Browser storage is unavailable. This preview choice will last only for this visit."); }
   };
   const views = [...EXAMPLES, ...preferences.personal];
   const view = views.find((v) => v.id === viewId) || EXAMPLES[0];
@@ -95,32 +121,43 @@ export function PersonalizedHome() {
   const canAck = hasRole(user, MESSAGE_ADMIN);
   const open = (id: string) => { if (!selected) focusBefore.current = document.activeElement as HTMLElement; setSelected(id); drawer.current?.scrollTo(0,0); };
   const setView = (id: string) => { setViewId(id); setScope("all"); setFilter("all"); setSearch(""); setNotice(""); };
+  const createPersonalView = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedName = name.trim();
+    if (!trimmedName || !topics.length || preferences.personal.length >= 8) return;
+    const id = personalViewId();
+    const newView: View = { id, name: trimmedName, topics, personal: true, description: "Your saved topic view." };
+    // Select first: setView clears old notices, so save feedback must come after it.
+    setView(id);
+    save({ ...preferences, personal: [...preferences.personal, newView] }, `Created “${trimmedName}” and switched to it. Saved in this browser; use Set as default to open it on your next visit.`);
+    setName(""); setTopics([]); setManage(false);
+    requestAnimationFrame(() => {
+      viewSelect.current?.focus({ preventScroll: true });
+      viewSelect.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  };
   const defaultName = views.find((v) => v.id === preferences.defaultId)?.name || "Watch Officer";
 
   return <div className="mx-auto max-w-[1500px] space-y-5 pb-4">
-    <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted"><span className="flex items-center gap-2"><Home className="size-3.5" aria-hidden /> Home <ChevronRight className="size-3" aria-hidden /> My Briefing</span><span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 font-semibold text-amber-900">SAMPLE DUTY VIEWS</span></div>
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><p className="mb-1 text-sm text-muted">Welcome back, {user.name}</p><h1 className="text-3xl font-bold tracking-tight text-navy-950">My Briefing</h1><p className="mt-1.5 text-sm text-muted">Your responsibilities. The messages that matter.</p></div>
-      <div className="text-xs leading-relaxed text-muted sm:text-right"><span className="font-semibold text-ink">Demo reporting clock</span><br />{fmtDateTime(MOCK_NOW)}<br /><span>{offline ? "Offline · cached traffic" : messageSource === "server" ? "Local message store" : "Bundled demo traffic"}</span></div>
-    </div>
-
+    <h1 className="sr-only">My Briefing</h1>
     <section className="rounded-xl border border-line bg-white shadow-sm" aria-label="View controls">
       <div className="flex flex-wrap items-center gap-4 p-4 sm:p-5">
-        <div className="min-w-0 flex-1 sm:min-w-60"><label className="text-xs font-semibold uppercase tracking-wider text-muted" htmlFor="personalized-view">Viewing as</label><div className="mt-1 flex flex-wrap items-center gap-2"><select id="personalized-view" className="max-w-full rounded-lg border border-line bg-slate-50 px-3 py-2 text-lg font-bold text-navy-900" value={view.id} onChange={(e) => setView(e.target.value)}><optgroup label="Example duty views (not official assignments)">{EXAMPLES.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>{preferences.personal.length > 0 && <optgroup label="My personal views">{preferences.personal.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>}</select>{isDefault && <span className="inline-flex items-center gap-1 rounded-full bg-navy-50 px-2 py-1 text-xs font-semibold text-navy-800"><Star className="size-3 fill-current" aria-hidden />My default</span>}</div><p className="mt-2 text-xs text-muted">{view.description}</p></div>
-        <div className="flex flex-wrap items-end gap-2"><label className="text-xs text-muted">Received period<select aria-label="Received period" className="mt-1 block rounded-md border border-line bg-white px-3 py-2 text-sm text-ink" value={hours} onChange={(e) => setHours(e.target.value)}>{[4,8,12,24,48,72,168].map((h) => <option value={h} key={h}>{h === 168 ? "Last 7 days" : `Last ${h} hours`}</option>)}</select></label><Button size="sm" icon={Star} disabled={isDefault} onClick={() => save({ ...preferences, defaultId: view.id })}>Set as default</Button><Button size="sm" icon={Settings2} onClick={() => setManage(!manage)}>Manage views</Button></div>
+        <div className="min-w-0 flex-1 sm:min-w-60"><label className="text-xs font-semibold uppercase tracking-wider text-muted" htmlFor="personalized-view">Viewing as</label><div className="mt-1 flex flex-wrap items-center gap-2"><select ref={viewSelect} id="personalized-view" className="max-w-full rounded-lg border border-line bg-slate-50 px-3 py-2 text-lg font-bold text-navy-900" value={view.id} onChange={(e) => setView(e.target.value)}><optgroup label="Example duty views (not official assignments)">{EXAMPLES.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>{preferences.personal.length > 0 && <optgroup label="My personal views">{preferences.personal.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>}</select>{isDefault && <span className="inline-flex items-center gap-1 rounded-full bg-navy-50 px-2 py-1 text-xs font-semibold text-navy-800"><Star className="size-3 fill-current" aria-hidden />My default</span>}</div><p className="mt-2 text-xs text-muted">{view.description}</p></div>
+        <div className="flex flex-wrap items-end gap-2"><label className="text-xs text-muted">Received period<select aria-label="Received period" className="mt-1 block rounded-md border border-line bg-white px-3 py-2 text-sm text-ink" value={hours} onChange={(e) => setHours(e.target.value)}>{[4,8,12,24,48,72,168].map((h) => <option value={h} key={h}>{h === 168 ? "Last 7 days" : `Last ${h} hours`}</option>)}</select></label><Button size="sm" icon={Star} disabled={isDefault} onClick={() => save({ ...preferences, defaultId: view.id })}>Set as default</Button><Button size="sm" icon={Settings2} onClick={() => manage ? setManage(false) : openManager()}>Manage views</Button></div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-slate-50 px-4 py-2.5 text-xs text-muted"><span>Received {fmtDateTime(new Date(start))} → {fmtDateTime(MOCK_NOW)}</span><span>Default: <strong className="text-ink">{defaultName}</strong> · Switching views keeps your time period</span></div>
     </section>
-    {notice && <p role="status" className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900">{notice}</p>}
-    {manage && <Panel title="Manage my views" action={<button aria-label="Close view manager" onClick={() => setManage(false)}><X className="size-4" /></button>}>
+    {notice && <p role="status" className={`rounded-md border px-3 py-2 text-sm ${noticeTone === "warning" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-green-200 bg-green-50 text-green-900"}`}>{notice}</p>}
+    {manage && <div ref={manager} className="scroll-mt-4"><Panel title="Manage my views" action={<button aria-label="Close view manager" onClick={() => setManage(false)}><X className="size-4" /></button>}>
       <p className="mb-3 text-sm text-muted">Official duty assignments will come from administrators. These three example duties demonstrate the design. Personal views and defaults below are saved only in this browser.</p>
-      <form onSubmit={(e) => { e.preventDefault(); const id = `personal-${crypto.randomUUID()}`; const newView: View = { id, name: name.trim(), topics, personal: true, description: "Your saved topic view." }; save({ ...preferences, personal: [...preferences.personal, newView] }); setView(id); setName(""); setTopics([]); }} className="space-y-3 rounded-lg bg-slate-50 p-3">
-        <label className="block text-sm font-semibold">Personal view name<input required maxLength={60} className={input} placeholder="e.g. Readiness & training" value={name} onChange={(e) => setName(e.target.value)} /></label>
+      <form onSubmit={createPersonalView} className="space-y-3 rounded-lg bg-slate-50 p-3">
+        <label className="block text-sm font-semibold">Personal view name<input ref={nameInput} required maxLength={60} className={input} placeholder="e.g. Readiness & training" value={name} onChange={(e) => setName(e.target.value)} /></label>
         <fieldset><legend className="mb-2 text-xs text-muted">Include topics · select at least one</legend><div className="flex flex-wrap gap-2">{TOPICS.map((t) => <label key={t} className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs ${topics.includes(t) ? "border-navy-700 bg-navy-50" : "border-line bg-white"}`}><input type="checkbox" checked={topics.includes(t)} onChange={(e) => setTopics(e.target.checked ? [...topics,t] : topics.filter(x=>x!==t))} />{topicName(t)}</label>)}</div></fieldset>
-        <Button type="submit" size="sm" variant="primary" icon={Plus} disabled={!name.trim() || !topics.length || preferences.personal.length >= 8}>Create personal view</Button>
+        <p id="personal-view-help" className="text-xs text-muted">{preferences.personal.length >= 8 ? "You have reached the limit of 8 personal views. Remove one below to create another." : !name.trim() || !topics.length ? "Enter a name and select at least one topic to enable Create personal view." : "The new view will open immediately. Your default will stay unchanged until you choose Set as default."}</p>
+        <Button aria-describedby="personal-view-help" type="submit" size="sm" variant="primary" icon={Plus} disabled={!name.trim() || !topics.length || preferences.personal.length >= 8}>Create personal view</Button>
       </form>
-      {preferences.personal.map((v) => <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm" key={v.id}><span>{v.name} · {v.topics.map(topicName).join(", ")}</span><button className="text-xs text-link underline" onClick={() => { const next = { defaultId: preferences.defaultId === v.id ? "watch" : preferences.defaultId, personal: preferences.personal.filter(p=>p.id!==v.id) }; save(next); if(view.id===v.id)setView("watch"); }}>Remove personal view</button></div>)}
-    </Panel>}
+      {preferences.personal.map((v) => <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm" key={v.id}><span>{v.name} · {v.topics.map(topicName).join(", ")}</span><button className="text-xs text-link underline" onClick={() => { const next = { defaultId: preferences.defaultId === v.id ? "watch" : preferences.defaultId, personal: preferences.personal.filter(p=>p.id!==v.id) }; if(view.id===v.id)setView("watch"); save(next); }}>Remove personal view</button></div>)}
+    </Panel></div>}
 
     <div className="grid gap-3 sm:grid-cols-3">
       <button onClick={() => attention.current?.scrollIntoView({behavior:"smooth"})} className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-left"><span className="rounded-lg bg-white p-2.5 text-amber-800"><BellRing className="size-5" aria-hidden /></span><div><strong className="text-2xl text-amber-950">{pending.length + overdueMine.length}</strong><span className="ml-2 text-sm font-semibold text-amber-950">Need attention</span><p className="mt-0.5 text-xs text-amber-900">Mandatory items across every view</p></div></button>
@@ -149,7 +186,7 @@ export function PersonalizedHome() {
           <ul className="space-y-4">{upcoming.slice(0,4).map((d,i)=><li key={`${d.message.id}-${i}`} className="border-l-2 border-gold pl-3"><p className="text-xs font-semibold text-navy-900">{fmtDateTime(new Date(d.due!))}</p><button onClick={()=>open(d.message.id)} className={`${textLink} mt-1 text-sm font-semibold`}>{d.text}</button><p className="mt-1 text-xs text-muted">{d.owner} · {remaining(d.due,end)}</p>{d.dateOnly&&<span className="text-[10px] text-muted">Date-only suspense; exact hour unverified</span>}</li>)}</ul>
           {!upcoming.length&&<p className="text-sm text-muted">No upcoming deadlines recorded for this view. Review sources for untracked requirements.</p>}
         </Panel></div>
-        <Panel title="Your responsibilities"><p className="mb-3 text-xs text-muted">Example duty switcher · official assignments will be administrator-managed.</p><div className="space-y-1">{EXAMPLES.map(v=><button key={v.id} className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm ${view.id===v.id?"bg-navy-50 font-semibold text-navy-900":"hover:bg-slate-50"}`} onClick={()=>setView(v.id)}><span>{v.name}</span>{view.id===v.id?<Check className="size-4" aria-hidden/>:<ChevronRight className="size-3.5 text-muted" aria-hidden/>}</button>)}</div><button className="mt-3 flex items-center gap-1 text-xs font-semibold text-link" onClick={()=>setManage(true)}><Plus className="size-3.5" aria-hidden/>Create a personal view</button></Panel>
+        <Panel title="Your responsibilities"><p className="mb-3 text-xs text-muted">Example duty switcher · official assignments will be administrator-managed.</p><div className="space-y-1">{EXAMPLES.map(v=><button key={v.id} className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm ${view.id===v.id?"bg-navy-50 font-semibold text-navy-900":"hover:bg-slate-50"}`} onClick={()=>setView(v.id)}><span>{v.name}</span>{view.id===v.id?<Check className="size-4" aria-hidden/>:<ChevronRight className="size-3.5 text-muted" aria-hidden/>}</button>)}</div><button className="mt-3 flex items-center gap-1 text-xs font-semibold text-link" onClick={openManager}><Plus className="size-3.5" aria-hidden/>Create a personal view</button></Panel>
         <div className="rounded-xl border border-line bg-navy-950 p-4 text-white"><p className="font-semibold">Taking the watch?</p><p className="mt-1 text-xs leading-relaxed text-white/75">Use Watch Turnover for handoff notes, carryover, and the turnover checklist.</p><Link href="/watch-turnover" className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-gold">Open Watch Turnover <ArrowRight className="size-3.5" aria-hidden/></Link></div>
       </aside>
     </div>

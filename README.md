@@ -53,7 +53,99 @@ npm run dev
 docker compose up -d --build anchor
 ```
 
-Open http://localhost:3000 and continue as **LT Taylor**.
+Open http://localhost:3000 and continue as **LT Taylor**. For teammates connecting
+by LAN hostname/IP, use the [HTTPS setup below](#https-for-teammates); browser
+`crypto.randomUUID()` is unavailable on ordinary remote HTTP origins.
+
+### HTTPS for teammates
+
+Use trusted HTTPS for access from other computers. The HTTP commands above remain
+available for localhost-only development/tests. Do not expose this passwordless
+prototype to the public internet; HTTPS encrypts traffic but does not turn demo
+account selection into verified authentication.
+
+**One-time certificate setup on the server:** install
+[mkcert](https://github.com/FiloSottile/mkcert#installation) (for example,
+`brew install mkcert` on macOS or `winget install FiloSottile.mkcert` on Windows).
+Replace the example hostname/IP below with the addresses teammates actually use:
+
+```sh
+mkcert -install
+npm run https:certs -- anchor-host.local 192.168.1.20
+```
+
+`mkcert -install` explicitly installs a local development CA into this machine's
+trust store. The helper only issues a certificate; it does not install trust or
+start a server. It always includes localhost/loopback names, writes the leaf
+certificate and private key to ignored `certificates/anchor.pem` and
+`certificates/anchor-key.pem`, and refuses to overwrite existing files. Reissue
+explicitly if the hostname/IP changes or the certificate expires.
+
+**On each teammate's computer:** securely copy **only the public `rootCA.pem`**
+from the server's `mkcert -CAROOT` directory and import it as a trusted root in
+the OS/browser certificate store (Windows: Trusted Root Certification Authorities;
+macOS: Keychain Access, trust for SSL). Confirm its fingerprint with the server
+owner before trusting it, and restart the browser. Firefox may need its own CA
+import. Installing a different CA on each client will not trust the server.
+**Never share `rootCA-key.pem` or `anchor-key.pem`**, and never put any private
+key or CA directory in Git, a Docker image, or a chat message. Do not rely on
+clicking through browser certificate warnings. No scripts here automatically
+change trust settings or install certificates on teammates' machines.
+
+Choose **one** serving mode after stopping any existing app on port 3000:
+
+**Node development:**
+
+```sh
+npm run dev:https -- --port 3443
+# LAN access (explicitly expose only the server's private IP):
+npm run dev:https -- --hostname 192.168.1.20 --port 3443
+```
+
+This uses Next's development HTTPS support with the existing cert/key and forces
+Secure session cookies. Default binding is loopback only. Keep this terminal
+open. Custom certificate paths can be set with `ANCHOR_HTTPS_CERT/KEY` in `.env`.
+Missing/invalid certificates cause failure, not a silent HTTP fallback. Run only
+one `next dev` instance per checkout (including HTTP mode).
+
+**Docker / standalone app (recommended for sharing the prototype):**
+
+Requires Docker Compose 2.24.4+ for the HTTPS override's `!reset` support. In `.env`,
+set `ANCHOR_HTTPS_BIND=192.168.1.20` for LAN access and optionally
+`ANCHOR_HTTPS_PORT=3443`. Leave the bind unset for localhost-only HTTPS. Then run:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.https.yml up -d --build anchor https
+```
+
+The pinned Caddy proxy serves TLS on port 3443, forwards the original Host and
+HTTPS scheme to Next, and preserves streaming. The app's plaintext port is
+**unpublished**, Secure session cookies are forced on, and only the leaf cert/key
+are mounted read-only into the proxy—not the app image or the CA key. PostgreSQL
+and existing database volumes are unchanged. Allow the chosen TLS port only from
+trusted LAN clients in the host firewall. Keep the same `-f` options for restarts:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.https.yml up -d anchor https
+# Windows updates must preserve HTTPS mode and use the bound LAN address:
+npm run app:update -- -Https -Url https://192.168.1.20:3443
+```
+
+Open **`https://192.168.1.20:3443`** (or the matching hostname) and sign in again.
+Use the certificate's exact hostname/IP, not `http://…:3000`. In the browser
+console, `window.isSecureContext` should be `true` and
+`typeof crypto.randomUUID` should be `"function"` without certificate warnings.
+The local CA must be trusted on each client. With loopback-only binding and the
+default port, `npm run app:update -- -Https` uses https://localhost:3443.
+Do not use plain `app:update` or a
+base-only Compose `up` in HTTPS mode: those select the original HTTP configuration.
+
+Validation: `npm run test:https:config`; after a fresh build,
+`E2E_BROWSER_CHANNEL=chrome npm run test:https` verifies a temporary TLS proxy,
+redirects, Secure cookies, same-origin checks and browser UUID generation. The
+smoke test uses an isolated temporary certificate (browser bypass in that test
+context only), explicitly verifies it for Node requests, makes no database
+changes, and stops/removes its test servers/container when done.
 
 ### Routine startup — after a computer restart or stopping containers
 
@@ -162,8 +254,8 @@ will not silently merge them. Custom body variables remain configurable.
 
 ### Subscribe and choose your inbox
 
-Apply migration `009-message-topic-subscriptions.sql` with `npm run db:migrate`.
-In **Subscriptions**, subscribe/unsubscribe freely to any listed published type;
+Apply pending migrations (including 009 and 010) with `npm run db:migrate`.
+In **Subscriptions**, subscribe/unsubscribe freely to any listed available type;
 no approval or mandatory subscription is required. Preferences are persisted per
 signed-in person and survive reloads. Names match exactly (case-sensitive).
 
@@ -176,13 +268,26 @@ from the nearby link. Mark All Read in this mode affects only visible rows.
 Subscriptions are a preference, not an authorization boundary: all published
 messages remain available in All Messages and through direct reader links.
 
-Types are registered atomically when a message enters `messages`: for local
-traffic this happens at Message Admin transmission, **not** draft creation or
-release-to-queue. The pinned template's fixed Type is authoritative (even when
-rendered text wraps). Legacy manual Type values are supported; received traffic
-uses its MSGID type. Identical names share one topic. Template edits/deletion do
-not rename old topics or alter published messages. Migration 009 backfills only
-derived topic metadata, preserving canonical messages and artifacts.
+Types are registered atomically when a template is created/published or a new
+version is published with a fixed Type (migration 010). They are immediately
+available for subscription with **0 published messages**, before any traffic is
+sent. Advertising a type never automatically subscribes any user.
+
+Message transmission/ingest remains a second creation path (migration 009):
+when a message enters `messages`, create its type only if it does not already
+exist, then link the message to that existing type. Local publication still
+happens at Message Admin transmission, **not** draft creation or release-to-queue.
+The pinned template's fixed Type is authoritative even when rendered text wraps;
+legacy manual Type values and received MSGID types are also supported. Both paths
+share the same unique, case-sensitive type name and preserve existing topic IDs
+and personal memberships. Template Type changes advertise an additional type;
+editing/deleting a template never renames or deletes old topics or messages.
+
+Migration 010 backfills the latest published fixed Type of each active template.
+Unpublished versions, archived templates and legacy templates without a fixed
+Type do not invent new topics during backfill. Existing advertised types are
+retained. Migrations update derived metadata only, preserving canonical messages,
+artifacts and template/message version pins.
 
 Bundled fallback traffic and in-memory simulated deliveries do not advertise
 persisted topics or appear in the subscription feed. If subscriptions cannot be
@@ -270,7 +375,7 @@ these roles; no combination is blocked.
 
 | Role | What it allows | Assigned by | Demo holders |
 | --- | --- | --- | --- |
-| Message Viewer | Read messages, freely subscribe to published types, build briefings. Every account holds it. | Automatic | Everyone |
+| Message Viewer | Read messages, freely subscribe to available types, build briefings. Every account holds it. | Automatic | Everyone |
 | Subscription Approver | Legacy approval demo; not required for message-type subscriptions | System Admin | Okafor, Chen, Ramos, Brooks, Taylor |
 | Report Viewer | The Reports page | System Admin | Most accounts |
 | Auditor | The Audit & Integrity page and `/api/integrity` | System Admin | Taylor, Nguyen, Harper |
@@ -556,7 +661,7 @@ REST endpoints:
 | `POST /api/admin/users` | Add an account: `{ login, rank, surname, billet, unit, email?, roles }` (System Admin) |
 | `PATCH /api/admin/users/{id}` | Change `billet`, `unit`, `roles` or `active` (System Admin; Designated Release Authority is left to the Release Authority) |
 | `PATCH /api/routing/designations` | Replace release designations `{ revision, authorities }` (Release Authority) |
-| `GET /api/subscriptions` | Published Type/MSGID topics, counts and the current user's preferences |
+| `GET /api/subscriptions` | Available Type/MSGID topics (including zero-message template types), counts and current-user preferences |
 | `PUT /api/subscriptions/:id` | Subscribe the session user to an existing topic (idempotent, no approval) |
 | `DELETE /api/subscriptions/:id` | Unsubscribe the session user (idempotent) |
 | `GET /api/messages?view=subscriptions` | Published feed restricted to the session user's subscribed types |
@@ -605,7 +710,7 @@ remaining application-level validation, and rollback-only schema tests.
 | `/messages/[id]` | Message detail: official text, AI summary (separate), metadata, integrity, attachments |
 | `/messages/[id]/print` | Official print / PDF rendition with integrity block |
 | `/search` | Basic, advanced, natural-language and saved searches |
-| `/subscriptions` | Published message types with personal, immediate subscribe/unsubscribe |
+| `/subscriptions` | Available template/message types with personal, immediate subscribe/unsubscribe |
 | `/briefings` | Tailored Briefing Builder with live preview |
 | `/briefings/generated` | Generated briefing |
 | `/watch-turnover` | Watch Turnover with notes and checklist |

@@ -123,7 +123,7 @@ try {
   };
   const changeTopic = (id, subscribed, cookie = sessionCookie, origin = base) => fetch(`${base}/api/subscriptions/${id}`, { method: subscribed ? "PUT" : "DELETE", headers: { Cookie: cookie, Origin: origin } });
   assert.equal((await fetch(`${base}/api/subscriptions`)).status, 401);
-  assert.ok(!(await readTopics()).some((topic) => topic.name === "TEST"), "Publishing a template does not publish a message type");
+  assert.ok(!(await readTopics()).some((topic) => topic.name === "TEST"), "Type is absent before the first template is created");
   const invalidTemplate = await publish({ ...definition, text: "{{ Missing }}" });
   assert.equal(invalidTemplate.status, 400, await invalidTemplate.text());
   assert.equal((await publish({ ...definition, fields: [] })).status, 400);
@@ -139,6 +139,10 @@ try {
   const response = await publish(definition);
   assert.equal(response.status, 201, await response.clone().text());
   const { template } = await response.json();
+  const templateTopic = (await readTopics()).find((topic) => topic.name === "TEST");
+  assert.ok(templateTopic); assert.equal(templateTopic.messageCount, 0); assert.equal(templateTopic.subscribed, false);
+  assert.equal((await changeTopic(templateTopic.id, true)).status, 200, "Users may subscribe before any matching message is sent");
+  assert.deepEqual((await (await fetch(`${base}/api/messages?view=subscriptions`, { headers: { Cookie: sessionCookie } })).json()).messages, []);
   assert.equal(sql(`SELECT created_by FROM message_templates WHERE id = '${template.id}';`).trim(), seededUser.id);
   const stored = await (await fetch(`${base}/api/message-templates/${template.id}`)).json();
   assert.equal(stored.template.text, definition.text);
@@ -172,7 +176,7 @@ try {
   const { message: savedMessage } = await concurrent[0].json();
   assert.equal((await concurrent[1].json()).message.id, savedMessage.id);
   assert.equal(savedMessage.kind, "draft");
-  assert.ok(!(await readTopics()).some((topic) => topic.name === "TEST"), "Private drafts cannot advertise topics");
+  assert.equal((await readTopics()).find((topic) => topic.id === templateTopic.id).messageCount, 0, "Private drafts do not create published-message mappings");
   assert.equal(savedMessage.originator, "COMSUBLANT NORFOLK VA");
   assert.equal(customMessageBody(savedMessage.renderedText), `TO ${commands.commands[1].name}; ${commands.commands[0].name}\nReady\nSaved body {{ not-recursively-expanded }}\nTEST`);
   assert.equal(sql("SELECT count(*) FROM message_drafts;").trim(), "1");
@@ -246,6 +250,7 @@ try {
   const corrected = await patchDraft(draft.id, corrections);
   assert.equal(corrected.status, 200, await corrected.clone().text());
   const approvedText = (await corrected.json()).message.renderedText;
+  let upperText = approvedText.toUpperCase();
   assert.equal((await patchDraft(draft.id, corrections)).status, 409);
   await transition(draft.id, "submit");
   draft = await readDraft(draft.id);
@@ -285,7 +290,7 @@ try {
   };
   let queued = (await queue(sessions.RPatel.cookie)).filter((entry) => entry.status === "queued");
   assert.equal(queued.length, 1, "Everyone in the command sees the queue");
-  assert.ok(!(await readTopics()).some((topic) => topic.name === "TEST"), "Queued releases are not published topics");
+  assert.equal((await readTopics()).find((topic) => topic.id === templateTopic.id).messageCount, 0, "Queued releases do not increase published-message counts");
   assert.equal(queued[0].messageId, draft.id); assert.equal(queued[0].releasedBy, walshId);
   assert.equal((await readDraft(draft.id)).status, "released");
   assert.equal((await txAction(queued[0].id, { action: "transmit" }, walsh)).status, 403, "Release Authority does not transmit");
@@ -312,6 +317,10 @@ try {
   const released = (await readMessages()).messages.find((message) => message.id === draft.id);
   const publishedTopic = (await readTopics()).find((topic) => topic.name === "TEST");
   assert.ok(publishedTopic); assert.equal(publishedTopic.messageCount, 1);
+  assert.equal(publishedTopic.id, templateTopic.id, "Sending reuses the topic created with the template");
+  assert.equal(publishedTopic.subscribed, true, "Sending preserves subscriptions created before the first message");
+  assert.equal(sql("SELECT count(*) FROM message_topics WHERE name='TEST';").trim(), "1");
+  assert.equal((await changeTopic(publishedTopic.id, false)).status, 200);
   assert.equal(released.subscriptionTopicId, publishedTopic.id);
   assert.equal(released.subscriptionType, "TEST", "The subscription type is the pinned Type, not the workflow category");
   assert.equal(sql(`SELECT published_message_topic('${released.id}','MSGID/SPOOFED/ORIGIN//');`).trim(), "TEST", "Pinned Type wins over parsed/wrapped output");
@@ -332,7 +341,7 @@ try {
   assert.deepEqual(await personalFeed(sessions.RPatel.cookie), []);
   assert.throws(() => sql(`UPDATE message_topics SET name='tampered' WHERE id='${publishedTopic.id}';`), /append-only/);
   assert.throws(() => sql(`DELETE FROM message_topic_messages WHERE message_id='${released.id}';`), /append-only/);
-  console.log("Pub/sub API passed: transmission-only topics, pinned Type identity, free idempotent subscriptions, viewer permissions, per-account isolation and unchanged All Messages.");
+  console.log("Pub/sub API passed: template-created topics reused at transmission, pinned Type identity, free idempotent subscriptions, viewer permissions, per-account isolation and unchanged All Messages.");
   assert.equal(released.kind, "released"); assert.equal(released.renderedText, approvedText); assert.equal(released.rawText, approvedText);
   assert.ok(released.c2oixId.startsWith("ANCHOR-"), "Local release must not invent an external receipt");
   const localArtifact = await (await fetch(`${base}/api/messages/${released.id}/artifact`, { headers: { Cookie: sessionCookie } })).json();

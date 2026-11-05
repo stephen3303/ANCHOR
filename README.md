@@ -708,11 +708,10 @@ remaining application-level validation, and rollback-only schema tests.
 | Route | Screen |
 |---|---|
 | `/` | Home: mandatory acknowledgements, status changes, latest traffic |
-| `/messages` | Messages inbox with filters and preview pane |
+| `/messages` | Messages inbox with built-in search, filters and preview pane |
 | `/templates` | Plaintext template builder, field configuration, preview and publishing |
 | `/messages/[id]` | Message detail: official text, AI summary (separate), metadata, integrity, attachments |
 | `/messages/[id]/print` | Official print / PDF rendition with integrity block |
-| `/search` | Basic, advanced, natural-language and saved searches |
 | `/subscriptions` | Available template/message types with personal, immediate subscribe/unsubscribe |
 | `/briefings` | Tailored Briefing Builder with live preview |
 | `/briefings/generated` | Generated briefing |

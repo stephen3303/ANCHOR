@@ -17,7 +17,7 @@ export async function readMessage(id: string, user: AppUser): Promise<Message | 
   const { rows: [row] } = await database().query<{ record: Message }>(`SELECT m.record FROM outgoing_messages m WHERE ${MESSAGE_ACCESS} AND m.id = $4`, [...accessArgs(user), id]);
   return row?.record ?? null;
 }
-export interface MessageInputs { templateVersionId: string; subject: string; precedence: Precedence; /** Subscription key, MSGID fields 2 and 3: "SAFETY/ELECTRICAL" or "GENADMIN". */ messageType: string; values: TemplateValues }
+export interface MessageInputs { templateVersionId: string; subject: string; precedence: Precedence; /** Subscription key, MSGID field 2: "SAFETY:ELECTRICAL" or "GENADMIN". */ messageType: string; values: TemplateValues }
 interface CreateRequest extends MessageInputs { requestId: string }
 export function parseMessageInputs(body: unknown): MessageInputs {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new ApiError(400, "Expected a message object.");

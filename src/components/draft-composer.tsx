@@ -49,7 +49,7 @@ export function DraftComposer({ draft, onSaved }: { draft?: ApiDraft; onSaved: (
     return () => controller.abort();
   }, [selected, retry, draft]);
 
-  // A template with a "Msg Type" field writes MSGID fields 2 and 3 itself, and that value decides the type.
+  // A template with a "Msg Type" field writes MSGID field 2 (TYPE or TYPE:SUBTAG) itself, and that value decides the type.
   const typeFromTemplate = !!definition?.fields.some((field) => field.name === "Msg Type");
   const save = async (raw: TemplateValues) => {
     if (!definition || busy) return;

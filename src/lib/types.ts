@@ -71,7 +71,7 @@ export interface Message {
   relatesTo?: string;
   /** Reference that superseded or cancelled this one */
   replacedBy?: string;
-  /** MSGID field 3 for a topic type, e.g. ELECTRICAL in MSGID/SAFETY/ELECTRICAL/... */
+  /** Subtag after the colon in MSGID field 2, e.g. ELECTRICAL in MSGID/SAFETY:ELECTRICAL/... */
   subtag?: string;
   attachments: Attachment[];
   sections: MessageSection[];
@@ -131,7 +131,7 @@ export interface Subscription {
   name: string;
   description: string;
   criteria: {
-    /** Subscription keys, "SAFETY" or "SAFETY/ELECTRICAL"; a type covers all its subtags. */
+    /** Subscription keys, "SAFETY" or "SAFETY:ELECTRICAL"; a type covers all its subtags. */
     messageTypes: string[];
     originators?: string[];
     keywords?: string[];
@@ -245,7 +245,7 @@ export interface Draft {
   subject: string;
   type: MessageType;
   originator: string;
-  /** MSGID field 3 when the type is a topic type. */
+  /** Subtag after the colon in MSGID field 2, for a topic type. */
   subtag?: string;
   precedence: Precedence;
   classification: Classification;

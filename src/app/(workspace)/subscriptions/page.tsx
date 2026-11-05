@@ -10,17 +10,17 @@ import type { Frequency, Message, Subscription } from "@/lib/types";
 import { Button, Check, Panel, Pill, Select, Tabs, TextInput, Toggle, cx, td, th, theadRow } from "@/components/ui";
 
 // Subscriptions are keyed by MSGID field 2 (the type) and, for topic types,
-// field 3 (the subtag). A type alone catches every subtag under it.
+// a subtag after a colon (SAFETY:ELECTRICAL). A type alone catches every subtag under it.
 const RECOMMENDED: { name: string; description: string; types: string[] }[] = [
   { name: "Submarine Safety", description: "All safety traffic, from stand-downs to hearing conservation.", types: ["SAFETY"] },
-  { name: "Motorcycle Safety", description: "Rider training, PPE and mishap prevention.", types: ["SAFETY/MOTORCYCLE"] },
-  { name: "Watch Team Qualifications", description: "Watch team qualification standards and changes.", types: ["TRAINING/WATCH-QUALS"] },
-  { name: "Records Management", description: "Official records retention and handling.", types: ["POLICY/RECORDS"] },
-  { name: "Port Visit Planning", description: "Port visit coordination, logistics requests and port services.", types: ["SUBMARINE/PORT-VISITS", "LOGREQ", "LOGISTICS/PORT-SERVICES"] },
-  { name: "Equipment Casualties", description: "CASREPs and casualty corrections across the force.", types: ["CASREP", "MAINTENANCE/CASUALTIES"] },
+  { name: "Motorcycle Safety", description: "Rider training, PPE and mishap prevention.", types: ["SAFETY:MOTORCYCLE"] },
+  { name: "Watch Team Qualifications", description: "Watch team qualification standards and changes.", types: ["TRAINING:WATCH-QUALS"] },
+  { name: "Records Management", description: "Official records retention and handling.", types: ["POLICY:RECORDS"] },
+  { name: "Port Visit Planning", description: "Port visit coordination, logistics requests and port services.", types: ["SUBMARINE:PORT-VISITS", "LOGREQ", "LOGISTICS:PORT-SERVICES"] },
+  { name: "Equipment Casualties", description: "CASREPs and casualty corrections across the force.", types: ["CASREP", "MAINTENANCE:CASUALTIES"] },
 ];
 
-/** "SAFETY (all)" for a whole type with subtags, "SAFETY/ELECTRICAL" otherwise, with the name. */
+/** "SAFETY (all)" for a whole type with subtags, "SAFETY:ELECTRICAL" otherwise, with the name. */
 const keyLabel = (key: string) => {
   const [type, sub] = splitKey(key);
   const all = !sub && MESSAGE_TYPE_INFO[type as keyof typeof MESSAGE_TYPE_INFO]?.subtags?.length;
@@ -76,7 +76,7 @@ export default function SubscriptionsPage() {
           <Radio className="mt-1 size-9 text-navy-900" aria-hidden />
           <div>
             <h1 className="text-2xl font-bold sm:text-[28px]">Message Subscriptions</h1>
-            <p className="text-[15px] text-muted">Subscribe by message type, the MSGID field 2 value, or narrow a topic type to its field 3 subtags.</p>
+            <p className="text-[15px] text-muted">Subscribe by message type, the MSGID field 2 value, or narrow a topic type to one subtag, such as SAFETY:ELECTRICAL.</p>
           </div>
         </div>
         <Button variant="primary" icon={Plus} onClick={() => setForm({ frequency: "Daily Digest", channels: { inApp: true, email: true, teams: false }, criteria: { messageTypes: [] } })}>
@@ -328,7 +328,7 @@ function RequestDialog({ initial, onClose, onSubmit }: { initial: Partial<Subscr
           <TextInput label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
           <fieldset>
             <legend className="mb-1 text-sm font-semibold">Message types</legend>
-            <p className="mb-1 text-xs text-muted">The MSGID field 2 type. Check a type for everything in it, or open it and pick field 3 subtags. None checked means any type.</p>
+            <p className="mb-1 text-xs text-muted">The MSGID field 2 type. Check a type for everything in it, or open it and pick its subtags (TYPE:SUBTAG). None checked means any type.</p>
             <MessageTypePicker value={types} onChange={setTypes} className="max-h-64 overflow-y-auto rounded-md border border-line p-2" />
           </fieldset>
           <TextInput label="Keywords (comma separated)" value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="readiness, deployment" />

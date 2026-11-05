@@ -104,7 +104,7 @@ function rawMessage(s: Seed, serial: number): string {
     "BT",
     CLASS_LINE[s.classification],
     ...wrap(`SUBJ/${up(s.subject)}//`),
-    `MSGID/${[s.type, s.subtag, s.originator, s.reference].filter(Boolean).map((f) => up(f!)).join("/")}//`,
+    `MSGID/${up(s.subtag ? `${s.type}:${s.subtag}` : s.type)}/${up(s.originator)}/${up(s.reference)}//`,
   ];
   if (s.relatesTo) out.push(`REF/A/MSG/${up(s.relatesTo)}//`);
   const poc = s.sections.find((x) => x.heading === "Point of Contact");
@@ -793,7 +793,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     id: "sub-deploy-readiness",
     name: "Deployment Readiness",
     description: "Deployment timelines, readiness reporting, checklists and validation procedures.",
-    criteria: { messageTypes: ["SUBMARINE/DEPLOYMENTS", "READINESS/REPORTING"] },
+    criteria: { messageTypes: ["SUBMARINE:DEPLOYMENTS", "READINESS:REPORTING"] },
     frequency: "Real-time",
     status: "Active",
     mandatory: false,
@@ -836,7 +836,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     id: "sub-training",
     name: "Training Pipeline",
     description: "Training pipeline schedules and qualification standards.",
-    criteria: { messageTypes: ["TRAINING/PIPELINE", "TRAINING/WATCH-QUALS"] },
+    criteria: { messageTypes: ["TRAINING:PIPELINE", "TRAINING:WATCH-QUALS"] },
     frequency: "Weekly",
     status: "Active",
     mandatory: false,
@@ -864,7 +864,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     id: "sub-usw-exercise",
     name: "Undersea Warfare Exercises",
     description: "Exercise planning conferences and CONPLANs.",
-    criteria: { messageTypes: ["OPERATIONS/EXERCISES"] },
+    criteria: { messageTypes: ["OPERATIONS:EXERCISES"] },
     frequency: "Daily Digest",
     status: "Pending Approval",
     mandatory: false,

@@ -66,7 +66,7 @@ Attach the mockups (in the project files) and this file to Prompt 1. Everything 
 **Message** (immutable after ingestion)
 - `reference` (e.g. "NAVADMIN 234/26"), `dtg` ("151830Z OCT 26"), `received` (datetime), `subject`
 - `type`: MSGID field 2. Report formats (MOVREP, LOGREQ, OPREP-3, OPREP-5, CASREP, INDIGO), topic types (OPERATIONS, SUBMARINE, SURFACE, AVIATION, EXPEDITIONARY, LOGISTICS, CYBER, READINESS, PERSONNEL, TRAINING, MAINTENANCE, SAFETY, POLICY), GENADMIN, and general messages by title (NAVADMIN, ALNAV, ALMAR, MARADMIN, OPNAVINST, NAVSEAINST, COMSUBFOR INST). The type is the subscription key and names the drafting template.
-- `subtag`: MSGID field 3 for a topic type, e.g. ELECTRICAL in `MSGID/SAFETY/ELECTRICAL/COMSUBLANT N3/...`. Subscribing to SAFETY catches every subtag; SAFETY/ELECTRICAL catches only that one.
+- `subtag`: written after a colon in MSGID field 2 for a topic type, e.g. ELECTRICAL in `MSGID/SAFETY:ELECTRICAL/COMSUBLANT N3/...`. Subscribing to SAFETY catches every subtag; SAFETY:ELECTRICAL catches only that one.
 - `originator`, `to`, `info`, `source`
 - `precedence`: FLASH, IMMEDIATE, PRIORITY, ROUTINE
 - `classification`: UNCLASSIFIED (prototype only uses this)

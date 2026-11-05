@@ -43,7 +43,7 @@ export interface BriefingConfig {
   purpose: string;
   range: string;
   format: string;
-  /** Subscription keys to include, "SAFETY" or "SAFETY/ELECTRICAL" (message-types.ts); empty means all. */
+  /** Subscription keys to include, "SAFETY" or "SAFETY:ELECTRICAL" (message-types.ts); empty means all. */
   messageTypes: string[];
   highOnly: boolean;
   actionOnly: boolean;

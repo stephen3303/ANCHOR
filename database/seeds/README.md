@@ -45,8 +45,8 @@ UI-created template without duplicating it, rewriting its UUID or republishing
 its versions. Archived templates stay archived. No messages are created by seeding.
 
 Migration `009-message-types.sql` publishes a further version whose **Msg Type**
-is a pick list of every draftable MSGID type and subtag (`SAFETY/ELECTRICAL -
-Electrical Safety` prints `SAFETY/ELECTRICAL`). The list comes from
+is a pick list of every draftable MSGID type and subtag (`SAFETY:ELECTRICAL -
+Electrical Safety` prints `SAFETY:ELECTRICAL`). The list comes from
 `DRAFT_KEYS` in `src/lib/message-types.ts`; `npm run test:messages` fails if the
 two drift. This JSON stays the frozen migration 006 snapshot.
 

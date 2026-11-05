@@ -223,7 +223,7 @@ export function renderMessage(d: Draft, s: CommandSettings) {
     ...(d.info.length ? [`INFO ${d.info.join("\n     ")}`] : []),
     "BT",
     CLASS_LINE[d.classification],
-    `MSGID/${[d.type, d.subtag].filter(Boolean).join("/")}/COMSUBLANT/${d.msn ?? "-".repeat(s.sequenceDigits)}/${month}//`,
+    `MSGID/${d.subtag ? `${d.type}:${d.subtag}` : d.type}/COMSUBLANT/${d.msn ?? "-".repeat(s.sequenceDigits)}/${month}//`,
     `SUBJ/${caseOf(d.subject || "UNTITLED")}//`,
     ...d.paragraphs.filter((p) => p.trim()).map((p, i) => `${i + 1}. ${caseOf(p.trim())}`),
     "BT",

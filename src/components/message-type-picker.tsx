@@ -1,7 +1,7 @@
 "use client";
 
 // Picks subscription keys: message types (MSGID field 2) and their subtags
-// (field 3). Checking a type selects all of it, including subtags added later;
+// (TYPE:SUBTAG in the same field). Checking a type selects all of it, including subtags added later;
 // checking subtags selects only those.
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -24,7 +24,7 @@ export function MessageTypePicker({
   className?: string;
 }) {
   const typeOf = (key: string) => splitKey(key)[0];
-  const [open, setOpen] = useState<Set<string>>(() => new Set(value.filter((v) => v.includes("/")).map(typeOf)));
+  const [open, setOpen] = useState<Set<string>>(() => new Set(value.filter((v) => v.includes(":")).map(typeOf)));
   const toggleOpen = (id: string) => setOpen((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   const setType = (type: string, on: boolean) => {

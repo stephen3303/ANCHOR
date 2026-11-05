@@ -15,7 +15,7 @@
 //   UNCLAS                           classification line
 //   SUBJ/SUBMARINE DEPLOYMENT .../   sets may wrap; each ends with //
 //   MSGID/GENADMIN/COMSUBLANT N3/COMSUBLANT 078/26//   type / originator / serial
-//   MSGID/SAFETY/ELECTRICAL/COMSUBLANT N3/...//        topic types add a subtag in field 3
+//   MSGID/SAFETY:ELECTRICAL/COMSUBLANT N3/...//        topic types add :SUBTAG to the type
 //   REF/A/MSG/COMSUBLANT 061/26//
 //   NARR/THIS MSG SUPERSEDES REF A.//                   optional lifecycle directive
 //   ACK/261830Z OCT 26//                                optional: acknowledgement due
@@ -27,7 +27,7 @@
 //   BT
 //   #1001                            optional channel serial
 //   NNNN                             optional end of message
-import { findSubtag, isMessageType, MESSAGE_TYPE_INFO, subtagsOf } from "./message-types";
+import { findSubtag, isMessageType, MESSAGE_TYPE_INFO } from "./message-types";
 import type { Classification, Lifecycle, MessageSection, MessageType, Precedence } from "./types";
 
 const PROSIGN: Record<string, Precedence> = { Z: "FLASH", O: "IMMEDIATE", P: "PRIORITY", R: "ROUTINE" };
@@ -63,7 +63,7 @@ export interface ParsedMessage {
   /** Message serial from MSGID, normalised (see normRef) */
   reference: string;
   type: MessageType;
-  /** MSGID field 3 when the type is a topic type, e.g. ELECTRICAL. */
+  /** The subtag after the colon in MSGID field 2, e.g. ELECTRICAL in SAFETY:ELECTRICAL. */
   subtag?: string;
   subject: string;
   references: string[];
@@ -118,16 +118,15 @@ export function typeOf(reference: string, field2 = ""): MessageType {
 }
 
 /**
- * Splits the fields after MSGID/ into type, optional subtag, originator and
- * serial. A subtag is only read when field 2 is a topic type and field 3 is
- * one of its subtags, so "MSGID/GENADMIN/COMSUBLANT N3/..." keeps its
- * originator in field 3.
+ * Splits the fields after MSGID/ into type, subtag, originator and serial.
+ * Field 2 is one field, TYPE or TYPE:SUBTAG. A subtag is kept only when it is
+ * one the type defines.
  */
 export function splitMsgid(fields: string[]) {
-  const field2 = (fields[0] ?? "").trim().toUpperCase();
-  const sub = isMessageType(field2) && subtagsOf(field2).length && fields.length > 3 ? findSubtag(field2, fields[1]) : undefined;
-  const rest = fields.slice(sub ? 2 : 1);
-  return { field2, subtag: sub?.code, originator: (rest[0] ?? "").trim(), serial: rest.slice(1).join("/").trim() };
+  const [rawType, rawSub = ""] = (fields[0] ?? "").split(":");
+  const field2 = rawType.trim().toUpperCase();
+  const sub = isMessageType(field2) && rawSub.trim() ? findSubtag(field2, rawSub) : undefined;
+  return { field2, subtag: sub?.code, originator: (fields[1] ?? "").trim(), serial: fields.slice(2).join("/").trim() };
 }
 
 /** The lifecycle a new message carries itself, from its directive. */

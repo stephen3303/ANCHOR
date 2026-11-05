@@ -1,12 +1,12 @@
 // The message types ANCHOR knows: the value in field 2 of the MSGID set. The
 // type is also the subscription key and names the template that drafts it.
-// Topic types carry subtags, written in MSGID field 3:
+// Topic types carry a subtag in the same field, after a colon:
 //
-//   MSGID/SAFETY/ELECTRICAL/COMSUBLANT N3/...    type SAFETY, subtag ELECTRICAL
+//   MSGID/SAFETY:ELECTRICAL/COMSUBLANT N3/...    type SAFETY, subtag ELECTRICAL
 //   MSGID/CASREP/USS STONEFISH/...               type CASREP, no subtag
 //
 // A subscription to SAFETY catches every SAFETY message, any subtag; one to
-// SAFETY/ELECTRICAL catches only that subtag. Category (Operational or
+// SAFETY:ELECTRICAL catches only that subtag. Category (Operational or
 // Administrative) follows NTP 3(J) paras 303 and 304. General messages
 // (NAVADMIN, ALNAV...) are typed by their title, per para 306d.
 import type { MessageCategory, Precedence } from "./types";
@@ -19,7 +19,7 @@ export const MESSAGE_CATEGORY_DESCRIPTIONS: Record<MessageCategory, string> = {
 };
 
 export interface Subtag {
-  /** Written in MSGID field 3, e.g. ELECTRICAL. */
+  /** Written after the type in MSGID field 2, e.g. ELECTRICAL in SAFETY:ELECTRICAL. */
   code: string;
   name: string;
 }
@@ -101,14 +101,14 @@ export const findSubtag = (type: MessageType, code: string) => subtagsOf(type).f
 /* ---------- subscription keys ---------- */
 
 /**
- * A message's subscription key: its MSGID fields 2 and 3, "SAFETY/ELECTRICAL",
+ * A message's subscription key: its MSGID field 2, "SAFETY:ELECTRICAL",
  * or just the type, "CASREP". Subscriptions list keys; a type alone covers
  * every subtag under it.
  */
-export const messageKey = (type: MessageType, subtag?: string) => (subtag ? `${type}/${subtag}` : type);
+export const messageKey = (type: MessageType, subtag?: string) => (subtag ? `${type}:${subtag}` : type);
 
 export const splitKey = (key: string): [string, string | undefined] => {
-  const i = key.indexOf("/");
+  const i = key.indexOf(":");
   return i < 0 ? [key, undefined] : [key.slice(0, i), key.slice(i + 1)];
 };
 
@@ -123,7 +123,7 @@ export const isKnownKey = (key: string) => {
   return isMessageType(type) && (sub === undefined || !!findSubtag(type, sub));
 };
 
-/** "Electrical Safety" for SAFETY/ELECTRICAL, "Casualty Report" for CASREP. */
+/** "Electrical Safety" for SAFETY:ELECTRICAL, "Casualty Report" for CASREP. */
 export function keyName(key: string) {
   const [type, sub] = splitKey(key);
   if (!isMessageType(type)) return key;
@@ -140,7 +140,7 @@ export function keyPath(key: string) {
 /** Every draftable key, as the MSGID type picker offers them: each type, then each of its subtags. */
 export const DRAFT_KEYS = DRAFT_TYPES.flatMap((t) => [t as string, ...subtagsOf(t).map((s) => messageKey(t, s.code))]);
 
-/** Option label in the template picker: "SAFETY/ELECTRICAL - Electrical Safety". Its output is the key. */
+/** Option label in the template picker: "SAFETY:ELECTRICAL - Electrical Safety". Its output is the key. */
 export const keyOption = (key: string) => `${key} - ${keyName(key)}`;
 
 /**
@@ -169,7 +169,7 @@ export function precedenceAdvisory(type: MessageType, precedence: Precedence): s
 
 /**
  * The draftable key a "Msg Type" template value names, from either its option
- * label ("SAFETY/ELECTRICAL - Electrical Safety") or the bare key.
+ * label ("SAFETY:ELECTRICAL - Electrical Safety") or the bare key.
  */
 export function draftKeyFrom(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;

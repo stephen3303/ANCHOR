@@ -125,32 +125,33 @@ test("precedence objectives and the administrative precedence ceiling", () => {
   assert.equal(precedenceAdvisory("OPREP-3", "FLASH"), null);
 });
 
-test("MSGID field 3 carries the subtag of a topic type", () => {
+test("MSGID field 2 carries TYPE:SUBTAG as one field", () => {
   const parse = (msgid: string) => parseNavalMessage(SAMPLE.replace(/MSGID\/.*\n/, `${msgid}\n`));
-  const safety = parse("MSGID/SAFETY/ELECTRICAL/COMSUBLANT N3/COMSUBLANT 091/26//");
+  const safety = parse("MSGID/SAFETY:ELECTRICAL/COMSUBLANT N3/COMSUBLANT 091/26//");
   assert.deepEqual([safety.type, safety.subtag, safety.originator, safety.reference], ["SAFETY", "ELECTRICAL", "COMSUBLANT N3", "COMSUBLANT 091/26"]);
-  // No subtag: field 3 is still the originator.
+  // No subtag: the type alone.
   const whole = parse("MSGID/SAFETY/COMSUBLANT N3/COMSUBLANT 092/26//");
   assert.deepEqual([whole.type, whole.subtag, whole.originator], ["SAFETY", undefined, "COMSUBLANT N3"]);
-  // Types without subtags never read field 3 as one.
+  // A subtag the type does not define is dropped; field 3 is always the originator.
+  assert.deepEqual([parse("MSGID/safety:bogus/COMSUBLANT N3/COMSUBLANT 094/26//")].map((p) => [p.type, p.subtag, p.originator])[0], ["SAFETY", undefined, "COMSUBLANT N3"]);
   const genadmin = parse("MSGID/GENADMIN/COMSUBLANT N3/COMSUBLANT 093/26//");
   assert.deepEqual([genadmin.type, genadmin.subtag, genadmin.originator], ["GENADMIN", undefined, "COMSUBLANT N3"]);
   assert.equal(messageFromParsed(safety, "x", { c2oixId: "C2OIX-26-060001", sha256: "b".repeat(64), sizeBytes: 1 }).subtag, "ELECTRICAL");
 });
 
 test("a subscription to a type catches every subtag; a subtag catches only itself", () => {
-  assert.equal(matchesKeys("SAFETY/ELECTRICAL", ["SAFETY"]), true);
-  assert.equal(matchesKeys("SAFETY/ELECTRICAL", ["SAFETY/MOTORCYCLE"]), false);
-  assert.equal(matchesKeys("SAFETY", ["SAFETY/ELECTRICAL"]), false);
+  assert.equal(matchesKeys("SAFETY:ELECTRICAL", ["SAFETY"]), true);
+  assert.equal(matchesKeys("SAFETY:ELECTRICAL", ["SAFETY:MOTORCYCLE"]), false);
+  assert.equal(matchesKeys("SAFETY", ["SAFETY:ELECTRICAL"]), false);
   assert.equal(matchesKeys("CASREP", ["CASREP"]), true);
-  assert.equal(matchesKeys("POLICY/RECORDS", []), true);
+  assert.equal(matchesKeys("POLICY:RECORDS", []), true);
   for (const m of MESSAGES) assert.ok(isKnownKey(keyOf(m)), `${m.reference}: ${keyOf(m)}`);
 });
 
 test("the template Msg Type picker offers every draftable key and maps back to it", () => {
-  assert.ok(DRAFT_KEYS.includes("SAFETY/ELECTRICAL") && DRAFT_KEYS.includes("GENADMIN") && !DRAFT_KEYS.includes("NAVADMIN"));
-  assert.equal(keyOption("SAFETY/ELECTRICAL"), "SAFETY/ELECTRICAL - Electrical Safety");
-  assert.equal(draftKeyFrom(keyOption("SAFETY/ELECTRICAL")), "SAFETY/ELECTRICAL");
+  assert.ok(DRAFT_KEYS.includes("SAFETY:ELECTRICAL") && DRAFT_KEYS.includes("GENADMIN") && !DRAFT_KEYS.includes("NAVADMIN"));
+  assert.equal(keyOption("SAFETY:ELECTRICAL"), "SAFETY:ELECTRICAL - Electrical Safety");
+  assert.equal(draftKeyFrom(keyOption("SAFETY:ELECTRICAL")), "SAFETY:ELECTRICAL");
   assert.equal(draftKeyFrom("casrep"), "CASREP");
   assert.equal(draftKeyFrom("NAVADMIN"), undefined);
   assert.equal(draftKeyFrom("COMSUBLANT MSG"), undefined);

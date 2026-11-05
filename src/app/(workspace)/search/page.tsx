@@ -12,13 +12,13 @@ import { Button, Check, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Sele
 const PRECEDENCE: Precedence[] = ["FLASH", "IMMEDIATE", "PRIORITY", "ROUTINE"];
 
 const SAVED = [
-  { name: "Readiness reporting (COMSUBLANT)", query: "readiness", types: ["READINESS/REPORTING"] },
+  { name: "Readiness reporting (COMSUBLANT)", query: "readiness", types: ["READINESS:REPORTING"] },
   { name: "Cyber controls, last 30 days", query: "cybersecurity", types: [] as string[] },
   { name: "Safety traffic", query: "", types: ["SAFETY"] },
   { name: "Equipment casualties", query: "", types: ["CASREP"] },
   { name: "Personnel policy", query: "personnel", types: ["PERSONNEL", "NAVADMIN", "ALNAV"] },
   { name: "Training pipeline", query: "training", types: ["TRAINING"] },
-  { name: "Port visits", query: "", types: ["SUBMARINE/PORT-VISITS", "LOGREQ"] },
+  { name: "Port visits", query: "", types: ["SUBMARINE:PORT-VISITS", "LOGREQ"] },
 ];
 
 type Mode = "basic" | "advanced" | "natural" | "saved";
@@ -180,7 +180,7 @@ export default function SearchPage() {
               </div>
             </FilterGroup>
             <FilterGroup icon={FileText} title="Message Type">
-              <p className="mb-1 text-xs text-muted">MSGID field 2, and field 3 subtags. A type covers all its subtags.</p>
+              <p className="mb-1 text-xs text-muted">MSGID field 2: TYPE, or TYPE:SUBTAG. A type covers all its subtags.</p>
               <div className="max-h-96 overflow-y-auto pr-1">
                 <MessageTypePicker value={types} onChange={setTypes} counts={(k) => countUnder(k, messages)} />
               </div>

@@ -459,14 +459,14 @@ try {
   const standardVersionId = sql("SELECT v.id FROM message_template_versions v JOIN message_templates t ON t.id=v.template_id WHERE t.key='standard-message' AND v.published_at IS NOT NULL ORDER BY v.version DESC LIMIT 1;").trim();
   const legacyProfile = sql(`SELECT formatting_profile::text FROM message_template_versions WHERE id='${standardVersionId}';`);
   const standardCreate = await postMessage({ requestId: randomUUID(), templateVersionId: standardVersionId, subject: "Standard template wrapping", precedence: "ROUTINE", values: {
-    Precedence: "R - Routine", "Message DateTime": "050800Z NOV 26", "Recipient Commands": [commands.commands[0].id], "Info Commands": [commands.commands[1].id], Classification: "UNCLASSIFIED", "Msg Type": "SAFETY/ELECTRICAL - Electrical Safety", Subject: "Standard template wrapping", "Point of Contact": "LT Taylor", Body: "Y".repeat(70), "Message Number": "1",
+    Precedence: "R - Routine", "Message DateTime": "050800Z NOV 26", "Recipient Commands": [commands.commands[0].id], "Info Commands": [commands.commands[1].id], Classification: "UNCLASSIFIED", "Msg Type": "SAFETY:ELECTRICAL - Electrical Safety", Subject: "Standard template wrapping", "Point of Contact": "LT Taylor", Body: "Y".repeat(70), "Message Number": "1",
   } });
   assert.equal(standardCreate.status, 201, await standardCreate.clone().text());
   const standardMessage = (await standardCreate.json()).message;
   assert.ok(standardMessage.rawText.split("\n").every((line) => Array.from(line).length <= 69));
-  // The template's Msg Type pick list writes MSGID fields 2 and 3, and sets the subscription key.
+  // The template's Msg Type pick list writes MSGID field 2 as TYPE:SUBTAG, and sets the subscription key.
   assert.equal(standardMessage.type, "SAFETY"); assert.equal(standardMessage.subtag, "ELECTRICAL");
-  assert.match(standardMessage.rawText, /^MSGID\/SAFETY\/ELECTRICAL\//m);
+  assert.match(standardMessage.rawText, /^MSGID\/SAFETY:ELECTRICAL\//m);
   assert.equal(sql(`SELECT formatting_profile::text FROM message_template_versions WHERE id='${standardVersionId}';`), legacyProfile, "Existing immutable template profiles must not be rewritten");
   console.log("69-character formatting passed: word wrap, hard breaks, preserved inputs, legacy resave requirement, and exact approved publication bytes.");
 

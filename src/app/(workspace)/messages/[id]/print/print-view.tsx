@@ -66,7 +66,7 @@ function Rendition({ m }: { m: Message }) {
           <br />
           {m.classification}
           <br />
-          {`MSGID/${[m.type, m.subtag, m.reference].filter(Boolean).join("/")}//`}
+          {`MSGID/${m.subtag ? `${m.type}:${m.subtag}` : m.type}/${m.reference}//`}
           <br />
           {`SUBJ/${m.subject.toUpperCase()}//`}
         </p>

@@ -1,12 +1,18 @@
 import { keyCovers } from "./message-types";
 import type { Message } from "./types";
 
+/** Id of a template's Type that has no topic row yet; subscribing creates it. */
+export const PENDING_TOPIC_PREFIX = "type:";
+export const isPendingTopic = (id: string) => id.startsWith(PENDING_TOPIC_PREFIX);
+
 /** Topic names are exact, author-defined Type values, not workflow categories. */
 export interface MessageTopic {
   id: string;
   name: string;
   messageCount: number;
   subscribed: boolean;
+  /** Available templates whose Type this is; empty for traffic-only types. */
+  templates?: string[];
 }
 
 /**

@@ -86,7 +86,7 @@ try {
   assert.equal(resumed.user.id, seededUser.id);
   const workspacePage = await fetch(`${base}/templates`, { headers: { Cookie: sessionCookie } });
   assert.equal(new URL(workspacePage.url).pathname, "/templates");
-  assert.ok((await workspacePage.text()).includes("Plaintext template"), "Signed-in workspace must render its page on the server");
+  assert.ok((await workspacePage.text()).includes("Published templates"), "Signed-in workspace must render its page on the server");
   const definition = templateFixture({
     name: "TEST", description: "Isolated test", text: "TO {{ Destinations }}\n{{ Status }}\n{{ Remarks }}\n{{ Type }}",
     fields: [
@@ -315,6 +315,9 @@ try {
       const errors = []; page.on("pageerror", (error) => errors.push(error.message));
       assert.equal((await page.request.post(`${base}/api/session`, { data: { userId: seededUser.id } })).status(), 200);
       await page.goto(`${base}/templates`);
+      // The page opens on the template list; the editor opens from Create template.
+      await expect(page.getByRole("textbox", { name: "Plaintext template", exact: true })).toHaveCount(0);
+      await page.getByRole("button", { name: "Create template", exact: true }).click();
       await expect(page.getByRole("textbox", { name: "Plaintext template", exact: true })).toHaveValue(standardTemplateText);
       await page.getByRole("textbox", { name: "Template name", exact: true }).fill("Browser standard-based creation");
       await page.getByRole("button", { name: "Detect and configure variables", exact: true }).click();

@@ -9,6 +9,7 @@ async function signIn(page: Page) {
 
 async function longContent(page: Page) {
   await page.goto("/templates");
+  await page.getByRole("button", { name: "Create template", exact: true }).click();
   await page.getByRole("textbox", { name: "Template name", exact: true }).fill("Unsaved scrolling fixture");
   await page.getByRole("textbox", { name: "Plaintext template", exact: true }).fill(Array.from({ length: 25 }, (_, index) => `{{ Variable ${index} }}`).join("\n"));
   await page.getByRole("button", { name: "Detect and configure variables", exact: true }).click();

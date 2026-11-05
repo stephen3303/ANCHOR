@@ -48,6 +48,8 @@ export interface Message {
   releasedAt?: string;
   releasedBy?: string;
   releaseDesignation?: string;
+  /** DTG of a withdrawn release; its text still carries that DTG until the next release or edit. */
+  withdrawnDtg?: string;
   localSequence?: string;
   msn?: string;
   /** Set when the Message Admin transmits a released message. */

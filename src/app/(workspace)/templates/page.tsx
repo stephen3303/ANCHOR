@@ -5,7 +5,9 @@ import { FilePlus2, RefreshCw } from "lucide-react";
 import { Button, PageHeader, Panel } from "@/components/ui";
 import { TemplatePreview, templateInputClass } from "@/components/template-preview";
 import { defaultGeneratorBinding, GENERATED_OUTPUTS, isGeneratedOutputKey } from "@/lib/generated-inputs";
-import { COMMAND_SEPARATORS, extractVariables, INPUT_TYPES, isStaticChoice, validateTemplateDefinition, type CommandSeparator, type InputType, type TemplateDefinition, type TemplateField, type TemplateSummary } from "@/lib/message-templates";
+import { COMMAND_SEPARATORS, validateStandardTemplateText, INPUT_TYPES, isStaticChoice, validateTemplateForPublication, type CommandSeparator, type InputType, type TemplateDefinition, type TemplateField, type TemplateSummary } from "@/lib/message-templates";
+
+import { newStandardTemplate, prepareTemplateEdit, STANDARD_TEMPLATE_TEXT, standardField } from "@/lib/standard-template";
 
 async function fetchTemplateList(signal?: AbortSignal): Promise<TemplateSummary[]> {
   const response = await fetch("/api/message-templates", { cache: "no-store", signal });
@@ -15,8 +17,13 @@ async function fetchTemplateList(signal?: AbortSignal): Promise<TemplateSummary[
 }
 
 type FieldEditor = Omit<TemplateField, "options"> & { optionsText: string };
+const fieldEditor = (field: TemplateField): FieldEditor => ({ ...field, optionsText: field.options.join("\n") });
+const initialFields = () => newStandardTemplate().fields.map(fieldEditor);
 const choiceLabels = (field: FieldEditor) => field.control === "checkbox" ? ["YES", "NO"] : isStaticChoice(field.control) ? field.optionsText.split("\n").map((option) => option.trim()).filter(Boolean) : [];
 function fieldConfig(field: FieldEditor): TemplateField {
+  const locked = standardField(field.name);
+  if (locked) return locked;
+  if (field.name === "Type") return { name: field.name, control: "text", required: true, options: [], fixedValue: field.fixedValue ?? "" };
   const options = isStaticChoice(field.control) ? choiceLabels(field) : [];
   const optionOutputs = Object.fromEntries(choiceLabels(field).filter((label) => field.optionOutputs && Object.hasOwn(field.optionOutputs, label) && field.optionOutputs[label].trim()).map((label) => [label, field.optionOutputs![label]]));
   return {
@@ -32,14 +39,15 @@ export default function TemplatesPage() {
   const [editing, setEditing] = useState<{ id: string; versionId: string; version: number } | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [text, setText] = useState("");
-  const [fields, setFields] = useState<FieldEditor[]>([]);
+  const [text, setText] = useState(STANDARD_TEMPLATE_TEXT);
+  const [fields, setFields] = useState<FieldEditor[]>(initialFields);
   const [definition, setDefinition] = useState<TemplateDefinition | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<TemplateSummary | null>(null);
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [listError, setListError] = useState("");
+  const [deleteNotice, setDeleteNotice] = useState("");
   const [loading, setLoading] = useState(true);
   const [inspected, setInspected] = useState<(TemplateDefinition & { id: string; version: number; versionId: string }) | null>(null);
   const [inspecting, setInspecting] = useState<string | null>(null);
@@ -63,15 +71,18 @@ export default function TemplatesPage() {
   const configure = () => {
     try {
       if (!name.trim() || name.trim().length > 150) throw new Error("Enter a template name of 150 characters or fewer.");
-      const variables = extractVariables(text);
-      setFields((current) => variables.map((variable) => current.find((field) => field.name === variable) ?? { name: variable, control: "text", required: true, optionsText: "" }));
+      const variables = validateStandardTemplateText(text);
+      setFields((current) => variables.map((variable) => {
+        const locked = standardField(variable);
+        return locked ? fieldEditor(locked) : current.find((field) => field.name === variable) ?? { name: variable, control: "text", required: true, optionsText: "" };
+      }));
       setError("");
       setStep(2);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Check your template."); }
   };
   const review = () => {
     try {
-      setDefinition(validateTemplateDefinition({ name, description, text, fields: fields.map(fieldConfig) }));
+      setDefinition(validateTemplateForPublication({ name, description, text, fields: fields.map(fieldConfig) }));
       setError("");
       setStep(3);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Check the input configuration."); }
@@ -103,7 +114,7 @@ export default function TemplatesPage() {
   };
   const startEdit = async (id: string) => {
     if (busy || inspecting !== null) return;
-    if (!saved && (name || text || editing) && !window.confirm("Discard the current unsaved template changes and open this template?")) return;
+    if (!saved && (name || description || text !== STANDARD_TEMPLATE_TEXT || editing) && !window.confirm("Discard the current unsaved template changes and open this template?")) return;
     setInspecting(id); setBusy(true);
     try {
       const response = await fetch(`/api/message-templates/${id}`, { cache: "no-store" });
@@ -111,27 +122,51 @@ export default function TemplatesPage() {
       if (!response.ok) throw new Error(data.error || "Could not open the template for editing.");
       const template = data.template as TemplateDefinition & { id: string; versionId: string; version: number };
       setEditing({ id: template.id, versionId: template.versionId, version: template.version });
-      setName(template.name); setDescription(template.description); setText(template.text);
-      setFields(template.fields.map((field) => ({ ...field, control: String(field.control) === "number" ? "text" : field.control, optionsText: field.options.join("\n") })));
+      setName(template.name); setDescription(template.description);
+      const editable = prepareTemplateEdit(template);
+      setText(editable.text);
+      setFields(editable.fields.map(fieldEditor));
       setDefinition(null); setSaved(null); setInspected(null); setError(""); setListError(""); setStep(1);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (reason) { setListError(reason instanceof Error ? reason.message : "Could not open the template."); }
     finally { setInspecting(null); setBusy(false); }
   };
+  const removeTemplate = async (template: TemplateSummary) => {
+    if (busy || inspecting !== null) return;
+    const unsavedWarning = editing?.id === template.id && !saved ? " Your unsaved edits to this template will be discarded." : "";
+    if (!window.confirm(`Delete "${template.name}"? It will no longer be available for new drafts. Existing drafts, messages and template versions will be preserved.${unsavedWarning}`)) return;
+    setBusy(true);
+    setListError("");
+    setDeleteNotice("");
+    try {
+      const response = await fetch(`/api/message-templates/${template.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Could not delete the template.");
+      }
+      setTemplates((current) => current.filter((item) => item.id !== template.id));
+      if (inspected?.id === template.id) setInspected(null);
+      if (editing?.id === template.id || saved?.id === template.id) reset();
+      setDeleteNotice(`Deleted "${template.name}". Existing drafts and messages are preserved.`);
+      await loadTemplates();
+    } catch (reason) { setListError(reason instanceof Error ? reason.message : "Could not delete the template."); }
+    finally { setBusy(false); }
+  };
   const reset = () => {
-    setEditing(null); setStep(1); setName(""); setDescription(""); setText(""); setFields([]); setDefinition(null); setSaved(null); setError("");
+    setEditing(null); setStep(1); setName(""); setDescription(""); setText(STANDARD_TEMPLATE_TEXT); setFields(initialFields()); setDefinition(null); setSaved(null); setError("");
   };
 
   return (
     <div className="space-y-5">
       <PageHeader icon={FilePlus2} title="Message Templates" subtitle="Turn a plaintext template into a reusable message form." />
       <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">Local prototype authoring. Do not enter classified or operational data. Passwordless demo accounts are not identity verification; production publishing permissions are not implemented.</p>
+      {deleteNotice && <p role="status" className="text-sm">{deleteNotice}</p>}
       {saved ? <Panel title="Template published">
         <div role="status" className="space-y-3">
           <p><strong>{saved.name}</strong> version {saved.version} is saved in PostgreSQL and available for future message drafting.</p>
           <p className="text-sm text-muted">Existing drafts and published messages retain their pinned versions. Edit a template to publish another version for future drafts.</p>
           <Button variant="primary" href="/drafting">Drafting &amp; Release</Button>
-          <Button disabled={inspecting !== null} onClick={() => void startEdit(saved.id)}>Edit this template</Button>
+          <Button disabled={busy || inspecting !== null} onClick={() => void startEdit(saved.id)}>Edit this template</Button>
           <Button disabled={busy || inspecting !== null} onClick={reset}>Create another template</Button>
         </div>
       </Panel> : <Panel title={`${editing ? `Edit template (from version ${editing.version})` : "Create a template"} — Step ${step} of 3`}>
@@ -143,14 +178,20 @@ export default function TemplatesPage() {
         {step === 1 && <div className="space-y-4">
           <label className="block space-y-1 text-sm font-semibold">Template name<input className={templateInputClass} value={name} disabled={busy} maxLength={150} onChange={(event) => setName(event.target.value)} placeholder="Readiness report" /></label>
           <label className="block space-y-1 text-sm font-semibold">Description (optional)<textarea className={templateInputClass} rows={2} value={description} disabled={busy} maxLength={2000} onChange={(event) => setDescription(event.target.value)} /></label>
-          <label className="block space-y-1 text-sm font-semibold">Plaintext template<textarea className={`${templateInputClass} font-mono`} rows={14} value={text} disabled={busy} maxLength={50000} onChange={(event) => setText(event.target.value)} placeholder={"FM {{ Originator }}\nTO {{ Recipients }}\nSUBJ/{{ Subject }}\n\n{{ Remarks }}"} aria-describedby="placeholder-help" /></label>
-          <p id="placeholder-help" className="text-sm text-muted">Mark variables as <code>{"{{ Name }}"}</code>. Names are case-sensitive and may contain letters, numbers, spaces, underscores and hyphens. Repeated names share one input. Only named substitutions are supported—no scripts or conditionals.</p>
+          <label className="block space-y-1 text-sm font-semibold">Plaintext template<textarea className={`${templateInputClass} font-mono`} rows={14} value={text} disabled={busy} maxLength={50000} onChange={(event) => setText(event.target.value)} placeholder={"FM {{ Origin }}\nTO {{ Recipients }}\nMSGID/{{ Type }}//\nSUBJ/{{ Subject }}\n\n{{ Remarks }}"} aria-describedby="placeholder-help" /></label>
+          <p id="placeholder-help" className="text-sm text-muted">Start from the standard template. Precedence, DateTime, Origin, Recipients, Info, Classification, Subject, POC and Message Number are mandatory and use locked standard behavior. Keep two standalone BT lines and finish with NNNN. Every template must include <code>{"{{ Type }}"}</code>; define its fixed pub/sub identifier in the next step. Mark other variables as <code>{"{{ Name }}"}</code>. Names are case-sensitive and may contain letters, numbers, spaces, underscores and hyphens. Repeated names share one input. Only named substitutions are supported—no scripts or conditionals.</p>
           <Button variant="primary" disabled={busy} onClick={configure}>Detect and configure variables</Button>
         </div>}
         {step === 2 && <div className="space-y-4">
           <p className="text-sm text-muted">Detected {fields.length} unique variable{fields.length === 1 ? "" : "s"}. Choose how each should be filled in when drafting a message.</p>
           {fields.map((field, index) => <fieldset key={field.name} disabled={busy} className="space-y-3 rounded-md border border-line p-4">
             <legend className="px-1 font-semibold">{field.name}</legend>
+            {standardField(field.name) ? <div className="space-y-1 text-sm" data-testid="standard-field">
+              <p className="font-semibold">Standard field · configuration locked</p>
+              <p>{INPUT_TYPES.find(([type]) => type === field.control)?.[1]} · Required{field.separator ? ` · ${field.separator}-separated` : ""}</p>
+              {!!choiceLabels(field).length && <p>{choiceLabels(field).map((option) => `${option}${field.optionOutputs?.[option] ? ` → ${field.optionOutputs[option]}` : ""}`).join("; ")}</p>}
+              <p className="text-xs text-muted">Behavior is shared with the standard template. {field.control === "autogenerated" ? "Sender command is resolved by the server from the signed-in account; drafters cannot override it." : "Message drafters supply the value."}</p>
+            </div> : field.name === "Type" ? <label className="block space-y-1 text-sm">Type value (required)<input className={templateInputClass} maxLength={200} value={field.fixedValue ?? ""} onChange={(event) => setFields((current) => current.map((item, position) => position === index ? { ...item, fixedValue: event.target.value } : item))} /><span className="text-xs text-muted">Fixed text used as the pub/sub identifier. Drafters cannot change it. Case and internal spacing are preserved.</span></label> : <>
             <div className="flex flex-wrap items-center gap-4">
               <label className="min-w-64 flex-1 space-y-1 text-sm">Input type<select className={templateInputClass} value={field.control} onChange={(event) => setFields((current) => current.map((item, position) => position === index ? { ...item, control: event.target.value as InputType, required: event.target.value === "autogenerated" ? true : item.required } : item))}>{INPUT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
               {field.control !== "autogenerated" && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={field.required} onChange={(event) => setFields((current) => current.map((item, position) => position === index ? { ...item, required: event.target.checked } : item))} className="accent-navy-700" />{field.control === "checkbox" ? "Must be checked" : "Required"}</label>}
@@ -173,6 +214,7 @@ export default function TemplatesPage() {
             </div>}
             {field.control === "command-multiple" && <label className="block space-y-1 text-sm">Command separator<select className={templateInputClass} value={field.separator ?? "semicolon"} onChange={(event) => setFields((current) => current.map((item, position) => position === index ? { ...item, separator: event.target.value as CommandSeparator } : item))}>{COMMAND_SEPARATORS.map(({ key, label }) => <option key={key} value={key}>{label}</option>)}</select><span className="text-xs text-muted">Separates selected command names in the generated plaintext. Selection order is preserved.</span></label>}
             {field.control.startsWith("command-") && <p className="text-sm text-muted">Options come from the PostgreSQL PLADS command directory. Users search by name{field.control === "command-multiple" ? " and select commands with checkboxes and removable chips" : " and select one command"}. No freeform recipients.</p>}
+            </>}
           </fieldset>)}
           <div className="flex gap-2"><Button disabled={busy} onClick={() => { setStep(1); setError(""); }}>Back to template</Button><Button variant="primary" disabled={busy} onClick={review}>Review generated form</Button></div>
         </div>}
@@ -183,15 +225,15 @@ export default function TemplatesPage() {
           <div className="flex flex-wrap gap-2"><Button disabled={busy} onClick={() => { setStep(2); setError(""); }}>Back to inputs</Button><Button variant="primary" disabled={busy} onClick={() => void publish()}>{busy ? "Publishing…" : editing ? "Publish new version" : "Publish template"}</Button></div>
         </div>}
       </Panel>}
-      <Panel title="Published templates" action={<Button size="sm" icon={RefreshCw} disabled={loading} onClick={() => { setLoading(true); void loadTemplates(); }}>Refresh</Button>}>
+      <Panel title="Published templates" action={<Button size="sm" icon={RefreshCw} disabled={loading || busy} onClick={() => { setLoading(true); void loadTemplates(); }}>Refresh</Button>}>
         {listError && <p role="alert" className="mb-3 text-sm text-red-700">{listError}</p>}
         {loading ? <p role="status" className="text-sm text-muted">Loading templates…</p> : templates.length ? <ul className="divide-y divide-line">
           {templates.map((template) => <li key={template.id} data-testid={`template-${template.id}`} className="flex flex-wrap items-center justify-between gap-3 py-3">
             <div><h3 className="font-semibold">{template.name}</h3><p className="text-sm text-muted">Version {template.version} · {template.variableCount} variables</p><p className="text-sm text-muted">{template.description}</p></div>
-            <div className="flex gap-2"><Button size="sm" disabled={busy || inspecting !== null} onClick={() => void inspect(template.id)}>{inspecting === template.id ? "Opening…" : "View template"}</Button>{template.canEdit && <Button size="sm" disabled={busy || inspecting !== null} aria-label={`Edit ${template.name}`} onClick={() => void startEdit(template.id)}>Edit template</Button>}</div>
+            <div className="flex gap-2"><Button size="sm" disabled={busy || inspecting !== null} onClick={() => void inspect(template.id)}>{inspecting === template.id ? "Opening…" : "View template"}</Button>{template.canEdit && <><Button size="sm" disabled={busy || inspecting !== null} aria-label={`Edit ${template.name}`} onClick={() => void startEdit(template.id)}>Edit template</Button><Button size="sm" variant="danger" disabled={busy || inspecting !== null} aria-label={`Delete ${template.name}`} onClick={() => void removeTemplate(template)}>Delete template</Button></>}</div>
           </li>)}
         </ul> : !listError && <p className="text-sm text-muted">No published templates yet. Create the first one above.</p>}
-        <p className="mt-3 text-xs text-muted">Showing up to 100 most recently published templates.</p>
+        <p className="mt-3 text-xs text-muted">Showing up to 100 most recently published templates. Deleting removes a template from new-draft choices; existing drafts, messages and immutable versions are retained.</p>
       </Panel>
       {inspected && <Panel title={`${inspected.name} — Version ${inspected.version}`} action={<Button size="sm" onClick={() => setInspected(null)}>Close</Button>}>
         <p className="mb-4 text-sm text-muted">{inspected.description} This is a read-only published definition; sample values are not saved.</p>

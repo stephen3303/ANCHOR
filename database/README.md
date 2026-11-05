@@ -82,6 +82,21 @@ volumes, before applying files under `database/migrations/`. Run the migration
 command after initial startup and after pulling new migrations; Compose does not
 automatically migrate an existing database.
 
+## Message-type subscriptions
+
+Migration `009-message-topic-subscriptions.sql` adds an append-only topic catalog
+and published-message/topic mapping, plus mutable per-user subscriptions. An
+AFTER INSERT trigger on `messages` registers its Type atomically with publication.
+Local traffic resolves Type from the draft's pinned version (or legacy saved
+manual Type), not a mutable template or a wrapped preview. Received traffic falls
+back to MSGID. No topics are created by draft creation or queued releases.
+
+The migration backfills derived metadata only; canonical messages, artifacts and
+message pins are unchanged. Topic names are trimmed, case-sensitive and unique.
+Unsubscribing deletes only that user's membership. Template deletion does not
+remove existing topics/messages. Every authenticated viewer may freely manage
+their own memberships; this does not change message access permissions.
+
 ## Tables
 
 | Table | Purpose |
@@ -97,7 +112,10 @@ automatically migrate an existing database.
 | `outgoing_messages` | Private draft identity, creator/command, idempotency key, expected revision, route snapshot and release metadata. |
 | `outgoing_message_events` | Append-only approval history with authenticated actor and approved snapshot hash. |
 | `command_routing` | Persisted per-command workflows, designations, settings and serialized release counter. |
-| `messages` / `message_artifacts` | Main's published message records and immutable text artifacts; drafts are absent until release. |
+| `messages` / `message_artifacts` | Published message records and immutable text artifacts; local drafts are absent until transmission. |
+| `message_topics` | Immutable Type/MSGID names discovered from published traffic. |
+| `message_topic_messages` | Immutable published-message to topic mapping. |
+| `message_topic_subscriptions` | Personal, freely managed memberships keyed by session user and topic. |
 | `schema_migrations` | Applied migration ledger. |
 | `schema_migration_amendments` | Audited, exact-hash amendments to applied seed files; currently only the 006 Body textarea correction. |
 

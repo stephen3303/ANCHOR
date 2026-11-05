@@ -42,7 +42,7 @@ test("login, hard refresh, client navigation and logout render the workspace cor
     await page.goto("/login");
     await page.getByRole("combobox", { name: "Account" }).selectOption(userId);
     await page.getByRole("button", { name: "Continue", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Welcome back, LT Taylor" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "My Briefing", exact: true })).toBeVisible();
 
     await page.goto("/templates");
     await expect(page.getByRole("heading", { name: "Message Templates", exact: true })).toBeVisible();

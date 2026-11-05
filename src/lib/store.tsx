@@ -3,7 +3,8 @@
 // Client-side app state for the prototype. Messages, reading state and
 // acknowledgements come from the ANCHOR message store (/api/messages) once it
 // answers; until then, or if the store is not set up, the bundled demo data is
-// used. The rest lives in memory and resets on reload.
+// used. Personal Type subscriptions also persist through /api/subscriptions;
+// legacy approval demos and other workspace preferences remain in memory.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ACK_RECEIPTS,
@@ -19,6 +20,7 @@ import {
 import { MOCK_NOW } from "./format";
 import { appendEvent, chainLog, type ChainedAuditEvent } from "./audit";
 import { useCurrentUser } from "./current-user";
+import { useTopicSubscriptions, type TopicSubscriptionState } from "./topic-subscriptions";
 import { hasRole, MESSAGE_ADMIN } from "./roles";
 import type { ActionUpdate, WatchIssue } from "./watch-workspace";
 import { isSimMessageId } from "./sim";
@@ -66,14 +68,14 @@ export const DEFAULT_BRIEFING: BriefingConfig = {
 
 type ApprovalRequest = (typeof APPROVAL_QUEUE)[number];
 
-interface Store {
+interface Store extends TopicSubscriptionState {
   messages: Message[];
   messageSource: MessageSource;
   messageById: (id: string) => Message | undefined;
   messageByRef: (ref: string) => Message | undefined;
   /** Acknowledgements received from other commands for traffic this command sent, by message id. */
   ackReceipts: Record<string, AckReceipt[]>;
-  /** Reload messages, reading state and acknowledgements from the server. */
+  /** Reload messages, reading state, acknowledgements and personal topics. */
   refreshMessages: () => Promise<void>;
   /** Put traffic the simulated C2OIX circuit delivered into the inbox (kept in this browser, not on the server). */
   addSimMessage: (m: Message) => void;
@@ -141,6 +143,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [subscriptions, setSubscriptions] = useState(SUBSCRIPTIONS);
   const [approvals, setApprovals] = useState(APPROVAL_QUEUE);
   const [offline, setOfflineState] = useState(false);
+  const topicSubscriptions = useTopicSubscriptions(offline);
+  const { refreshTopics } = topicSubscriptions;
   const [syncQueue, setSyncQueue] = useState<SyncItem[]>(SYNC_QUEUE);
   const [lastSync, setLastSync] = useState(new Date("2026-10-21T18:00:00Z"));
   const [audit, setAudit] = useState(() => chainLog(AUDIT_EVENTS));
@@ -190,6 +194,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setUserState((s) => ({ ...s, [id]: { ...s[id], ...p } }));
 
   const refreshMessages = useCallback(async () => {
+    void refreshTopics();
     try {
       const data = await messageApi("/api/messages", "GET");
       if (!Array.isArray(data.messages) || !data.messages.length) throw new Error("The message store is empty.");
@@ -208,7 +213,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Not migrated or seeded yet, or the database is down: keep the bundled demo data.
       setMessageSource((s) => (s === "server" ? s : "bundled"));
     }
-  }, []);
+  }, [refreshTopics]);
 
   useEffect(() => {
     // Load once per signed-in account; the effect only starts the request.
@@ -261,6 +266,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => ({
       messages: allMessages,
       messageSource,
+      ...topicSubscriptions,
       messageById: (id) => allMessages.find((m) => m.id === id),
       messageByRef: (ref) => allMessages.find((m) => m.reference === ref),
       ackReceipts,
@@ -413,7 +419,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toast,
       notify,
     }),
-    [CURRENT_USER, allMessages, runSync, messageSource, ackReceipts, refreshMessages, online, saveState, sendAck, userState, subscriptions, approvals, offline, syncQueue, lastSync, audit, original, watchNotes, watchNotesUpdated, watchIssues, watchActionUpdates, checklist, briefing, toast, log, notify, queue],
+    [CURRENT_USER, allMessages, runSync, messageSource, topicSubscriptions, ackReceipts, refreshMessages, online, saveState, sendAck, userState, subscriptions, approvals, offline, syncQueue, lastSync, audit, original, watchNotes, watchNotesUpdated, watchIssues, watchActionUpdates, checklist, briefing, toast, log, notify, queue],
   );
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;

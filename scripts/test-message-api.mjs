@@ -51,7 +51,18 @@ try {
   const migrations = ["database/init", "database/migrations"]
     .flatMap((dir) => readdirSync(`${root}${dir}`).filter((n) => n.endsWith(".sql")).map((n) => ({ n, path: `${root}${dir}/${n}` })))
     .sort((a, b) => a.n.localeCompare(b.n));
-  for (const { path } of migrations) await db.query(readFileSync(path, "utf8"));
+  for (const { path } of migrations) {
+    if (path.endsWith("009-message-topic-subscriptions.sql")) {
+      // Exercise a real upgrade with traffic already stored, not only an empty DB.
+      await db.query(seedSql("scripts/seed-users.ts"));
+      await db.query(seedSql("scripts/seed-messages.ts"));
+      const snapshot = async () => (await db.query("SELECT jsonb_agg(m ORDER BY id) AS records FROM messages m")).rows[0].records;
+      const before = await snapshot();
+      await db.query(readFileSync(path, "utf8"));
+      assert.deepEqual(await snapshot(), before, "Topic backfill must not rewrite canonical messages");
+      assert.ok(Number((await db.query("SELECT count(*) AS n FROM message_topic_messages")).rows[0].n) > 0);
+    } else await db.query(readFileSync(path, "utf8"));
+  }
   await db.query(seedSql("scripts/seed-users.ts"));
   const messageSeed = seedSql("scripts/seed-messages.ts");
   await db.query(messageSeed);
@@ -171,7 +182,7 @@ INFO COMSUBLANT, COMSUBPAC
 BT
 UNCLAS
 SUBJ/WATCH TEAM QUALIFICATION STANDARDS (CHANGE 1)//
-MSGID/GENADMIN/COMSUBFOR N7/COMSUBFOR INST 3500.2//
+MSGID/INGEST-TOPIC/COMSUBFOR N7/COMSUBFOR INST 3500.2//
 REF/A/MSG/COMSUBFOR INST 3500.1//
 NARR/THIS MSG SUPERSEDES REF A.//
 ACK/061200Z NOV 26//
@@ -183,6 +194,7 @@ NNNN`;
   const nonAdminProfile = await db.query("SELECT profile->'roles' AS roles FROM users WHERE login = $1", [nonAdmin.login]);
   const nonAdminIsAdmin = nonAdminProfile.rows[0].roles.some((r) => r.name === "System Admin" && r.granted);
   if (!nonAdminIsAdmin) await json(await call(nonAdminCookie, "/api/ingest", "POST", { raw }), 403);
+  assert.ok(!(await json(await call(taylor, "/api/subscriptions"))).topics.some((topic) => topic.name === "INGEST-TOPIC"));
   const ingested = await json(await call(taylor, "/api/ingest", "POST", { raw }), 201);
   assert.equal(ingested.message.reference, "COMSUBFOR INST 3500.2");
   assert.deepEqual(ingested.applied, { target: "COMSUBFOR INST 3500.1", lifecycle: "SUPERSEDED" });
@@ -196,6 +208,10 @@ NNNN`;
   assert.equal(old.replacedBy, "COMSUBFOR INST 3500.2");
   const fresh = withNew.messages.find((m) => m.reference === "COMSUBFOR INST 3500.2");
   assert.equal(fresh.ackRequired, true);
+  assert.equal(fresh.subscriptionType, "INGEST-TOPIC");
+  const ingestTopic = (await json(await call(taylor, "/api/subscriptions"))).topics.find((topic) => topic.name === "INGEST-TOPIC");
+  assert.equal(ingestTopic.messageCount, 1);
+  assert.equal(fresh.subscriptionTopicId, ingestTopic.id);
   assert.equal(withNew.userState[fresh.id].read, "new");
 
   // Integrity: every stored artifact still hashes to what was recorded.

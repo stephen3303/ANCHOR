@@ -21,7 +21,7 @@
   powershell -ExecutionPolicy Bypass -File scripts/update.ps1 -Seed
 #>
 param(
-  # Also run db:seed:commands, users, routing and messages (all safe to rerun).
+  # Also run db:seed:commands, users, routing, messages and outgoing (all safe to rerun).
   [switch]$Seed,
   # Keep the TLS proxy and Secure cookies enabled during updates.
   [switch]$Https,
@@ -90,7 +90,7 @@ try {
   Run npm @("run", "db:migrate")
 
   if ($Seed) {
-    foreach ($script in "db:seed:commands", "db:seed:users", "db:seed:routing", "db:seed:messages") {
+    foreach ($script in "db:seed:commands", "db:seed:users", "db:seed:routing", "db:seed:messages", "db:seed:outgoing") {
       Step "Running $script"
       Run npm @("run", $script)
     }

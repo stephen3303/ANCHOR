@@ -19,8 +19,10 @@ export function DraftRoutingEditor({ draft, offline, onDone }: { draft: ApiDraft
   const [error, setError] = useState("");
   const disabled = offline || routing.busy;
   const last = steps.at(-1);
-  const eligible = !!last && routing.people.some((person) => person.id === last.personId && person.status === "present" && person.canRelease)
-    && routing.authorities.some((authority) => authority.personId === last.personId && (!authority.scope.length || authority.scope.includes(draft.type)));
+  // The Release Authority releases anything; a designated release authority needs a designation covering this type.
+  const finalHolder = last && routing.people.find((person) => person.id === last.personId && person.status === "present" && person.canRelease);
+  const eligible = !!finalHolder && (finalHolder.releaseAuthority
+    || routing.authorities.some((authority) => authority.personId === finalHolder.id && (!authority.scope.length || authority.scope.includes(draft.type))));
   const valid = steps.length > 0 && steps.length <= 20 && eligible && steps.every((step) => step.title.trim() && routing.personById(step.personId)?.status === "present");
   const addAt = (personId: string, target: number) => {
     const person = routing.personById(personId);
@@ -52,7 +54,7 @@ export function DraftRoutingEditor({ draft, offline, onDone }: { draft: ApiDraft
     if (result.ok) onDone(); else setError(result.reason);
   };
   return <div className="space-y-3">
-    <p className="rounded bg-amber-50 p-3 text-sm text-amber-900">Saving changes stops any current review and clears all approvals. Resubmit afterward. The last person must be a designated release authority for this message type.</p>
+    <p className="rounded bg-amber-50 p-3 text-sm text-amber-900">Saving changes stops any current review and clears all approvals. Resubmit afterward. The last person must be the Release Authority or a designated release authority for this message type.</p>
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
     <fieldset disabled={disabled} className="grid min-w-0 gap-4 lg:grid-cols-2">
       <legend className="sr-only">Draft routing editor</legend>
@@ -79,7 +81,7 @@ export function DraftRoutingEditor({ draft, offline, onDone }: { draft: ApiDraft
             </div>
           </div>}
         </Fragment>)}
-        {!eligible && <p role="status" className="text-sm text-amber-800">Add or move an eligible designated release authority to the final position.</p>}
+        {!eligible && <p role="status" className="text-sm text-amber-800">Add or move the Release Authority or an eligible designated release authority to the final position.</p>}
         {steps.length > 20 && <p role="alert" className="text-sm text-red-700">A chain can contain at most 20 people.</p>}
       </div>
     </fieldset>

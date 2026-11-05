@@ -112,7 +112,9 @@ try {
   const sameCommand = users.filter((u) => u.commandName === users.find((x) => x.login === "LTaylor").commandName);
   assert.ok(sameCommand.length >= 2, "need two accounts in one command");
   const taylor = await login("LTaylor");
-  const colleagueLogin = sameCommand.find((u) => u.login !== "LTaylor").login;
+  // The Message Admin sends acknowledgements; everyone else sees that one is needed.
+  const colleagueLogin = "DHarper";
+  assert.ok(sameCommand.some((u) => u.login === colleagueLogin));
   const colleague = await login(colleagueLogin);
 
   const snap = await json(await call(taylor, "/api/messages"));
@@ -126,20 +128,25 @@ try {
   const received = snap.messages.find((m) => m.ackRequired && m.source !== "COMSUBLANT" && !["SUPERSEDED", "CANCELLED"].includes(m.lifecycle));
   assert.ok(received, "a received message needing acknowledgement");
   assert.equal(snap.userState[received.id].acknowledgedAt, undefined);
+  await json(await call(taylor, `/api/messages/${received.id}/ack`, "POST", {}), 403);
   const ack = await json(await call(colleague, `/api/messages/${received.id}/ack`, "POST", {}));
   assert.equal(ack.already, false);
-  const again = await json(await call(taylor, `/api/messages/${received.id}/ack`, "POST", {}));
+  const again = await json(await call(colleague, `/api/messages/${received.id}/ack`, "POST", {}));
   assert.equal(again.already, true);
   assert.equal(again.acknowledgedAt, ack.acknowledgedAt);
   const after = await json(await call(taylor, "/api/messages"));
   assert.equal(after.userState[received.id].acknowledgedAt, ack.acknowledgedAt);
   assert.equal(await count(`SELECT count(*) AS n FROM message_acknowledgements WHERE origin = 'local' AND message_id = '${received.id}'`), 1);
+  // Sending the acknowledgement records one outgoing acknowledgement message, visible to the whole command.
+  const sent = (await json(await call(taylor, "/api/transmissions"))).transmissions.filter((t) => t.kind === "acknowledgement" && t.messageId === received.id);
+  assert.equal(sent.length, 1); assert.equal(sent[0].status, "transmitted");
+  assert.match(sent[0].body, /RECEIVED AND ACKNOWLEDGED/);
 
   // Traffic the command sent, and traffic that doesn't need it, can't be acknowledged here.
-  await json(await call(taylor, "/api/messages/comsublant-078-26/ack", "POST", {}), 409);
+  await json(await call(colleague, "/api/messages/comsublant-078-26/ack", "POST", {}), 409);
   const noAck = snap.messages.find((m) => !m.ackRequired);
-  await json(await call(taylor, `/api/messages/${noAck.id}/ack`, "POST", {}), 409);
-  await json(await call(taylor, "/api/messages/no-such-message/ack", "POST", {}), 404);
+  await json(await call(colleague, `/api/messages/${noAck.id}/ack`, "POST", {}), 409);
+  await json(await call(colleague, "/api/messages/no-such-message/ack", "POST", {}), 404);
 
   // Reading state is per person.
   const before = snap.userState["navadmin-234-26"].read;

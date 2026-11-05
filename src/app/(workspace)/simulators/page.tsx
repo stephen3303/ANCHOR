@@ -1,5 +1,7 @@
 "use client";
 
+import { useCurrentUser } from "@/lib/current-user";
+import { hasRole, MESSAGE_ADMIN } from "@/lib/roles";
 import { Power, Radio, RefreshCw, Send, Server, Trash2, Zap } from "lucide-react";
 import { Button, EmptyState, PageHeader, Panel, Pill, PrecedenceBadge, StatusDot, Toggle, cx, tableWrap, tbodyRow } from "@/components/ui";
 import { MessageCellsRow, MessageHeaderRow, messageColumns } from "@/components/message-columns";
@@ -33,6 +35,7 @@ function ServerCard({ title, state, tone, meta, subtitle, facts, children }: { t
 }
 
 export default function SimulatorsPage() {
+  const isMessageAdmin = hasRole(useCurrentUser(), MESSAGE_ADMIN);
   const sim = useSim();
   const { external, local, repo, transmissions, circuitUp, lastPulse } = sim;
   const count = (s: string) => repo.filter((m) => m.status === s).length;
@@ -127,8 +130,8 @@ export default function SimulatorsPage() {
             { label: "Transmitted", value: transmissions.length - held },
           ]}
         >
-          <Button icon={Power} variant={circuitUp ? "secondary" : "primary"} onClick={circuitUp ? sim.disconnect : sim.connect}>{circuitUp ? "Disconnect from C2OIX" : "Reconnect and drain"}</Button>
-          <Button icon={Zap} onClick={sim.pulse}>Beat and transmit</Button>
+          <Button icon={Power} disabled={!isMessageAdmin} title={isMessageAdmin ? undefined : "Only the Message Admin manages comm links."} variant={circuitUp ? "secondary" : "primary"} onClick={circuitUp ? sim.disconnect : sim.connect}>{circuitUp ? "Disconnect from C2OIX" : "Reconnect and drain"}</Button>
+          <Button icon={Zap} onClick={sim.pulse}>Beat</Button>
         </ServerCard>
       </div>
 

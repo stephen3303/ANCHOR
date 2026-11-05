@@ -25,8 +25,10 @@ import {
   Waypoints,
   WifiOff,
   ClipboardList,
+  RadioTower,
   X,
 } from "lucide-react";
+import { AUDITOR, hasRole, MESSAGE_ADMIN, REPORT_VIEWER, SUBSCRIPTION_APPROVER, type RoleName } from "@/lib/roles";
 import { useStore } from "@/lib/store";
 import { useRouting } from "@/lib/routing-store";
 import { needsOwnAck } from "@/lib/data";
@@ -35,7 +37,7 @@ import { fmtDate, fmtTime } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 import { cx } from "./ui";
 
-const NAV = [
+const NAV: { href: string; label: string; icon: typeof Home; badge?: "unread" | "routing" | "sync" | "approvals"; role?: RoleName }[] = [
   { href: "/", label: "Home", icon: Home },
   { href: "/messages", label: "Messages", icon: Mail, badge: "unread" as const },
   { href: "/templates", label: "Message Templates", icon: FilePlus2 },
@@ -44,9 +46,10 @@ const NAV = [
   { href: "/briefings", label: "Briefings", icon: FileText },
   { href: "/watch-turnover", label: "Watch Turnover", icon: ClipboardList },
   { href: "/drafting", label: "Drafting & Release", icon: FilePenLine, badge: "routing" as const },
+  { href: "/transmissions", label: "Transmission Queue", icon: RadioTower },
   { href: "/offline", label: "Offline Mode", icon: WifiOff, badge: "sync" as const },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
-  { href: "/audit", label: "Audit & Integrity", icon: ShieldCheck },
+  { href: "/reports", label: "Reports", icon: BarChart3, role: REPORT_VIEWER },
+  { href: "/audit", label: "Audit & Integrity", icon: ShieldCheck, role: AUDITOR },
   { href: "/simulators", label: "Server Simulators", icon: Server },
   { href: "/topology", label: "Network Topology", icon: Waypoints },
   { href: "/admin", label: "Admin", icon: UserCog, badge: "approvals" as const },
@@ -138,7 +141,8 @@ function Sidebar({ open, onClose }: { open: boolean | null; onClose: () => void 
   const { drafts, actorId } = useRouting();
   const unread = messages.filter((m) => userState[m.id]?.read !== "read").length;
   const routing = drafts.filter((d) => d.status === "in_routing" && d.route.find((s) => s.status === "current")?.personId === actorId).length;
-  const badges = { unread, sync: syncQueue.length, approvals: approvals.length, routing };
+  const user = useUserSession().user;
+  const badges = { unread, sync: syncQueue.length, approvals: hasRole(user, SUBSCRIPTION_APPROVER) ? approvals.length : 0, routing };
 
   return (
     <>
@@ -154,7 +158,7 @@ function Sidebar({ open, onClose }: { open: boolean | null; onClose: () => void 
           <X className="size-5" />
         </button>
         <ul className="flex-1 overflow-y-auto py-2">
-          {NAV.map(({ href, label, icon: Icon, badge }) => {
+          {NAV.filter((item) => !item.role || hasRole(user, item.role)).map(({ href, label, icon: Icon, badge }) => {
             const active = href === "/" ? path === "/" : path.startsWith(href);
             const count = badge ? badges[badge] : 0;
             return (
@@ -194,6 +198,7 @@ function Sidebar({ open, onClose }: { open: boolean | null; onClose: () => void 
 
 function AlertStrip() {
   const { userState, offline, messages, messageSource } = useStore();
+  const user = useUserSession().user;
   const pending = messages.filter((m) => needsOwnAck(m) && !userState[m.id]?.acknowledgedAt);
   return (
     <>
@@ -212,7 +217,7 @@ function AlertStrip() {
       {pending.length > 0 && messageSource !== "loading" && (
         <div role="alert" className="no-print flex flex-wrap items-center gap-2 bg-red-700 px-4 py-2 text-sm text-white">
           <BellRing className="size-4" aria-hidden />
-          <strong>Mandatory:</strong> {pending.length} message{pending.length > 1 ? "s" : ""} require your acknowledgement.
+          <strong>Mandatory:</strong> {pending.length} message{pending.length > 1 ? "s" : ""} {pending.length > 1 ? "need" : "needs"} acknowledgement{hasRole(user, MESSAGE_ADMIN) ? " from you" : " by the Message Admin"}.
           <Link href="/#acknowledge" className="ml-auto font-semibold underline">Review now</Link>
         </div>
       )}

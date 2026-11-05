@@ -15,7 +15,7 @@ import type { ApiDraft } from "@/lib/routing-api";
 import type { RoutingEventType } from "@/lib/types";
 
 type Filter = "all" | "mine" | "waiting" | "released";
-const EVENTS: Record<RoutingEventType,string> = {created:"Created",submitted:"Submitted",advanced:"Endorsed",returned:"Returned",revised:"Revised",released:"Released",withdrawn:"Withdrawn"};
+const EVENTS: Record<RoutingEventType,string> = {created:"Created",submitted:"Submitted",advanced:"Endorsed",returned:"Returned",revised:"Revised",released:"Released",withdrawn:"Withdrawn",release_revoked:"Release withdrawn",transmitted:"Transmitted"};
 export default function DraftingPage() {
   const routing = useRouting();
   const { drafts, actorId } = routing;
@@ -26,7 +26,7 @@ export default function DraftingPage() {
   const rows = drafts.filter((draft) => filter === "all" || (filter === "mine" && draft.drafterId === actorId) || (filter === "waiting" && waiting(draft)) || (filter === "released" && draft.status === "released"));
   const draft = rows.find((item) => item.id === selected) ?? rows[0];
   return <>
-    <PageHeader icon={FilePenLine} title="Drafting & Release" subtitle="Template-based drafts and approvals saved to the API. Messages become visible in the message list only after release."
+    <PageHeader icon={FilePenLine} title="Drafting & Release" subtitle="Template-based drafts and approvals saved to the API. Released messages go to the transmission queue and appear in Messages once the Message Admin transmits them."
       actions={<><ActAs /><Button variant="primary" icon={Plus} disabled={routing.loading || routing.busy} onClick={() => setCreating(true)}>New Draft</Button></>} />
     {routing.error && <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-red-800">{routing.error} <Button size="sm" onClick={() => void routing.refresh()}>Refresh routing</Button></p>}
     {routing.loading && <p role="status">Loading persisted drafts and command routing…</p>}
@@ -70,7 +70,7 @@ function Workspace({draft}: {draft: ApiDraft}) {
     <Panel title={draft.subject}>
       <div className="mb-3 flex flex-wrap gap-2"><Pill className={DRAFT_STATUS[draft.status].className}>{DRAFT_STATUS[draft.status].label}</Pill><PrecedenceBadge p={draft.precedence} /><span className="text-sm">{draft.type} · {draft.templateName} version {draft.templateVersion} · Revision {draft.revision}</span></div>
       <p className="text-sm text-muted">Drafted by {draft.drafterName} · Saved {fmtDateTime(draft.updated)} · Sender {draft.originator}</p>
-      {draft.status === "released" ? <div className="mt-3 rounded bg-green-50 p-3 text-sm text-green-900"><p>Released in ANCHOR: {draft.localSequence} · {draft.dtg}</p><p>Now visible in Messages. External transmission has not been performed by this workflow.</p><Button className="mt-2" href={`/messages/${draft.id}`}>View released message</Button></div>
+      {draft.status === "released" ? <div className="mt-3 rounded bg-green-50 p-3 text-sm text-green-900"><p>Released as {draft.releaseDesignation}: {draft.localSequence} · {draft.dtg}. The message is final and cannot be edited.</p>{draft.transmittedAt ? <><p>Transmitted {fmtDateTime(draft.transmittedAt)}. Now in Messages.</p><Button className="mt-2" href={`/messages/${draft.id}`}>View transmitted message</Button></> : <><p>Waiting in the transmission queue for the Message Admin. Until it is transmitted, the releaser or the Release Authority can withdraw the release.</p><Button className="mt-2" href="/transmissions">Open Transmission Queue</Button></>}</div>
         : <p className="mt-3 rounded bg-amber-50 p-3 text-sm text-amber-900">Not released or transmitted. Hidden from the Messages list. The drafter can edit until publication. Saving text or routing changes stops review and clears all approvals; resubmit afterward.</p>}
       <pre className="mt-4 max-h-[640px] overflow-auto whitespace-pre-wrap break-words rounded border border-line bg-slate-50 p-4 font-mono text-sm">{draft.renderedText}</pre>
       {draft.status !== "released" && hasOverlongMessageLine(draft.renderedText ?? "") && <p role="alert" className="mt-3 rounded bg-amber-50 p-3 text-sm text-amber-900">This older draft has lines over 69 characters. The drafter must save edits to apply wrapping and obtain fresh approvals before publication.</p>}
@@ -80,7 +80,7 @@ function Workspace({draft}: {draft: ApiDraft}) {
         {canSubmit && <Button variant="primary" icon={ArrowRight} disabled={routing.busy || offline || !!editingRoute} onClick={() => void act("submit")}>Submit for routing</Button>}
         {owner && !["released","withdrawn"].includes(draft.status) && <Button icon={XCircle} disabled={routing.busy || offline || !!editingRoute} onClick={() => void act("withdraw")}>Withdraw</Button>}
       </div>
-      {editable && <p className="mt-2 text-sm text-muted">{draft.route.length ? "Resubmission uses this saved chain and requires fresh approval at every step." : planned ? `Submission uses ${planned.name}. Customize the routing chain below if needed.` : "No matching default workflow. Customize a routing chain below; the final holder must be a designated release authority."}</p>}
+      {editable && <p className="mt-2 text-sm text-muted">{draft.route.length ? "Resubmission uses this saved chain and requires fresh approval at every step." : planned ? `Submission uses ${planned.name}. Customize the routing chain below if needed.` : "No matching default workflow. Customize a routing chain below; the final holder must be the Release Authority or a designated release authority."}</p>}
       {myStep && !editingRoute && <div className="mt-4 space-y-3 border-t border-line pt-4">
         <p className="text-sm font-semibold">Your action: {step.title}</p>
         <label className="block text-sm font-semibold">Review comment (required when returning)<textarea aria-label="Review comment" className={fieldCls} rows={2} maxLength={2000} value={comment} disabled={routing.busy} onChange={(event) => setComment(event.target.value)} /></label>

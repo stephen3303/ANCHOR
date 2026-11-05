@@ -19,6 +19,7 @@ import {
 import { MOCK_NOW } from "./format";
 import { appendEvent, chainLog, type ChainedAuditEvent } from "./audit";
 import { useCurrentUser } from "./current-user";
+import { hasRole, MESSAGE_ADMIN } from "./roles";
 import type { AckReceipt, Community, Message, MessageUserState, Subscription, SyncItem } from "./types";
 
 /** Where the message list came from: still loading, the server's store, or the bundled demo data. */
@@ -248,6 +249,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       acknowledge: (id) => {
         const m = messages.find((x) => x.id === id);
+        if (!hasRole(CURRENT_USER, MESSAGE_ADMIN)) return notify("Only the Message Admin sends acknowledgements.");
         if (online) {
           sendAck(id).then(
             () => {

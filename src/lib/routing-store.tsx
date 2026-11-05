@@ -96,8 +96,8 @@ export function RoutingProvider({children}:{children:ReactNode}) {
       saveDraftRoute:(draft,steps)=>mutate(`/api/messages/${draft.id}`,{action:"route",revision:draft.revision,steps}),
       saveWorkflow:(workflow,expectedRevision)=>save({...(expectedRevision===undefined?{}:{revision:expectedRevision}),workflows:config.workflows.some((item)=>item.id===workflow.id)?config.workflows.map((item)=>item.id===workflow.id?workflow:item):[...config.workflows,workflow]}),
       toggleWorkflow:(id)=>save({workflows:config.workflows.map((item)=>item.id===id?{...item,active:!item.active}:item)}),
-      addAuthority:(authority)=>save({authorities:[...config.authorities,{...authority,id:crypto.randomUUID()}]}),
-      removeAuthority:(id)=>save({authorities:config.authorities.filter((item)=>item.id!==id)}),
+      addAuthority:(authority)=>mutate("/api/routing/designations",{revision:config.revision,authorities:[...config.authorities,{...authority,id:crypto.randomUUID()}]}),
+      removeAuthority:(id)=>mutate("/api/routing/designations",{revision:config.revision,authorities:config.authorities.filter((item)=>item.id!==id)}),
       saveSettings:(settings)=>save({settings}),
     };
   },[user.id,drafts,events,config,loading,busy,error,refresh,mutate]);

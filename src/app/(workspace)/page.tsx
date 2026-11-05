@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AlertTriangle, BellRing, CheckCircle2, ClipboardList, FileText, Home, Mail, ShieldCheck, WifiOff } from "lucide-react";
 import { needsOwnAck } from "@/lib/data";
 import { useCurrentUser } from "@/lib/current-user";
+import { hasRole, MESSAGE_ADMIN, SUBSCRIPTION_APPROVER } from "@/lib/roles";
 import { fmtDateTime, hoursUntil } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { MiniMessageTable } from "@/components/message";
@@ -13,6 +14,7 @@ import { Button, LifecycleBadge, PageHeader, Panel, PrecedenceBadge, StatCard, t
 
 export default function HomePage() {
   const CURRENT_USER = useCurrentUser();
+  const canAck = hasRole(CURRENT_USER, MESSAGE_ADMIN);
   const { userState, acknowledge, subscriptions, syncQueue, offline, approvals, messages } = useStore();
   const needAck = messages.filter(needsOwnAck);
   const pending = needAck.filter((m) => !userState[m.id].acknowledgedAt);
@@ -44,7 +46,8 @@ export default function HomePage() {
       userState[m.id].acknowledgedAt ? (
         <span className="inline-flex items-center gap-1 text-green-700"><CheckCircle2 className="size-4" /> Acknowledged</span>
       ) : (
-        <Button size="sm" variant="danger" onClick={() => acknowledge(m.id)}>Acknowledge</Button>
+        canAck ? <Button size="sm" variant="danger" onClick={() => acknowledge(m.id)}>Acknowledge</Button>
+          : <span className="text-red-700" title="Only the Message Admin sends acknowledgements.">Awaiting Message Admin</span>
       ),
   });
 
@@ -54,7 +57,7 @@ export default function HomePage() {
 
       <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={Mail} value={unread} label="Unread Messages" note="From your approved subscriptions" />
-        <StatCard icon={BellRing} value={pending.length} label="Awaiting Your Acknowledgement" tone="red" note="Mandatory by precedence or command rule" />
+        <StatCard icon={BellRing} value={pending.length} label="Awaiting Acknowledgement" tone="red" note="Mandatory by precedence or command rule" />
         <StatCard icon={ClipboardList} value={subscriptions.filter((s) => s.status === "Active").length} label="Active Subscriptions" tone="green" note={`${subscriptions.filter((s) => s.status === "Pending Approval").length} pending approval`} />
         <StatCard icon={offline ? WifiOff : ShieldCheck} value={offline ? syncQueue.length : "100%"} label={offline ? "Items Queued for Sync" : "Records Validated"} tone={offline ? "amber" : "green"} note={offline ? "EMCON: local store active" : "No tampering detected"} />
       </div>
@@ -106,7 +109,7 @@ export default function HomePage() {
               <Button variant="primary" href="/briefings">Build a Briefing</Button>
               <Button href="/watch-turnover">Start Watch Turnover</Button>
               <Button href="/search">Advanced Search</Button>
-              {approvals.length > 0 && <Button variant="warning" href="/admin">Review {approvals.length} subscription requests</Button>}
+              {approvals.length > 0 && hasRole(CURRENT_USER, SUBSCRIPTION_APPROVER) && <Button variant="warning" href="/admin">Review {approvals.length} subscription requests</Button>}
             </div>
           </Panel>
           <Panel title="About This Prototype" icon={ShieldCheck}>

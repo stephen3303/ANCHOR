@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { DEMO_USERS, SYSTEM_ADMIN_ROLE } from "../src/lib/demo-users";
+import { DEMO_USERS } from "../src/lib/demo-users";
+import { SYSTEM_ADMIN as SYSTEM_ADMIN_ROLE } from "../src/lib/roles";
 
 // Each demo account is mapped explicitly to a PLADS directory entry. Do not
 // guess a sender from a partial name or the first directory row.

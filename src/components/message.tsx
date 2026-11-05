@@ -19,6 +19,8 @@ import {
 import { resolveAckStatus, sentByOwnCommand } from "@/lib/data";
 import { fmtDateTime, hoursUntil, shortHash } from "@/lib/format";
 import { useStore } from "@/lib/store";
+import { useCurrentUser } from "@/lib/current-user";
+import { hasRole, MESSAGE_ADMIN } from "@/lib/roles";
 import type { Attachment, Message } from "@/lib/types";
 import { Button, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tabs, cx, tableWrap, tbodyRow } from "./ui";
 import { MessageCellsRow, MessageHeaderRow, messageColumns, type MessageCells } from "./message-columns";
@@ -76,6 +78,7 @@ export function LifecycleNotice({ m }: { m: Message }) {
 
 export function AckPanel({ m, compact }: { m: Message; compact?: boolean }) {
   const { userState, acknowledge, ackReceipts } = useStore();
+  const canAck = hasRole(useCurrentUser(), MESSAGE_ADMIN);
   if (!m.ackRequired) return null;
   if (sentByOwnCommand(m)) {
     const { commands } = resolveAckStatus(m, ackReceipts[m.id] ?? []);
@@ -105,9 +108,13 @@ export function AckPanel({ m, compact }: { m: Message; compact?: boolean }) {
         <strong>Acknowledgement required</strong>
         {m.ackDue && <> by {fmtDateTime(m.ackDue)}{h !== null && h <= 24 && <> · escalates to your Department Head in {Math.max(h, 0)}h</>}</>}
       </span>
-      <Button variant="danger" size="sm" className="ml-auto" onClick={() => acknowledge(m.id)}>
-        Acknowledge receipt
-      </Button>
+      {canAck ? (
+        <Button variant="danger" size="sm" className="ml-auto" onClick={() => acknowledge(m.id)}>
+          Acknowledge receipt
+        </Button>
+      ) : (
+        <span className="ml-auto font-semibold">The Message Admin sends this acknowledgement.</span>
+      )}
     </div>
   );
 }

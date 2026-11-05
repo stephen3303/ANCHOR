@@ -5,10 +5,11 @@
 import { useState } from "react";
 import { ArrowRight, GitBranch, Pencil, Plus, Save, Settings2, ShieldCheck, Trash2 } from "lucide-react";
 import { HolderNote, PersonSelect, fieldCls } from "./routing";
-import { Button, EmptyState, Panel, Pill, TextInput, Toggle, cx, tableWrap, td, th, theadRow, tbodyRow } from "./ui";
+import { Button, EmptyState, Panel, TextInput, Toggle, cx, tableWrap, td, th, theadRow, tbodyRow } from "./ui";
 import { DRAFT_TYPES, OWN_ORIGINATOR, ROSTER_STATE, nextAssignment } from "@/lib/routing";
 import { useRouting } from "@/lib/routing-store";
 import { useCurrentUser } from "@/lib/current-user";
+import { hasRole, RELEASE_AUTHORITY, SYSTEM_ADMIN } from "@/lib/roles";
 import type { CommandSettings, MessageType, RoutingWorkflow, WorkflowStep } from "@/lib/types";
 
 const blankWorkflow = (): RoutingWorkflow => ({
@@ -27,18 +28,18 @@ const blankWorkflow = (): RoutingWorkflow => ({
 export function RoutingAdminPanel() {
   const { workflows, toggleWorkflow, personById, personName, loading, busy, error, revision } = useRouting();
   const [editing, setEditing] = useState<RoutingWorkflow | null>(null);
-  const canManage = useCurrentUser().roles.some((role) => role.name === "System Admin" && role.granted);
+  const canManage = hasRole(useCurrentUser(), SYSTEM_ADMIN);
 
   return (
     <>
       {error && <p role="alert" className="mb-4 rounded bg-red-50 p-3 text-red-800">{error}</p>}
       {loading && <p role="status">Loading persisted command routing…</p>}
-      {!canManage && <p className="mb-4 text-sm text-muted">Routing is read-only. Changes require System Admin.</p>}
-      <fieldset disabled={loading || busy || !canManage}>
       <div className="mb-4 grid gap-4 xl:grid-cols-2">
         <AuthorityPanel />
-        <SettingsPanel key={revision} />
+        <fieldset disabled={loading || busy || !canManage}><SettingsPanel key={revision} /></fieldset>
       </div>
+      {!canManage && <p className="mb-4 text-sm text-muted">Workflows and sequence settings are read-only. Changes require System Admin.</p>}
+      <fieldset disabled={loading || busy || !canManage}>
 
       <Panel
         title={`Routing Workflows (${workflows.length})`}
@@ -188,7 +189,9 @@ function WorkflowEditor({ initial, onDone }: { initial: RoutingWorkflow; onDone:
 }
 
 function AuthorityPanel() {
-  const { authorities, addAuthority, removeAuthority, personById, personName } = useRouting();
+  const { authorities, addAuthority, removeAuthority, personById, personName, people, loading, busy } = useRouting();
+  const isReleaseAuthority = hasRole(useCurrentUser(), RELEASE_AUTHORITY);
+  const commander = people.find((p) => p.releaseAuthority);
   const [personId, setPersonId] = useState("");
   const [scope, setScope] = useState<"all" | MessageType>("all");
   const [error, setError] = useState("");
@@ -197,15 +200,24 @@ function AuthorityPanel() {
     const p = personById(personId);
     if (!p) return setError("Pick a person from the roster.");
     if (p.status === "detached") return setError(`${p.name}'s account is inactive. Designate an active account.`);
-    if (authorities.some((a) => a.personId === p.id && (scope === "all" ? !a.scope.length : a.scope.includes(scope))))
-      return setError(`${p.name} already holds that designation.`);
+    if (p.id === commander?.id) return setError(`${p.name} is the Release Authority and releases all traffic without a designation.`);
+    if (authorities.some((a) => a.personId === p.id))
+      return setError(`${p.name} already holds a designation. Remove it and designate again to change its scope.`);
     setError("");
-    const result = await addAuthority({ personId: p.id, designation: p.position, isCommandingOfficer: /^commander$/i.test(p.position), scope: scope === "all" ? [] : [scope] });
+    const result = await addAuthority({ personId: p.id, designation: p.position, isCommandingOfficer: false, scope: scope === "all" ? [] : [scope] });
     if (result.ok) { setPersonId(""); setScope("all"); }
   };
 
   return (
-    <Panel title="Release Authority" icon={ShieldCheck} bodyClassName="p-0">
+    <Panel title="Release Authority and Designations" icon={ShieldCheck} bodyClassName="p-0">
+      <p className="border-b border-line px-4 py-3 text-sm">
+        <span className="font-semibold">Release Authority:</span>{" "}
+        {commander ? `${commander.name}, ${commander.position}. Releases all traffic.` : "None assigned. System Admin assigns the Release Authority role."}
+        <span className="mt-1 block text-xs text-muted">
+          {isReleaseAuthority ? "You designate release authorities below. A designation grants the Designated Release Authority role." : "Only the Release Authority can change designations."}
+        </span>
+      </p>
+      <fieldset disabled={loading || busy || !isReleaseAuthority}>
       <ul className="divide-y divide-line/70">
         {authorities.map((a) => {
           const p = personById(a.personId);
@@ -214,7 +226,6 @@ function AuthorityPanel() {
               <div className="min-w-0 flex-1 text-sm">
                 <div className="font-semibold">
                   {personName(a.personId)}
-                  {a.isCommandingOfficer && <Pill className="ml-2 bg-navy-100 text-navy-800">Commander</Pill>}
                 </div>
                 <div className="text-xs text-muted">{a.designation} · {a.scope.length ? a.scope.join(", ") : "all message types"}</div>
                 {p && p.status !== "present" && (
@@ -227,9 +238,9 @@ function AuthorityPanel() {
             </li>
           );
         })}
-        {!authorities.length && <li><EmptyState>No release authority designated. Nothing can be released until one is set.</EmptyState></li>}
+        {!authorities.length && <li><EmptyState>No designated release authorities. Only the Release Authority can release.</EmptyState></li>}
       </ul>
-      <div className="space-y-3 border-t border-line bg-navy-50/60 p-4">
+      {isReleaseAuthority && <div className="space-y-3 border-t border-line bg-navy-50/60 p-4">
         <div className="grid gap-3 sm:grid-cols-2">
           <PersonSelect label="Person on the roster" value={personId} onChange={setPersonId} />
           <label className="block text-sm">
@@ -242,7 +253,8 @@ function AuthorityPanel() {
         </div>
         {error && <p role="alert" className="text-sm font-semibold text-red-700">{error}</p>}
         <Button variant="primary" icon={Plus} onClick={add}>Designate release authority</Button>
-      </div>
+      </div>}
+      </fieldset>
     </Panel>
   );
 }
@@ -253,7 +265,7 @@ function SettingsPanel() {
   const next = nextAssignment(s);
   return (
     <Panel title="Command Transmission Settings" icon={Settings2}>
-      <p className="mb-3 text-sm text-muted">Persisted release sequence settings. Approved template text is preserved exactly; release does not perform external transmission.</p>
+      <p className="mb-3 text-sm text-muted">Persisted release sequence settings. Approved template text is preserved exactly; released traffic waits in the transmission queue for the Message Admin.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <p className="text-sm text-muted">Text case and formatting come from the published template and approved inputs, not release-time rewrites.</p>
         <TextInput label="Sequence prefix" value={s.sequencePrefix} maxLength={4} onChange={(e) => setS({ ...s, sequencePrefix: e.target.value })} />

@@ -1,5 +1,7 @@
 "use client";
 
+import { RequireRole } from "@/components/require-role";
+import { REPORT_VIEWER } from "@/lib/roles";
 import Link from "next/link";
 import { useState } from "react";
 import { AlertTriangle, BarChart3, BellRing, CheckCircle2, Database, Download, HardDrive, Mail, Send } from "lucide-react";
@@ -19,6 +21,10 @@ function sentStatus(m: Message, acked: number, total: number): SentStatus {
 }
 
 export default function ReportsPage() {
+  return <RequireRole role={REPORT_VIEWER}><ReportsPageContent /></RequireRole>;
+}
+
+function ReportsPageContent() {
   const { log, notify, messages, ackReceipts } = useStore();
   const [selected, setSelected] = useState<string | null>(null);
 

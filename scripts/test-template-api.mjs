@@ -214,15 +214,15 @@ try {
   assert.equal((await admin("", "GET", undefined, "")).status, 401);
   const managed = await (await admin("")).json();
   assert.equal(managed.users.length, 11);
-  assert.ok(managed.users.find((user) => user.login === "RWalsh").roles.includes("Designated Release Authority"));
+  assert.ok(managed.users.find((user) => user.login === "RWalsh").roles.includes("Release Authority"));
   assert.equal((await admin("", "POST", { login: "TJones", rank: "lt", surname: "Jones", billet: "Assistant N3", unit: "COMSUBLANT N3", roles: ["Message Viewer"] }, sessionCookie)).status, 201);
   assert.equal((await admin("", "POST", { login: "tjones", rank: "LT", surname: "Jones", billet: "Assistant N3", unit: "COMSUBLANT N3", roles: [] })).status, 409);
   assert.equal((await admin("", "POST", { login: "Bad", rank: "LT", surname: "X", billet: "B", unit: "U", roles: ["Emperor"] })).status, 400);
   assert.equal((await admin("", "POST", { login: "X1", rank: "LT", surname: "X", billet: "B", unit: "U", roles: [] }, sessionCookie.replace(/=.*/, "=bad"))).status, 401);
   assert.equal((await (await fetch(`${base}/api/users`)).json()).users.length, 12);
-  const edited = await admin(`/${patel.id}`, "PATCH", { billet: "Assistant Logistics Officer (N4A)", roles: ["Message Viewer", "Briefing Creator"] });
+  const edited = await admin(`/${patel.id}`, "PATCH", { billet: "Assistant Logistics Officer (N4A)", roles: ["Message Viewer", "Report Viewer"] });
   assert.equal(edited.status, 200, await edited.clone().text());
-  assert.deepEqual((await edited.json()).user.roles, ["Message Viewer", "Briefing Creator"]);
+  assert.deepEqual((await edited.json()).user.roles, ["Message Viewer", "Report Viewer"]);
   assert.equal(JSON.parse(sql(`SELECT profile::text FROM users WHERE id = '${patel.id}';`)).billet, "Assistant Logistics Officer (N4A)");
   assert.equal((await admin(`/${seededUser.id}`, "PATCH", { active: false })).status, 400, "Admins cannot deactivate themselves");
   assert.equal((await admin(`/${seededUser.id}`, "PATCH", { roles: ["Message Viewer"] })).status, 400, "Admins cannot drop their own System Admin role");

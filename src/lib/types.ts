@@ -66,6 +66,9 @@ export interface Message {
   releaseDesignation?: string;
   localSequence?: string;
   msn?: string;
+  /** Set when the Message Admin transmits a released message. */
+  transmittedAt?: string;
+  transmittedBy?: string;
   /** Date-time group, e.g. 151830Z OCT 26 */
   dtg: string;
   /** ISO timestamp for sorting and relative display */
@@ -276,11 +279,12 @@ export interface Draft {
   releasedAt?: string;
   releasedBy?: string;
   releaseDesignation?: string;
+  transmittedAt?: string;
   /** Approved text frozen at release. External transmission is separate. */
   renderedText?: string;
 }
 
-export type RoutingEventType = "created" | "submitted" | "advanced" | "returned" | "revised" | "released" | "withdrawn";
+export type RoutingEventType = "created" | "submitted" | "advanced" | "returned" | "revised" | "released" | "withdrawn" | "release_revoked" | "transmitted";
 
 /** Append-only route log entry. */
 export interface RoutingEvent {

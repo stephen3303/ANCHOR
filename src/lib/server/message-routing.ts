@@ -7,9 +7,10 @@ import { fmtDTG } from "@/lib/format";
 import { database } from "./db";
 import { ApiError } from "./api-error";
 import { accessArgs, DRAFT_ACCESS, appendRoutingEvent } from "./routing-data";
-import { commandPeople, lockedRoutingConfig } from "./routing-config";
+import { commandPeople, lockedRoutingConfig, releaseDesignation } from "./routing-config";
+import { canReleaseAny, hasRole, RELEASE_AUTHORITY } from "@/lib/roles";
 import { parseMessageInputs, renderSnapshot, saveReferences } from "./outgoing-messages";
-import { sha256, storeMessage } from "./messages";
+import { queueRelease } from "./transmissions";
 
 function cleanSteps(value: unknown): WorkflowStep[] {
   if (!Array.isArray(value) || !value.length || value.length > 20) throw new ApiError(400, "Choose 1–20 routing steps, ending with a release authority.");
@@ -75,7 +76,7 @@ export async function updateMessage(id: string, payload: unknown, user: AppUser)
       const people = await commandPeople(user.commandId,client);
       if (steps.some((entry)=>!people.some((person)=>person.id===entry.personId&&person.status==="present"))) throw new ApiError(400,"Every holder must be an active account in this command.");
       const last=steps[steps.length-1];
-      if (!people.find((person)=>person.id===last.personId)?.canRelease || !config.authorities.some((entry)=>entry.personId===last.personId&&(!entry.scope.length||entry.scope.includes(message.type)))) throw new ApiError(400,"The final holder needs a matching designation and Designated Release Authority role.");
+      if (!releaseDesignation(people.find((person)=>person.id===last.personId),config.authorities,message.type)) throw new ApiError(400,"The final holder must be the Release Authority or a Designated Release Authority designated for this message type.");
       route=pendingRoute(steps); routeCustom=body.steps!==null; workflowId=workflow?.id??null; status="drafting";
       event="revised"; eventComment=routeCustom?"Drafter customized the routing chain. All approvals cleared; resubmit for fresh review.":"Drafter restored the command default chain. All approvals cleared; resubmit for fresh review.";
     } else if (action === "withdraw") {
@@ -95,8 +96,7 @@ export async function updateMessage(id: string, payload: unknown, user: AppUser)
       const people = await commandPeople(user.commandId,client);
       if (steps.some((entry)=>!people.some((person)=>person.id===entry.personId&&person.status==="present"))) throw new ApiError(409,"Every route step must have an active command account, with exactly one final release step.");
       const last = steps[steps.length-1];
-      const authority = config.authorities.find((entry)=>entry.personId===last.personId&&(!entry.scope.length||entry.scope.includes(message.type)));
-      if (!authority || !people.find((person)=>person.id===last.personId)?.canRelease) throw new ApiError(409,"The final holder needs a matching designation and Designated Release Authority role.");
+      if (!releaseDesignation(people.find((person)=>person.id===last.personId),config.authorities,message.type)) throw new ApiError(409,"The final holder must be the Release Authority or a Designated Release Authority designated for this message type.");
       if (!route.length) workflowId=workflow!.id;
       route=pendingRoute(steps).map((entry,index)=>index===0?{...entry,status:"current"}:entry); status="in_routing"; event="submitted"; eventComment="Submitted on the saved routing chain. Every step requires fresh approval.";
     } else {
@@ -116,26 +116,24 @@ export async function updateMessage(id: string, payload: unknown, user: AppUser)
         if (step.action!=="release" || route.some((entry)=>entry.order<step.order&&entry.status!=="endorsed")) throw new ApiError(409,"Every preceding review must be endorsed before release.");
         if (hasOverlongMessageLine(message.rawText || message.renderedText || "")) throw new ApiError(409,"Message lines exceed 69 characters. The drafter must save edits and obtain fresh approvals before release.");
         const config=await lockedRoutingConfig(client,user.commandId);
-        const authority=config.authorities.find((entry)=>entry.personId===user.id&&(!entry.scope.length||entry.scope.includes(message.type)));
-        if (!authority || !user.roles.some((role)=>role.name==="Designated Release Authority"&&role.granted)) throw new ApiError(403,"Release requires a matching command designation and the Designated Release Authority role.");
+        const designation=releaseDesignation({id:user.id,releaseAuthority:hasRole(user,RELEASE_AUTHORITY),canRelease:canReleaseAny(user)},config.authorities,message.type);
+        if (!designation) throw new ApiError(403,"Release requires the Release Authority role, or the Designated Release Authority role with a designation covering this message type.");
         const assignment=nextAssignment(config.settings);
         releaseSequence=config.settings.nextSequence; releasedAt=at;
         message={...message,kind:"released",source:"ANCHOR release",dtg:fmtDTG(at),received:at.toISOString(),reference:`${message.originator} ${message.type} ${assignment.localSequence}`,
-          localSequence:assignment.localSequence,msn:assignment.msn,releasedAt:at.toISOString(),releasedBy:user.id,releaseDesignation:authority.designation};
+          localSequence:assignment.localSequence,msn:assignment.msn,releasedAt:at.toISOString(),releasedBy:user.id,releaseDesignation:designation};
         await client.query("UPDATE command_routing SET settings=jsonb_set(settings,'{nextSequence}',$2::jsonb),revision=revision+1,updated_at=now() WHERE command_id=$1",[user.commandId,JSON.stringify(assignment.nextSequence)]);
         route=route.map((entry)=>entry.order===step.order?{...entry,status:"released",actedAt:at.toISOString(),comment}:entry);
-        status="released"; event="released"; eventComment=`Released in ANCHOR as ${authority.designation}, ${assignment.localSequence}. External transmission not performed.`;
+        status="released"; event="released"; eventComment=`Released as ${designation}, ${assignment.localSequence}. Queued for transmission by the Message Admin.`;
       }
     }
     const revision=row.routing_revision+1;
-    if (releasedAt) {
-      message = { ...message, c2oixId: `ANCHOR-${message.id}`, sha256: sha256(message.rawText), sizeKb: Math.max(1, Math.ceil(Buffer.byteLength(message.rawText) / 1024)) };
-      await storeMessage(client, message.rawText, message, user.id);
-    }
     await client.query(`UPDATE outgoing_messages SET record=$2::jsonb,workflow_status=$3,routing_route=$4::jsonb,workflow_id=$5,routing_revision=$6,updated_at=$7,
         released_at=$8,released_by=$9,release_sequence=$10,received_at=$11,route_custom=$12 WHERE id=$1`,
       [id,JSON.stringify(message),status,JSON.stringify(route),workflowId,revision,at,releasedAt,releasedAt?user.id:null,releaseSequence,message.received,routeCustom]);
     await appendRoutingEvent(client,message,user,revision,event,eventComment,stepTitle,at);
+    // A released message is final. It waits in the queue until the Message Admin transmits it.
+    if (releasedAt) await queueRelease(client,message,user,at);
     await client.query("COMMIT");
     return message;
   } catch(error) { await client.query("ROLLBACK"); throw error; }

@@ -15,7 +15,7 @@ export const SYSTEM_ADMIN = "System Admin";
 export const ROLE_CATALOG = [
   { name: MESSAGE_VIEWER, detail: "View messages, subscribe to available types and build briefings" },
   { name: SUBSCRIPTION_APPROVER, detail: "Assign feeds to users and review subscription requests" },
-  { name: REPORT_VIEWER, detail: "View the Reports page" },
+  { name: REPORT_VIEWER, detail: "View acknowledgement status on Transmission & Acknowledge" },
   { name: AUDITOR, detail: "View audit logs and integrity checks" },
   { name: MESSAGE_ADMIN, detail: "Transmit released traffic, manage comm links, send acknowledgements" },
   { name: DESIGNATED_RELEASE_AUTHORITY, detail: "Release outgoing traffic for designated message types" },

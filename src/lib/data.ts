@@ -866,7 +866,9 @@ function seedReferences(s: Seed): MessageReference[] {
   if (!s.relatesTo) return [];
   const target = seeds.find((t) => t.reference === s.relatesTo);
   if (!target) return [{ letter: "A", kind: "MSG", originator: "", dtg: "", serial: s.relatesTo.toUpperCase(), notations: [] }];
-  return [{ letter: "A", kind: "GENADMIN", originator: target.originator.toUpperCase(), dtg: normDtg(target.dtg), serial: target.reference.toUpperCase(), notations: [], amplification: target.subject.toUpperCase() }];
+  // Field 3 is the referenced message's own MSGID type, as its MSGID line writes it.
+  const kind = (target.subtag ? `${target.type}:${target.subtag}` : target.type).toUpperCase();
+  return [{ letter: "A", kind, originator: target.originator.toUpperCase(), dtg: normDtg(target.dtg), serial: target.reference.toUpperCase(), notations: [], amplification: target.subject.toUpperCase() }];
 }
 
 export const messageById = (id: string) => MESSAGES.find((m) => m.id === id);

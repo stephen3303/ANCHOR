@@ -387,7 +387,7 @@ these roles; no combination is blocked.
 | --- | --- | --- | --- |
 | Message Viewer | Read messages, freely subscribe to available types, build briefings. Every account holds it. | Automatic | Everyone |
 | Subscription Approver | Legacy approval demo; not required for message-type subscriptions | System Admin | Okafor, Chen, Ramos, Brooks, Taylor |
-| Report Viewer | The Reports page | System Admin | Most accounts |
+| Report Viewer | Acknowledgement status on Transmission & Acknowledge (the Message Admin sees it too) | System Admin | Most accounts |
 | Auditor | The Audit & Integrity page and `/api/integrity` | System Admin | Taylor, Nguyen, Harper |
 | Message Admin | Transmit released traffic, manage the C2OIX circuit and workstation links, send acknowledgements | System Admin | Harper |
 | Designated Release Authority | Release the message types in their designation | Release Authority, by designation | Chen, Brooks |
@@ -479,7 +479,7 @@ Saved chains survive reloads and are retained across text edits and resubmission
 The server enforces ownership, membership, roles, step order and expected revisions.
 
 Final release atomically freezes the approved text, allocates the command serial,
-and puts the message in the **Transmission Queue** (`/transmissions`). A released
+and puts the message in the queue on **Transmission & Acknowledge** (`/transmissions`). A released
 message cannot be edited. Until it is transmitted, the person who released it or
 the Release Authority can withdraw the release with a reason; the draft returns
 to its drafter and needs fresh approvals (its serial stays used). When the
@@ -726,7 +726,7 @@ remaining application-level validation, and rollback-only schema tests.
 | `/watch-turnover` | Redirects to Watch Officer Home and opens Watch Handoff |
 | `/drafting` | Drafting & Release: fill a published template, save a private draft, and approve each step as its signed-in holder; only released messages enter the Messages list |
 | `/network` | Comms & Network: C2OIX circuit, ANCHOR server and three workstations. The Message Admin releases example traffic one message at a time, breaks and restores links, and resets messages for redelivery. (`/simulators`, `/topology` and `/offline` redirect here.) |
-| `/reports` | Acknowledgement accountability and traffic measures |
+| `/transmissions` | Transmission & Acknowledge: the queue of released traffic, acknowledgement status of the command's own traffic (Message Admin and Report Viewers), and the transmission log. (`/reports` redirects here.) |
 | `/audit` | Audit & Integrity: append-only, hash-chained log with a recompute check |
 | `/admin` | Tabs: legacy subscription approval demo, alert rules and access groups; Users; Routing & Release (workflows, release authority, transmission settings at `/admin#routing`; the old `/admin/routing` redirects there) |
 | `/profile` | Profile & Settings |

@@ -20,10 +20,12 @@ import { resolveAckStatus, sentByOwnCommand } from "@/lib/data";
 import { fmtDateTime, hoursUntil, shortHash } from "@/lib/format";
 import { PRECEDENCE_OBJECTIVE, categoryOf, keyOf, keyPath, precedenceAdvisory } from "@/lib/message-types";
 import { useStore } from "@/lib/store";
+import { citation, type ResolvedReference } from "@/lib/reference-links";
+import { formatReferenceSet } from "@/lib/references";
 import { useCurrentUser } from "@/lib/current-user";
 import { hasRole, MESSAGE_ADMIN } from "@/lib/roles";
 import type { Attachment, Message } from "@/lib/types";
-import { Button, CategoryBadge, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tabs, cx, tableWrap, tbodyRow } from "./ui";
+import { Button, CategoryBadge, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tabs, Tag, cx, tableWrap, tbodyRow } from "./ui";
 import { MessageCellsRow, MessageHeaderRow, messageColumns, type MessageCells } from "./message-columns";
 
 /** When provided, message links open in the existing reader instead of navigating. */
@@ -90,7 +92,7 @@ export function AckPanel({ m, compact }: { m: Message; compact?: boolean }) {
         <span>
           <strong>Sent by your command</strong> · {acked} of {commands.length} addressee commands acknowledged
         </span>
-        <Link href="/reports" className="ml-auto font-semibold text-link hover:underline">View in Reports</Link>
+        <Link href="/transmissions" className="ml-auto font-semibold text-link hover:underline">View on Transmission &amp; Acknowledge</Link>
       </div>
     );
   }
@@ -163,6 +165,10 @@ export function Attachments({ items }: { items: Attachment[] }) {
 
 /** The official rendition: source and integrity block, then numbered paragraphs. */
 export function OfficialText({ m }: { m: Message }) {
+  const { references } = useStore();
+  const resolved = references.resolve(m);
+  const linked = (text: string) => <RefText text={text} resolved={resolved} />;
+  const amplification = resolved.map((r) => r.ref.amplification).filter(Boolean).join(" ");
   return (
     <article className="rounded-md border border-line bg-white">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line bg-navy-50 px-4 py-2 text-xs text-muted">
@@ -182,6 +188,10 @@ export function OfficialText({ m }: { m: Message }) {
           INFO {m.info}
           <br />
           {`SUBJ/${m.subject.toUpperCase()}//`}
+          {resolved.map((r) => <span key={r.ref.letter}><br />{r.target
+            ? <MessageLink id={r.target.id} className="font-semibold text-link hover:underline">{formatReferenceSet(r.ref)}</MessageLink>
+            : formatReferenceSet(r.ref)}</span>)}
+          {amplification && <><br />{resolved.length > 1 ? "NARR/" : "AMPN/"}{linked(amplification)}{"//"}</>}
         </div>
         {m.sections.map((s, i) => (
           <section key={s.heading}>
@@ -191,11 +201,11 @@ export function OfficialText({ m }: { m: Message }) {
             {s.body.length > 1 ? (
               <ol className="ml-6 list-decimal">
                 {s.body.map((b) => (
-                  <li key={b}>{b}</li>
+                  <li key={b}>{linked(b)}</li>
                 ))}
               </ol>
             ) : (
-              <p className="ml-5">{s.body[0]}</p>
+              <p className="ml-5">{linked(s.body[0])}</p>
             )}
           </section>
         ))}
@@ -230,9 +240,9 @@ type Tab = "message" | "raw" | "metadata" | "related" | "references" | "distribu
 
 export function MessageTabs({ m }: { m: Message }) {
   const [tab, setTab] = useState<Tab>("message");
-  const { messageById, messageByRef } = useStore();
+  const { messageById, references } = useStore();
   const related = m.related.map(messageById).filter(Boolean) as Message[];
-  const refs = [m.relatesTo, m.replacedBy].filter(Boolean) as string[];
+  const refs = references.resolve(m);
   return (
     <>
       <Tabs
@@ -257,7 +267,7 @@ export function MessageTabs({ m }: { m: Message }) {
       {tab === "raw" && <RawText m={m} />}
       {tab === "metadata" && <MetadataTable m={m} />}
       {tab === "related" && <MessageList items={related} />}
-      {tab === "references" && (refs.length ? <MessageList items={refs.map(messageByRef).filter(Boolean) as Message[]} /> : <p className="text-sm text-muted">No references.</p>)}
+      {tab === "references" && <ReferencesPanel m={m} />}
       {tab === "distribution" && (
         <ul className="grid gap-2 sm:grid-cols-2">
           {m.distribution.map((d) => (
@@ -267,6 +277,78 @@ export function MessageTabs({ m }: { m: Message }) {
       )}
       {tab === "integrity" && <IntegrityTable m={m} />}
     </>
+  );
+}
+
+/** "REF A", "REFS A AND B" in official text become links to the held messages they name. */
+function RefText({ text, resolved }: { text: string; resolved: ResolvedReference[] }) {
+  const held = new Map(resolved.filter((r) => r.target).map((r) => [r.ref.letter, r.target!]));
+  if (!held.size) return <>{text}</>;
+  const parts: ReactNode[] = [];
+  let last = 0;
+  for (const match of text.matchAll(/\bREF ([A-Z])\b/g)) {
+    const target = held.get(match[1]);
+    if (!target) continue;
+    parts.push(text.slice(last, match.index));
+    parts.push(<MessageLink key={match.index} id={target.id} className="font-semibold text-link hover:underline">{match[0]}</MessageLink>);
+    last = match.index + match[0].length;
+  }
+  parts.push(text.slice(last));
+  return <>{parts}</>;
+}
+
+const REFERENCE_STATUS: Record<ResolvedReference["status"], { label: string; tone: string }> = {
+  held: { label: "Held", tone: "bg-green-100 text-green-800" },
+  "not-held": { label: "Not held on this server", tone: "bg-amber-100 text-amber-900" },
+  "not-a-message": { label: "Not a message", tone: "bg-slate-200 text-slate-700" },
+};
+const NOTATION_NOTE: Record<string, string> = {
+  NOTAL: "Not all addressees hold this reference.",
+  PASEP: "Passed separately to some or all addressees.",
+  BOM: "Sent by other means.",
+};
+
+/** Every REF set, A to the last, with where it points; then the held messages that cite this one. */
+export function ReferencesPanel({ m }: { m: Message }) {
+  const { references, notify } = useStore();
+  const refs = references.resolve(m);
+  const citedBy = references.citedBy(m);
+  return (
+    <div className="space-y-4">
+      {m.referenceIssues?.length ? (
+        <div role="note" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p className="font-semibold">This message breaks NTP 3(J) reference rules. It is listed for the Message Admin on Transmissions:</p>
+          <ul className="ml-5 list-disc">{m.referenceIssues.map((i) => <li key={i}>{i}</li>)}</ul>
+        </div>
+      ) : null}
+      {refs.length ? (
+        <ul className="divide-y divide-line rounded-md border border-line bg-white">
+          {refs.map((r) => {
+            const status = REFERENCE_STATUS[r.status];
+            return (
+              <li key={r.ref.letter} className="space-y-1 px-3 py-2 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-bold">REF {r.ref.letter}</span>
+                  <Tag>{r.ref.kind}</Tag>
+                  {r.target ? (
+                    <MessageLink id={r.target.id} className="font-semibold text-link hover:underline">{r.target.reference}: {r.target.subject}</MessageLink>
+                  ) : <span>{citation(r.ref)}</span>}
+                  <span className={cx("rounded px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide", status.tone)}>{status.label}</span>
+                  {!r.target && <Button size="sm" icon={Copy} className="ml-auto" onClick={() => { navigator.clipboard?.writeText(formatReferenceSet(r.ref)); notify(`Copied REF ${r.ref.letter}`); }}>Copy citation</Button>}
+                </div>
+                <p className="font-mono text-xs text-muted">{formatReferenceSet(r.ref)}</p>
+                {r.ref.amplification && <p>{r.ref.amplification}</p>}
+                {r.ref.notations.map((n) => <p key={n} className="text-xs text-muted">{n}: {NOTATION_NOTE[n]}</p>)}
+              </li>
+            );
+          })}
+        </ul>
+      ) : <p className="text-sm text-muted">No references.</p>}
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">Referenced by ({citedBy.length})</h3>
+        {citedBy.length ? <MessageList items={citedBy} /> : <p className="text-sm text-muted">No held message cites this one.</p>}
+      </section>
+    </div>
   );
 }
 

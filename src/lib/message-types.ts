@@ -50,6 +50,9 @@ const CATALOG = {
   "OPREP-3": { category: "Operational", name: "Operational Report 3", template: STANDARD, description: "Special incident reporting (PINNACLE, NAVY BLUE, unit SITREP), sent at high precedence." },
   "OPREP-5": { category: "Operational", name: "Operational Report 5", template: STANDARD, description: "Daily report while underway: equipment status, headcount, food and fuel levels, significant events." },
   CASREP: { category: "Operational", name: "Casualty Report", template: STANDARD, description: "Reports technical equipment failures by severity (CAT II, III, IV), with required periodic updates." },
+  OPREP: { category: "Operational", name: "Operational Report", template: "OPREP", description: "Event and incident reporting (OPREP-3 PINNACLE, NAVY BLUE, unit SITREP) drafted from the OPREP template." },
+  EXORD: { category: "Operational", name: "Execute Order", template: "EXORD", description: "Directs execution of an operation or exercise already planned, with start time and coordinating instructions." },
+  PLANORD: { category: "Operational", name: "Planning Order", template: "PLANORD", description: "Directs planning for an operation or exercise before execution is authorized." },
   INDIGO: { category: "Operational", name: "INDIGO", template: STANDARD, description: "Plans and authorizes Tomahawk Land-Attack Missile (TLAM) missions." },
 
   // Topic types: subscribe to the topic, or to one of its subtags.

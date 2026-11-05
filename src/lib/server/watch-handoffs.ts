@@ -10,13 +10,13 @@ import { HANDOFF_CHECKS, HandoffInputError, assertTransition, expectedRevision, 
 export const handoffAdmin = (u: AppUser) => hasRole(u, SYSTEM_ADMIN);
 const commandReader = (u: AppUser) => handoffAdmin(u) || hasRole(u, REPORT_VIEWER) || hasRole(u, AUDITOR) || hasRole(u, RELEASE_AUTHORITY);
 const COLUMNS = `id, station_id AS "stationId", station_name AS "stationName", team, outgoing_id AS "outgoingId", outgoing_name AS "outgoingName", incoming_id AS "incomingId", incoming_name AS "incomingName", watch_start AS "watchStart", watch_end AS "watchEnd", status, revision, previous_id AS "previousId", content, created_at AS "createdAt", updated_at AS "updatedAt", accepted_at AS "acceptedAt", acceptance_exceptions AS "acceptanceExceptions"`;
-async function transaction<T>(run: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function transaction<T>(run: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await database().connect();
   try { await client.query("BEGIN"); const result = await run(client); await client.query("COMMIT"); return result; }
   catch (error) { await client.query("ROLLBACK"); if ((error as { code?: string }).code === "23505") throw new ApiError(409, "This station/team or an open handoff already exists. Refresh to see the current record."); throw error; }
   finally { client.release(); }
 }
-async function station(client: Pick<PoolClient,"query">, user: AppUser, id: string, lock = false) {
+export async function station(client: Pick<PoolClient,"query">, user: AppUser, id: string, lock = false) {
   if (!isUUID(id)) throw new ApiError(400, "Invalid station ID.");
   const { rows: [row] } = await client.query<WatchStation>(`SELECT s.id, s.name, s.team, s.active, s.command_visible AS "commandVisible", s.revision,
     EXISTS(SELECT 1 FROM watch_station_officers o WHERE o.station_id=s.id AND o.user_id=$2) AS assigned
@@ -24,7 +24,7 @@ async function station(client: Pick<PoolClient,"query">, user: AppUser, id: stri
   if (!row || !(row.assigned || handoffAdmin(user) || (row.commandVisible && commandReader(user)))) throw new ApiError(404,"Watch station is not available to this account.");
   return row;
 }
-function assigned(s: WatchStation, active = true) {
+export function assigned(s: WatchStation, active = true) {
   if (!s.assigned) throw new ApiError(403,"An administrator-assigned watch duty at this station is required. Selecting a Home view does not grant it.");
   if (active && !s.active) throw new ApiError(409,"This watch station is inactive.");
 }

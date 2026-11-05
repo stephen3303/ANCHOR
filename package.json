@@ -28,7 +28,7 @@
     "test:drafting:browser": "node scripts/test-drafting-api.mjs --browser",
     "test:templates:seed": "tsx scripts/test-template-seed.ts",
     "test:navigation": "playwright test",
-    "test:handoff": "tsx --test src/lib/watch-handoff.test.ts",
+    "test:handoff": "tsx --test src/lib/watch-handoff.test.ts src/lib/watch-summary.test.ts",
     "test:handoff:api": "node scripts/test-watch-handoff.mjs",
     "test:handoff:browser": "node scripts/test-watch-handoff.mjs --browser"
   },

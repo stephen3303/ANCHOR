@@ -10,6 +10,7 @@ import { MOCK_NOW, fmtDateTime, fmtTime } from "@/lib/format";
 import { currentMessage, actionDeadline, remaining } from "@/lib/watch-workspace";
 import { Button, Panel, PrecedenceBadge } from "@/components/ui";
 import { MessageReaderNavigation } from "@/components/message";
+import { WatchSummary } from "@/components/watch-summary";
 import { WatchHandoff } from "@/components/watch-handoff";
 import { MessageDetail } from "@/app/(workspace)/messages/[id]/detail";
 import { MESSAGE_TYPE_INFO } from "@/lib/message-types";
@@ -148,6 +149,7 @@ export function PersonalizedHome() {
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-slate-50 px-4 py-2.5 text-xs text-muted"><span>Received {fmtDateTime(new Date(start))} → {fmtDateTime(MOCK_NOW)}</span><span>Default: <strong className="text-ink">{defaultName}</strong> · Switching views keeps your time period</span></div>
     </section>
+    <WatchSummary active={view.id==="watch"} start={start} end={end} onOpenMessage={open}/>
     <WatchHandoff active={view.id === "watch"} openOnLoad={openHandoffOnLoad} onOpenMessage={open} />
     {notice && <p role="status" className={`rounded-md border px-3 py-2 text-sm ${noticeTone === "warning" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-green-200 bg-green-50 text-green-900"}`}>{notice}</p>}
     {manage && <div ref={manager} className="scroll-mt-4"><Panel title="Manage my views" action={<button aria-label="Close view manager" onClick={() => setManage(false)}><X className="size-4" /></button>}>

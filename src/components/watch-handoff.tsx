@@ -1,5 +1,6 @@
 "use client";
 
+import { RotatingTeamSetup } from "./watch-action-notes";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ClipboardCheck, RefreshCw, Settings2 } from "lucide-react";
 import { useCurrentUser } from "@/lib/current-user";
@@ -157,5 +158,5 @@ function StationSetup({stations,roster,disabled,onSaved}:{stations:WatchStation[
     <p className="text-xs text-muted">Assignments allow handoff participation only. They do not grant message administration, transmission, or release authority. Removing an outgoing officer from an open handoff may require restoring their duty before it can be edited.</p>
     <fieldset disabled={disabled||busy}><Check label="Allow authorized command readers (Report Viewer, Auditor, Release Authority)" checked={visible} onChange={disabled||busy?undefined:setVisible}/><Check label="Station active" checked={active} onChange={disabled||busy?undefined:setActive}/></fieldset>
     <Button type="submit" size="sm" variant="primary" disabled={disabled||busy||officers.length<2}>Save station assignments</Button>
-  </form></Panel>;
+  </form><RotatingTeamSetup roster={roster} disabled={disabled||busy} onSaved={onSaved}/></Panel>;
 }

@@ -176,12 +176,20 @@ export function validateStandardTemplateText(text: string): string[] {
 
 const canonicalJson = (value: unknown): string => JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
 
+/** The message type a template drafts: its name, in upper case. */
+export const templateType = (name: string) => name.trim().replace(/\s+/g, " ").toUpperCase();
+
 /** New publications require the standard contract; old versions are not rewritten. */
 export function validateTemplateForPublication(value: unknown): TemplateDefinition {
   const definition = validateTemplateDefinition(value);
   const topic = definition.fields.find((field) => field.name === "Type");
   if (!topic) invalid('Every template must include {{ Type }} (case-sensitive).');
-  if (topic?.fixedValue === undefined) invalid("Define a non-empty Type text value when creating or updating the template.");
+  // The template's name is its message type: one template drafts one type, and
+  // the name is written in MSGID field 2 (SAFETY or SAFETY:ELECTRICAL).
+  const type = templateType(definition.name);
+  if (!/^[A-Z0-9][A-Z0-9 :-]*$/.test(type)) invalid("Name the template after its message type, such as CASREP or SAFETY:ELECTRICAL (letters, digits, spaces, hyphens and one colon).");
+  if ((type.match(/:/g) ?? []).length > 1) invalid("A message type has at most one colon, between the type and its subtag.");
+  definition.fields = definition.fields.map((field) => field.name === "Type" ? { ...field, fixedValue: type } : field);
   validateStandardTemplateText(definition.text);
   for (const name of STANDARD_FIELD_NAMES) {
     const field = definition.fields.find((item) => item.name === name);

@@ -40,6 +40,40 @@ VALUES (${literal(m.id)}, ${literal(m.reference)}, ${literal(m.c2oixId)}, ${lite
 ON CONFLICT (id) DO NOTHING;`,
   ];
 });
+// Demo messages seeded before the type catalog were all written MSGID/GENADMIN,
+// so subscriptions filed them under GENADMIN. Repair those demo rows in place:
+// the raw text, its hash and the display record are rewritten from the demo
+// source, and the message is refiled under its real type. Only rows whose id and
+// C2OIX id both match a demo message are touched, and only when the text differs;
+// received and released traffic is never changed. The append-only guards are
+// lifted for this one statement block and restored before COMMIT.
+const repairs = MESSAGES.map((m) => {
+  const display: Record<string, unknown> = { ...m };
+  for (const key of ["rawText", "sha256", "c2oixId", "lifecycle", "replacedBy"]) delete display[key];
+  const type = m.subtag ? `${m.type}:${m.subtag}` : m.type;
+  const [id, c2oix, raw] = [literal(m.id), literal(m.c2oixId), literal(m.rawText)];
+  return `  IF EXISTS (SELECT 1 FROM messages x JOIN message_artifacts a ON a.c2oix_id = x.c2oix_id
+      WHERE x.id = ${id} AND x.c2oix_id = ${c2oix} AND a.raw_text <> ${raw}) THEN
+    UPDATE messages SET record = ${literal(JSON.stringify(display))}::jsonb WHERE id = ${id};
+    UPDATE message_artifacts SET raw_text = ${raw}, sha256 = ${literal(sha256(m.rawText))}, size_bytes = ${Buffer.byteLength(m.rawText, "utf8")} WHERE c2oix_id = ${c2oix};
+    IF topics THEN
+      INSERT INTO message_topics (name) VALUES (${literal(type)}) ON CONFLICT (name) DO NOTHING;
+      UPDATE message_topic_messages SET topic_id = (SELECT t.id FROM message_topics t WHERE t.name = ${literal(type)}) WHERE message_id = ${id};
+    END IF;
+  END IF;`;
+});
+// Before migration 009 there are no topics to refile; its backfill files them.
+const repairBlock = `DO $repair$
+DECLARE topics boolean := to_regclass('message_topic_messages') IS NOT NULL;
+BEGIN
+  ALTER TABLE message_artifacts DISABLE TRIGGER message_artifacts_append_only;
+  IF topics THEN ALTER TABLE message_topic_messages DISABLE TRIGGER message_topic_messages_append_only; END IF;
+${repairs.join("\n")}
+  IF topics THEN ALTER TABLE message_topic_messages ENABLE TRIGGER message_topic_messages_append_only; END IF;
+  ALTER TABLE message_artifacts ENABLE TRIGGER message_artifacts_append_only;
+END
+$repair$;`;
+
 const receipts = Object.entries(ACK_RECEIPTS).flatMap(([id, list]) => list.map((r) =>
   `INSERT INTO message_acknowledgements (message_id, origin, command_name, acknowledged_at)
 VALUES (${literal(id)}, 'received', ${literal(r.command)}, ${literal(r.at)})
@@ -48,6 +82,7 @@ ON CONFLICT (message_id, command_name, acknowledged_at) WHERE origin = 'received
 const sql = `BEGIN;
 SET LOCAL standard_conforming_strings = on;
 ${statements.join("\n")}
+${repairBlock}
 ${receipts.join("\n")}
 COMMIT;`;
 
@@ -62,6 +97,6 @@ if (process.argv.includes("--sql")) {
     console.error(result.error?.message || result.stderr || "Message seed failed.");
     process.exitCode = 1;
   } else {
-    console.log(`Seeded ${MESSAGES.length} demo messages and ${receipts.length} acknowledgements received from other commands. Existing records are preserved.`);
+    console.log(`Seeded ${MESSAGES.length} demo messages and ${receipts.length} acknowledgements received from other commands. Demo messages written under the wrong MSGID type were corrected; other records are preserved.`);
   }
 }

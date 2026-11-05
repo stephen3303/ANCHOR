@@ -1,7 +1,11 @@
-import { keyCovers } from "./message-types";
+import { keyCovers, keyOf } from "./message-types";
 import type { Message } from "./types";
 
-/** Topic names are exact, author-defined Type values, not workflow categories. */
+/** Id of a template's Type that has no topic row yet; subscribing creates it. */
+export const PENDING_TOPIC_PREFIX = "type:";
+export const isPendingTopic = (id: string) => id.startsWith(PENDING_TOPIC_PREFIX);
+
+/** Topic names are upper-case MSGID field 2 types, not workflow categories. */
 export interface MessageTopic {
   id: string;
   name: string;
@@ -12,18 +16,22 @@ export interface MessageTopic {
 }
 
 /**
- * A message is in the feed when its own topic is subscribed, or when a
- * subscribed topic is its type alone: SAFETY catches SAFETY:ELECTRICAL
- * (MSGID field 2, type:subtag). Names compare exactly, so case still matters.
+ * The type a message is filed under for subscriptions: the published Type the
+ * server registered for it, or, for traffic the server never stored (simulator
+ * messages), the MSGID field 2 read from its text. Always upper case.
+ */
+export const subscriptionKey = (message: Message) => (message.subscriptionType ?? keyOf(message)).toUpperCase();
+
+/**
+ * A message is in the feed when a subscribed type is its type, or its type
+ * alone: SAFETY catches SAFETY:ELECTRICAL (MSGID field 2, TYPE:SUBTAG).
+ * Types compare in upper case.
  */
 export function subscribedMessages(messages: Message[], topics: readonly MessageTopic[]): Message[] {
-  const subscribed = topics.filter((topic) => topic.subscribed);
-  const ids = new Set(subscribed.map((topic) => topic.id));
-  const names = topics.reduce((map, topic) => map.set(topic.id, topic.name), new Map<string, string>());
+  const subscribed = topics.filter((topic) => topic.subscribed).map((topic) => topic.name.toUpperCase());
+  if (!subscribed.length) return [];
   return messages.filter((message) => {
-    if (!message.subscriptionTopicId) return false;
-    if (ids.has(message.subscriptionTopicId)) return true;
-    const name = names.get(message.subscriptionTopicId) ?? message.subscriptionType;
-    return !!name && subscribed.some((topic) => keyCovers(topic.name, name));
+    const key = subscriptionKey(message);
+    return subscribed.some((name) => keyCovers(name, key));
   });
 }

@@ -70,14 +70,13 @@ export default function NetworkPage() {
         title="Comms & Network"
         subtitle={isMessageAdmin
           ? "The command's links: the C2OIX circuit, the ANCHOR server and three workstations. Release traffic one message at a time and break any link to see where it waits. Breaking the circuit puts every screen into EMCON / offline mode."
-          : "Link status for the command's two servers and three workstations. The Message Admin releases traffic and manages the links."}
+          : "The command's two servers and three workstations. Release example traffic one message at a time to see where it goes. The Message Admin manages the links."}
         actions={
-          isMessageAdmin && (
-            <>
-              <Button icon={Undo2} onClick={t.resetMessages} disabled={!t.repo.some((m) => m.status !== "queued")}>Reset messages</Button>
-              <Button icon={RotateCcw} onClick={t.restoreAll} disabled={t.circuitUp && !down.length}>Restore all connections</Button>
-            </>
-          )
+          <>
+            {/* Demo controls: anyone can release and reset example traffic. */}
+            <Button icon={Undo2} onClick={t.resetMessages} disabled={!t.repo.some((m) => m.status !== "queued")}>Reset messages</Button>
+            {isMessageAdmin && <Button icon={RotateCcw} onClick={t.restoreAll} disabled={t.circuitUp && !down.length}>Restore all connections</Button>}
+          </>
         }
       />
 
@@ -94,7 +93,7 @@ export default function NetworkPage() {
         <div className="mx-auto flex max-w-5xl flex-col items-center">
           <NodeCard node="c2oix" status={t.circuitUp ? "Reachable" : "Unreachable"} up={t.circuitUp} pipes={t.pipes.c2oix} onQueue={() => setQueueNode("c2oix")}>
             <div>{t.atC2oix} waiting for this command</div>
-            {isMessageAdmin && <Button size="sm" variant="primary" icon={Send} className="mt-2" onClick={t.releaseNext} disabled={!t.atC2oix}>Release next message</Button>}
+            <Button size="sm" variant="primary" icon={Send} className="mt-2" onClick={t.releaseNext} disabled={!t.atC2oix}>Release next message</Button>
           </NodeCard>
 
           <LinkButton label="C2OIX circuit" up={t.circuitUp} disabled={!isMessageAdmin} onClick={t.circuitUp ? t.disconnect : t.connect} />

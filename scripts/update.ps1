@@ -56,8 +56,10 @@ try {
   }
 
   Step "Pulling main"
-  if ((git branch --show-current) -ne "main") { Run git @("switch", "main") }
+  # Capture the starting revision before switching branches, so lockfile
+  # changes between the original checkout and the updated main trigger npm ci.
   $before = git rev-parse HEAD
+  if ((git branch --show-current) -ne "main") { Run git @("switch", "main") }
   Run git @("pull", "--ff-only", "origin", "main")
   $after = git rev-parse HEAD
   $changed = @()

@@ -12,11 +12,11 @@ import { useRouting } from "@/lib/routing-store";
 import { useStore } from "@/lib/store";
 
 type PublishedTemplate = TemplateDefinition & { id: string; versionId: string; version: number };
-export function DraftComposer({ draft, onSaved }: { draft?: ApiDraft; onSaved: (id: string) => void }) {
+export function DraftComposer({ draft, onSaved, initialTemplateId = "" }: { draft?: ApiDraft; onSaved: (id: string) => void; /** Start from this template, as the Templates page's Draft button does. */ initialTemplateId?: string }) {
   const routing = useRouting();
   const { notify, log, offline } = useStore();
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState(draft ? "" : initialTemplateId);
   const [definition, setDefinition] = useState<PublishedTemplate | null>(draft ? { ...draft.definition, id: draft.templateVersionId, versionId: draft.templateVersionId, version: draft.templateVersion } : null);
   const [subject, setSubject] = useState(draft?.subject ?? "");
   const [precedence, setPrecedence] = useState<Precedence>(draft?.precedence ?? "ROUTINE");
@@ -97,9 +97,9 @@ export function DraftComposer({ draft, onSaved }: { draft?: ApiDraft; onSaved: (
         {typeFromTemplate
           ? <p className="space-y-1 text-sm"><span className="block font-semibold">Message type</span>{typeField?.fixedValue ? <span className="block font-mono">{typeField.fixedValue}</span> : null}<span className="text-muted">Set by the template&apos;s Type field, which writes MSGID field 2.</span></p>
           : <label className="block space-y-1 text-sm font-semibold">Message type<select className={templateInputClass} value={messageType} disabled={busy} onChange={(event) => setMessageType(event.target.value)}>{DRAFT_KEYS.map((key) => <option key={key} value={key}>{splitKey(key)[1] ? "\u00a0\u00a0" : ""}{keyOption(key)}</option>)}</select></label>}
-        <label className="block space-y-1 text-sm font-semibold">Precedence<select className={templateInputClass} value={precedence} disabled={busy} onChange={(event) => setPrecedence(event.target.value as Precedence)}>{PRECEDENCES.map((value) => <option key={value}>{value}</option>)}</select></label>
+        <label className="block space-y-1 text-sm font-semibold">Precedence<select aria-describedby="draft-precedence-help" className={templateInputClass} value={precedence} disabled={busy} onChange={(event) => setPrecedence(event.target.value as Precedence)}>{PRECEDENCES.map((value) => <option key={value}>{value}</option>)}</select><span id="draft-precedence-help" className="block text-xs font-normal text-muted">Also fills the precedence prosign in the heading.</span></label>
       </div>
-      <TemplateForm key={definition.versionId} definition={definition} initialValues={draft?.inputValues} initialCommands={draft?.commandSelections} onSubmit={save} disabled={busy || routing.busy} fieldErrors={fieldErrors} submitLabel={draft ? "Save corrections" : "Save draft"} />
+      <TemplateForm key={definition.versionId} definition={definition} precedence={precedence} initialValues={draft?.inputValues} initialCommands={draft?.commandSelections} onSubmit={save} disabled={busy || routing.busy} fieldErrors={fieldErrors} submitLabel={draft ? "Save corrections" : "Save draft"} />
     </Panel>}
   </div>;
 }

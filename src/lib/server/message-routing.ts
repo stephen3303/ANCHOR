@@ -5,6 +5,7 @@ import type { Message, RouteStep, RoutingEventType, WorkflowStep } from "@/lib/t
 import { selectWorkflow, nextAssignment } from "@/lib/routing";
 import { hasOverlongMessageLine } from "@/lib/message-format";
 import { fmtDTG } from "@/lib/format";
+import { stampReleaseDtg } from "@/lib/message-templates";
 import { database } from "./db";
 import { ApiError } from "./api-error";
 import { accessArgs, DRAFT_ACCESS, appendRoutingEvent } from "./routing-data";
@@ -39,7 +40,7 @@ export async function updateMessage(id: string, payload: unknown, user: AppUser)
   const client = await database().connect();
   try {
     await client.query("BEGIN");
-    const { rows: [row] } = await client.query(`SELECT m.*, d.template_version_id FROM outgoing_messages m JOIN message_drafts d ON d.id = m.draft_id
+    const { rows: [row] } = await client.query(`SELECT m.*, d.template_version_id, d.rendered_text AS draft_text FROM outgoing_messages m JOIN message_drafts d ON d.id = m.draft_id
       WHERE ${DRAFT_ACCESS} AND m.id = $4 FOR UPDATE OF m`, [...accessArgs(user),id]);
     if (!row) throw new ApiError(404,"Draft not found.");
     if (row.routing_revision !== body.revision) throw new ApiError(409,"Draft changed. Refresh before acting again.");
@@ -121,7 +122,12 @@ export async function updateMessage(id: string, payload: unknown, user: AppUser)
         if (!designation) throw new ApiError(403,"Release requires the Release Authority role, or the Designated Release Authority role with a designation covering this message type.");
         const assignment=nextAssignment(config.settings);
         releaseSequence=config.settings.nextSequence; releasedAt=at;
-        message={...message,kind:"released",source:"ANCHOR release",dtg:fmtDTG(at),received:at.toISOString(),reference:`${message.originator} ${message.type} ${assignment.localSequence}`,
+        // The DTG is the moment of release, written into the heading in place of the release marker.
+        // Stamp the saved draft text, which keeps the marker even after a withdrawn release.
+        const dtg=fmtDTG(at);
+        const approved=row.draft_text || message.rawText || message.renderedText || "";
+        const text=stampReleaseDtg(approved,dtg);
+        message={...message,kind:"released",source:"ANCHOR release",dtg,rawText:text,renderedText:text,sections:message.sections?.map((section)=>({...section,body:section.body.map((part)=>part===approved?text:stampReleaseDtg(part,dtg))})),received:at.toISOString(),reference:`${message.originator} ${message.type} ${assignment.localSequence}`,
           localSequence:assignment.localSequence,msn:assignment.msn,releasedAt:at.toISOString(),releasedBy:user.id,releaseDesignation:designation};
         await client.query("UPDATE command_routing SET settings=jsonb_set(settings,'{nextSequence}',$2::jsonb),revision=revision+1,updated_at=now() WHERE command_id=$1",[user.commandId,JSON.stringify(assignment.nextSequence)]);
         route=route.map((entry)=>entry.order===step.order?{...entry,status:"released",actedAt:at.toISOString(),comment}:entry);

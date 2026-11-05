@@ -97,7 +97,7 @@ try {
   assert.equal(resumed.user.id, seededUser.id);
   const workspacePage = await fetch(`${base}/templates`, { headers: { Cookie: sessionCookie } });
   assert.equal(new URL(workspacePage.url).pathname, "/templates");
-  assert.ok((await workspacePage.text()).includes("Plaintext template"), "Signed-in workspace must render its page on the server");
+  assert.ok((await workspacePage.text()).includes("Published templates"), "Signed-in workspace must render its page on the server");
   const readMessages = async (cookie = sessionCookie) => (await fetch(`${base}/api/messages`, { headers: { Cookie: cookie } })).json();
   const postMessage = (body, cookie = sessionCookie) => fetch(`${base}/api/messages`, { method: "POST", headers: { "Content-Type": "application/json", Origin: base, Cookie: cookie }, body: JSON.stringify(body) });
   assert.equal((await fetch(`${base}/api/messages`)).status, 401);
@@ -359,11 +359,14 @@ try {
   assert.throws(() => sql(`UPDATE message_topics SET name='tampered' WHERE id='${publishedTopic.id}';`), /append-only/);
   assert.throws(() => sql(`DELETE FROM message_topic_messages WHERE message_id='${released.id}';`), /append-only/);
   console.log("Pub/sub API passed: template-created topics reused at transmission, subscribe by type name, pinned Type identity, free idempotent subscriptions, viewer permissions, per-account isolation and unchanged All Messages.");
-  assert.equal(released.kind, "released"); assert.equal(released.renderedText, approvedText); assert.equal(released.rawText, approvedText);
+  // The approved text carries a DTG marker; release stamps the release DTG in its place (fresh after a withdrawn release).
+  assert.ok(approvedText.split("\nBT\n")[0].includes("DDHHMMZ MMM YY"));
+  const releasedText = approvedText.replace("DDHHMMZ MMM YY", released.dtg);
+  assert.equal(released.kind, "released"); assert.equal(released.renderedText, releasedText); assert.equal(released.rawText, releasedText);
   assert.ok(released.c2oixId.startsWith("ANCHOR-"), "Local release must not invent an external receipt");
   const localArtifact = await (await fetch(`${base}/api/messages/${released.id}/artifact`, { headers: { Cookie: sessionCookie } })).json();
   assert.equal(localArtifact.intact, true);
-  assert.equal(localArtifact.rawText, approvedText);
+  assert.equal(localArtifact.rawText, releasedText);
   assert.equal(released.localSequence, "#0043", "A withdrawn release keeps its sequence number used"); assert.ok(released.dtg); assert.equal(released.releasedBy, walshId);
   assert.equal((await readMessages()).messages.length, seedCount + 1);
   assert.ok((await readMessages(sessions.RPatel.cookie)).messages.some((message) => message.id === draft.id));
@@ -515,9 +518,10 @@ try {
   await transition(wrapMessage.id, "submit");
   const wrappedPublication = await transition(wrapMessage.id, "release", walsh);
   await transmitRelease(wrapMessage.id);
-  assert.equal(wrappedPublication.message.rawText, wrapMessage.rawText);
+  const wrappedText = wrapMessage.rawText.replace("DDHHMMZ MMM YY", wrappedPublication.message.dtg);
+  assert.equal(wrappedPublication.message.rawText, wrappedText);
   const wrappedArtifact = await (await fetch(`${base}/api/messages/${wrapMessage.id}/artifact`, { headers: { Cookie: sessionCookie } })).json();
-  assert.equal(wrappedArtifact.rawText, wrapMessage.rawText); assert.equal(wrappedArtifact.intact, true);
+  assert.equal(wrappedArtifact.rawText, wrappedText); assert.equal(wrappedArtifact.intact, true);
   const standardVersionId = sql("SELECT v.id FROM message_template_versions v JOIN message_templates t ON t.id=v.template_id WHERE t.key='standard-message' AND v.published_at IS NOT NULL ORDER BY v.version DESC LIMIT 1;").trim();
   const legacyProfile = sql(`SELECT formatting_profile::text FROM message_template_versions WHERE id='${standardVersionId}';`);
   const standardCreate = await postMessage({ requestId: randomUUID(), templateVersionId: standardVersionId, subject: "Standard template wrapping", precedence: "ROUTINE", values: {
@@ -585,8 +589,10 @@ try {
   const { template: autoTemplate } = await autoPublished.json();
   const savedAuto = await (await fetch(`${base}/api/message-templates/${autoTemplate.id}`)).json();
   assert.deepEqual(authorFields(savedAuto.template.fields), automatic.fields);
-  assert.deepEqual(Object.keys(JSON.parse(sql(`SELECT input_schema->'properties' FROM message_template_versions WHERE id = '${autoTemplate.versionId}';`))).sort(), [...standardInputNames].sort());
-  assert.deepEqual(JSON.parse(sql(`SELECT input_schema->'required' FROM message_template_versions WHERE id = '${autoTemplate.versionId}';`)).sort(), [...standardInputNames].sort());
+  // Precedence comes from the draft and DateTime is stamped at release, so neither is a drafter input.
+  const typedInputNames = standardInputNames.filter((name) => !["Precedence", "DateTime"].includes(name));
+  assert.deepEqual(Object.keys(JSON.parse(sql(`SELECT input_schema->'properties' FROM message_template_versions WHERE id = '${autoTemplate.versionId}';`))).sort(), [...typedInputNames].sort());
+  assert.deepEqual(JSON.parse(sql(`SELECT input_schema->'required' FROM message_template_versions WHERE id = '${autoTemplate.versionId}';`)).sort(), [...typedInputNames].sort());
   const preview = (body, origin = base, cookie = sessionCookie) => fetch(`${base}/api/message-templates/preview-generated`, { method: "POST", headers: { "Content-Type": "application/json", Origin: origin, Cookie: cookie }, body: JSON.stringify(body) });
   assert.equal((await preview(automatic, base, "")).status, 401);
   assert.equal((await preview(automatic, base, "anchor_session=LTaylor")).status, 401);
@@ -645,9 +651,14 @@ try {
       await page.getByRole("button", { name: "New Draft", exact: true }).click();
       await page.getByRole("combobox", { name: "Message template", exact: true }).selectOption(template.id);
       await page.getByRole("textbox", { name: "Message subject", exact: true }).fill("Browser-created draft");
-      await page.getByRole("group", { name: /^Precedence/ }).getByRole("combobox").selectOption("R - Routine");
+      // One precedence choice for the draft; the template's Precedence and DateTime are not inputs.
+      await expect(page.getByRole("group", { name: /^Precedence/ }).getByRole("combobox")).toHaveCount(0);
+      await expect(page.getByRole("group", { name: /^DateTime/ }).getByRole("textbox")).toHaveCount(0);
+      await expect(page.getByRole("combobox", { name: /^Precedence/ })).toHaveCount(1);
+      await page.getByRole("combobox", { name: /^Precedence/ }).selectOption("PRIORITY");
+      await expect(page.locator("pre")).toContainText("P DDHHMMZ MMM YY");
       for (const [name, value] of Object.entries(standardInputValues(commands.commands[0].id))) {
-        if (typeof value === "string" && name !== "Precedence") await page.getByRole("textbox", { name, exact: true }).fill(value);
+        if (typeof value === "string" && !["Precedence", "DateTime"].includes(name)) await page.getByRole("textbox", { name, exact: true }).fill(value);
       }
       for (const name of ["Recipients", "Info"]) {
         const group = page.getByRole("group", { name: new RegExp(`^${name}`) });

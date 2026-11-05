@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, CornerUpLeft, FilePenLine, Plus, Send, XCircle } from "lucide-react";
 import { ActAs, HolderNote, fieldCls } from "@/components/routing";
 import { DraftRoutingEditor } from "@/components/draft-routing-editor";
@@ -16,12 +17,20 @@ import type { RoutingEventType } from "@/lib/types";
 
 type Filter = "all" | "mine" | "waiting" | "released";
 const EVENTS: Record<RoutingEventType,string> = {created:"Created",submitted:"Submitted",advanced:"Endorsed",returned:"Returned",revised:"Revised",released:"Released",withdrawn:"Withdrawn",release_revoked:"Release withdrawn",transmitted:"Transmitted"};
+// The Templates page links here with ?template=<id> to start a draft from that template.
 export default function DraftingPage() {
+  return <Suspense fallback={<p role="status">Loading Drafting &amp; Release…</p>}><Drafting /></Suspense>;
+}
+
+function Drafting() {
   const routing = useRouting();
+  const router = useRouter();
   const { drafts, actorId } = routing;
+  const startTemplate = useSearchParams().get("template") ?? "";
   const [filter,setFilter] = useState<Filter>("all");
   const [selected,setSelected] = useState<string|null>(null);
-  const [creating,setCreating] = useState(false);
+  const [creating,setCreatingState] = useState(!!startTemplate);
+  const setCreating = (value: boolean) => { setCreatingState(value); if (!value && startTemplate) router.replace("/drafting"); };
   const waiting = (draft: ApiDraft) => draft.status === "in_routing" && currentStep(draft)?.personId === actorId;
   const rows = drafts.filter((draft) => filter === "all" || (filter === "mine" && draft.drafterId === actorId) || (filter === "waiting" && waiting(draft)) || (filter === "released" && draft.status === "released"));
   const draft = rows.find((item) => item.id === selected) ?? rows[0];
@@ -41,7 +50,7 @@ export default function DraftingPage() {
           </button>
         </li>)}</ul> : <EmptyState>{routing.loading ? "Loading…" : "No drafts in this view."}</EmptyState>}
       </Panel>
-      {creating ? <div><div className="mb-3 flex justify-end"><Button onClick={() => setCreating(false)}>Cancel new draft</Button></div><DraftComposer onSaved={(id) => {setSelected(id);setFilter("all");setCreating(false);}} /></div>
+      {creating ? <div><div className="mb-3 flex justify-end"><Button onClick={() => setCreating(false)}>Cancel new draft</Button></div><DraftComposer initialTemplateId={startTemplate} onSaved={(id) => {setSelected(id);setFilter("all");setCreating(false);}} /></div>
         : draft ? <Workspace key={draft.id} draft={draft} /> : <Panel><EmptyState>Start a new draft from a published template.</EmptyState></Panel>}
     </div>
   </>;

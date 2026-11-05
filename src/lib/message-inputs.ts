@@ -1,4 +1,5 @@
-import { TemplateValidationError, isCommandChoice, isDraftManagedField, type TemplateField, type TemplateValues } from "./message-templates";
+import { MAX_REFERENCE_VALUE, TemplateValidationError, isCommandChoice, isDraftManagedField, type TemplateField, type TemplateValues } from "./message-templates";
+import { draftReferenceIssues, parseReferenceValue } from "./references";
 import { ZULU_DATETIME_PATTERN } from "./format";
 
 export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -47,6 +48,19 @@ export function validateMessageInputs(fields: TemplateField[], input: unknown): 
       else if (field.required && !value.length) fail("Choose at least one option.");
       else if (field.control === "checkbox-group" && value.some((item) => !field.options.includes(item))) fail("Choose only the listed options.");
       else if (field.control === "command-multiple" && value.some((item) => !UUID_PATTERN.test(item))) fail("Choose commands from the directory.");
+    } else if (field.control === "reference-list") {
+      // A JSON list of REF sets. Every NTP 3(J) rule the drafter broke is listed on the field.
+      if (typeof value !== "string" || value.length > MAX_REFERENCE_VALUE) fail("References must be a list.");
+      else {
+        try {
+          const refs = parseReferenceValue(value);
+          const issues = draftReferenceIssues(refs);
+          if (field.required && !refs.length) fail("Add at least one reference.");
+          else if (issues.length) fail(issues.join(" "));
+        } catch (error) {
+          fail(error instanceof Error ? error.message : "References must be a list.");
+        }
+      }
     } else if (typeof value !== "string" || value.length > 5000 || value.includes("\0")) fail("Enter text of at most 5,000 characters.");
     else if (field.required && !value.trim()) fail("This field is required.");
     else if (value) {

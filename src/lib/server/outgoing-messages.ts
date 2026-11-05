@@ -9,6 +9,7 @@ import { resolveGeneratedInputs } from "@/lib/generated-inputs";
 import { MESSAGE_FORMATTING_PROFILE } from "@/lib/message-format";
 import { DRAFT_KEYS, keyParts } from "@/lib/message-types";
 import { msgidKey } from "@/lib/naval";
+import { draftReferenceIssues, normDtg, parseReferenceValue, storedReferences, type DraftReference, type MessageReference } from "@/lib/references";
 import { accessArgs, appendRoutingEvent, MESSAGE_ACCESS } from "./routing-data";
 import type { AppUser } from "@/lib/users";
 import type { Message, Precedence } from "@/lib/types";
@@ -41,6 +42,27 @@ function parseRequest(body: unknown): CreateRequest {
   return { ...input, requestId: raw.requestId.toLowerCase() };
 }
 
+/**
+ * Fill each reference picked from this server from the message as it is held:
+ * its MSGID type, sender, DTG and serial. The drafter's own words (AMPN text,
+ * notations, directive) are kept; a blank amplification takes the subject.
+ */
+async function resolveHeldReferences(client: PoolClient, fieldName: string, refs: DraftReference[]): Promise<DraftReference[]> {
+  const ids = [...new Set(refs.flatMap((r) => r.messageId ? [r.messageId] : []))];
+  if (!ids.length) return refs;
+  const { rows } = await client.query<{ record: Message }>(`SELECT record FROM messages WHERE id = ANY($1::text[])
+    UNION ALL SELECT record FROM outgoing_messages WHERE id = ANY($1::text[]) AND workflow_status = 'released'`, [ids]);
+  const held = new Map(rows.map(({ record }) => [record.id, record]));
+  const missing = refs.find((r) => r.messageId && !held.get(r.messageId)?.dtg);
+  if (missing) throw new MessageInputError({ [fieldName]: `REF ${missing.letter} is no longer held on this server. Remove it or enter it by hand.` });
+  return refs.map((r) => {
+    const m = r.messageId ? held.get(r.messageId) : undefined;
+    if (!m) return r;
+    return { ...r, kind: (m.subtag ? `${m.type}:${m.subtag}` : m.type).toUpperCase(), originator: m.originator.trim().toUpperCase(), dtg: normDtg(m.dtg),
+      ...(m.reference ? { serial: m.reference.toUpperCase() } : {}), amplification: r.amplification || m.subject.toUpperCase() };
+  });
+}
+
 export async function renderSnapshot(client: PoolClient, input: MessageInputs, user: AppUser, allowArchived = false) {
   const { rows: [version] } = await client.query(`SELECT v.id, v.version, v.renderer_version, v.ui_schema, v.output_definition, t.name, t.description
     FROM message_template_versions v JOIN message_templates t ON t.id = v.template_id
@@ -49,6 +71,16 @@ export async function renderSnapshot(client: PoolClient, input: MessageInputs, u
   const definition = validateTemplateDefinition({ name: version.name, description: version.description, text: version.output_definition.body,
     fields: version.ui_schema.fields.map((field: Record<string, unknown>) => field.control === "number" ? { ...field, control: "text" } : field) });
   const values = validateMessageInputs(definition.fields, input.values);
+  // References picked from this server are filled from the held message, so the
+  // REF line always names it by its real sender and DTG.
+  let refs: MessageReference[] = [];
+  for (const field of definition.fields.filter((item) => item.control === "reference-list")) {
+    const resolved = await resolveHeldReferences(client, field.name, parseReferenceValue(values[field.name]));
+    const issues = draftReferenceIssues(resolved);
+    if (issues.length) throw new MessageInputError({ [field.name]: issues.join(" ") });
+    values[field.name] = resolved.length ? JSON.stringify(resolved) : "";
+    refs = storedReferences(resolved);
+  }
   const commandFields = definition.fields.filter((field) => isCommandChoice(field.control));
   const selections = (name: string) => Array.isArray(values[name]) ? values[name] as string[] : values[name] ? [values[name] as string] : [];
   const ids = [...new Set(commandFields.flatMap((field) => selections(field.name)))];
@@ -75,7 +107,7 @@ export async function renderSnapshot(client: PoolClient, input: MessageInputs, u
   if (Buffer.byteLength(text, "utf8") > 1000000) throw new ApiError(400, "Generated message exceeds 1 MB.");
   // The template's Type writes MSGID field 2, so the rendered line decides the
   // message type when it names one; the chosen type is only a fallback.
-  return { version, values, text, now, messageKey: msgidKey(text) ?? input.messageType, sections: [{ heading: "Template text", body: [text] }],
+  return { version, values, text, now, refs, messageKey: msgidKey(text) ?? input.messageType, sections: [{ heading: "Template text", body: [text] }],
     metadata: { formatting: MESSAGE_FORMATTING_PROFILE, rendererVersion: version.renderer_version, templateVersion: version.version, resolvedAt: generated.resolvedAt, generatedValues: generated.values,
       generators: definition.fields.filter((field) => field.generator).map((field) => ({ name: field.name, ...field.generator })), sender: { userId: user.id, commandId: user.commandId, commandName: user.commandName } },
     references: commandFields.flatMap((field) => selections(field.name).map((commandId, position) => ({ field: field.name, position, sourceId, commandId, snapshot: commands.get(commandId) }))),
@@ -107,7 +139,7 @@ export async function createMessage(body: unknown, user: AppUser): Promise<{ mes
     const message: Message = { id: draft.id, kind: "draft", draftId: draft.id, renderedText: snapshot.text, rawText: snapshot.text, templateName: snapshot.version.name,
       subject: input.subject, reference: `DRAFT ${draft.id.slice(0,8).toUpperCase()}`, dtg: "", received: snapshot.now.toISOString(), ...keyParts(snapshot.messageKey),
       source: "Unreleased draft", originator: user.commandName, to: "", info: "", precedence: input.precedence, classification: "UNCLASSIFIED", importance: "Medium", lifecycle: "ACTIVE",
-      attachments: [], sections: snapshot.sections, ackRequired: false, c2oixId: "", sha256: "", sizeKb: Buffer.byteLength(snapshot.text)/1024,
+      attachments: [], sections: snapshot.sections, ackRequired: false, c2oixId: "", sha256: "", sizeKb: Buffer.byteLength(snapshot.text)/1024, refs: snapshot.refs,
       retention: "Local prototype", distribution: [], addressees: [], related: [] };
     await client.query(`INSERT INTO outgoing_messages (id,draft_id,created_by,request_id,request_hash,received_at,record,command_id,workflow_status)
       VALUES ($1::text,$1::uuid,$2,$3,$4,$5,$6::jsonb,$7,'drafting')`, [message.id,user.id,input.requestId,fingerprint,snapshot.now,JSON.stringify(message),user.commandId]);

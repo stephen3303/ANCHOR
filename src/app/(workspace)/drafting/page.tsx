@@ -17,7 +17,8 @@ import type { RoutingEventType } from "@/lib/types";
 
 type Filter = "all" | "mine" | "waiting" | "released";
 const EVENTS: Record<RoutingEventType,string> = {created:"Created",submitted:"Submitted",advanced:"Endorsed",returned:"Returned",revised:"Revised",released:"Released",withdrawn:"Withdrawn",release_revoked:"Release withdrawn",transmitted:"Transmitted"};
-// The Templates page links here with ?template=<id> to start a draft from that template.
+// The Templates page links here with ?template=<id> to start a draft from that template,
+// and a message's References tab with ?reference=<id> to cite that message.
 export default function DraftingPage() {
   return <Suspense fallback={<p role="status">Loading Drafting &amp; Release…</p>}><Drafting /></Suspense>;
 }
@@ -26,11 +27,14 @@ function Drafting() {
   const routing = useRouting();
   const router = useRouter();
   const { drafts, actorId } = routing;
-  const startTemplate = useSearchParams().get("template") ?? "";
+  const params = useSearchParams();
+  const startTemplate = params.get("template") ?? "";
+  // A message's References tab links here with ?reference=<id> to cite it in a new draft.
+  const startReference = params.get("reference") ?? "";
   const [filter,setFilter] = useState<Filter>("all");
   const [selected,setSelected] = useState<string|null>(null);
-  const [creating,setCreatingState] = useState(!!startTemplate);
-  const setCreating = (value: boolean) => { setCreatingState(value); if (!value && startTemplate) router.replace("/drafting"); };
+  const [creating,setCreatingState] = useState(!!startTemplate || !!startReference);
+  const setCreating = (value: boolean) => { setCreatingState(value); if (!value && (startTemplate || startReference)) router.replace("/drafting"); };
   const waiting = (draft: ApiDraft) => draft.status === "in_routing" && currentStep(draft)?.personId === actorId;
   const rows = drafts.filter((draft) => filter === "all" || (filter === "mine" && draft.drafterId === actorId) || (filter === "waiting" && waiting(draft)) || (filter === "released" && draft.status === "released"));
   const draft = rows.find((item) => item.id === selected) ?? rows[0];
@@ -50,7 +54,7 @@ function Drafting() {
           </button>
         </li>)}</ul> : <EmptyState>{routing.loading ? "Loading…" : "No drafts in this view."}</EmptyState>}
       </Panel>
-      {creating ? <div><div className="mb-3 flex justify-end"><Button onClick={() => setCreating(false)}>Cancel new draft</Button></div><DraftComposer initialTemplateId={startTemplate} onSaved={(id) => {setSelected(id);setFilter("all");setCreating(false);}} /></div>
+      {creating ? <div><div className="mb-3 flex justify-end"><Button onClick={() => setCreating(false)}>Cancel new draft</Button></div><DraftComposer initialTemplateId={startTemplate} initialReferenceId={startReference} onSaved={(id) => {setSelected(id);setFilter("all");setCreating(false);}} /></div>
         : draft ? <Workspace key={draft.id} draft={draft} /> : <Panel><EmptyState>Start a new draft from a published template.</EmptyState></Panel>}
     </div>
   </>;

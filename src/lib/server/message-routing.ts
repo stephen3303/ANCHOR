@@ -66,7 +66,7 @@ export async function updateMessage(id: string, payload: unknown, user: AppUser)
       await client.query(`UPDATE message_drafts SET subject=$2,message_type=$3,precedence=$4,input_values=$5::jsonb,rendered_document=$6::jsonb,rendered_text=$7,render_metadata=$8::jsonb,originator=$9 WHERE id=$1`,
         [row.draft_id,input.subject,snapshot.messageKey,input.precedence,JSON.stringify(snapshot.values),JSON.stringify({sections:snapshot.sections,body:snapshot.text}),snapshot.text,JSON.stringify(snapshot.metadata),user.commandName]);
       await saveReferences(client,row.draft_id,snapshot);
-      message = {...message,subject:input.subject,subtag:undefined,...keyParts(snapshot.messageKey),precedence:input.precedence,originator:user.commandName,renderedText:snapshot.text,rawText:snapshot.text,sections:snapshot.sections,sizeKb:Buffer.byteLength(snapshot.text)/1024};
+      message = {...message,subject:input.subject,subtag:undefined,...keyParts(snapshot.messageKey),precedence:input.precedence,originator:user.commandName,renderedText:snapshot.text,rawText:snapshot.text,sections:snapshot.sections,sizeKb:Buffer.byteLength(snapshot.text)/1024,refs:snapshot.refs};
       status="drafting"; route=pendingRoute(route);
       event="revised"; eventComment="Template inputs revised. Routing stopped and all approvals cleared; resubmit for fresh review.";
     } else if (action === "route") {

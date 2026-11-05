@@ -171,9 +171,19 @@ time in the draft's `render_metadata` alongside its rendered document/text.
 reference snapshots. `GET /api/messages?view=drafts` is scoped to the creator,
 assigned reviewers, or the command's admins; ordinary `GET /api/messages` remains
 main's published feed with read-state and acknowledgement data. Draft transition
-requests use `PATCH /api/messages/:id` with an expected revision. Content is
-frozen during review and after release; resubmission after a return starts a new
-approval chain. Only the current signed-in holder can approve or release, and
+requests use `PATCH /api/messages/:id` with an expected revision. The drafter
+can edit any unpublished message, including one under review or withdrawn.
+Content or chain edits reset status to drafting and clear all approvals atomically;
+resubmission starts fresh approval on the saved chain. `action: "route"` accepts
+1–20 distinct active command accounts as `{title, personId, action}` steps, ending
+with exactly one designated release authority; `steps: null` restores a copy of
+the command default. Clients cannot supply step status, approval timestamps or
+actors. These customizations do not modify command configuration.
+New approval-history entries include an append-only `route_snapshot`.
+Migration 007 adds `route_custom` and database publication locks: released
+outgoing rows, local published message records, saved inputs and reference
+snapshots cannot be updated or deleted. Truncation is also blocked. Incoming
+C2OIX lifecycle handling and separate read/acknowledgement state are unchanged. Only the current signed-in holder can approve or release, and
 release also checks their current role and command designation.
 
 Release publishes the exact approved body to main's artifact store in the same

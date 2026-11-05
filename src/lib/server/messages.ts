@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import { INITIAL_USER_STATE } from "@/lib/data";
 import { messageFromParsed } from "@/lib/ingest-record";
-import { idFor, NavalParseError, parseNavalMessage, targetLifecycle } from "@/lib/naval";
+import { idFor, NavalParseError, normRef, parseNavalMessage, targetLifecycle } from "@/lib/naval";
+import { normDtg, normSender, type MessageReference } from "@/lib/references";
 import type { AckReceipt, Lifecycle, Message, MessageUserState, ReadState } from "@/lib/types";
 import type { AppUser } from "@/lib/users";
 import { ApiError } from "./api-error";
@@ -192,6 +193,17 @@ export async function storeMessage(client: PoolClient, raw: string, record: Mess
 }
 
 /** Parse, hash and store raw C2OIX text, then apply any lifecycle directive it carries. */
+/** The stored message a REF set names, locked for update: sender plus DTG first, then serial. */
+async function findReferencedMessage(client: PoolClient, ref: MessageReference) {
+  const { rows: [row] } = await client.query<{ id: string; reference: string }>(`
+    SELECT id, reference FROM messages
+    WHERE ($1 <> '' AND upper(regexp_replace(btrim(record->>'originator'), '\\s+', ' ', 'g')) = $1 AND upper(replace(record->>'dtg', ' ', '')) = $2)
+       OR reference = $3
+    ORDER BY (upper(replace(record->>'dtg', ' ', '')) = $2) DESC
+    LIMIT 1 FOR UPDATE`, [ref.originator && ref.dtg ? normSender(ref.originator) : "", normDtg(ref.dtg), ref.serial ? normRef(ref.serial) : ""]);
+  return row;
+}
+
 export async function ingest(user: AppUser, raw: unknown): Promise<IngestResult> {
   if (typeof raw !== "string" || !raw.trim()) throw new ApiError(400, "Paste the raw message text.");
   if (Buffer.byteLength(raw, "utf8") > MAX_RAW_BYTES) throw new ApiError(413, "Raw message text must be 64 KB or less.");
@@ -211,15 +223,17 @@ export async function ingest(user: AppUser, raw: unknown): Promise<IngestResult>
     const { rows: [{ serial }] } = await client.query<{ serial: string }>("SELECT nextval('message_artifact_serial')::text AS serial");
     const c2oixId = `C2OIX-${parsed.received.slice(2, 4)}-${serial.padStart(6, "0")}`;
     const message = messageFromParsed(parsed, raw, { c2oixId, sha256: sha256(raw), sizeBytes: Buffer.byteLength(raw, "utf8") });
+    // The directive's target is found the way references are: sender plus DTG, then serial.
+    const target = parsed.directive ? await findReferencedMessage(client, parsed.refs.find((r) => r.letter === parsed.directive!.letter)!) : undefined;
+    if (target) message.relatesTo = target.reference;
     await storeMessage(client, raw, message, user.id);
     let applied: IngestResult["applied"];
     if (parsed.directive) {
       const lifecycle = targetLifecycle(parsed.directive.kind);
-      const { rows: [target] } = await client.query<{ id: string }>("SELECT id FROM messages WHERE reference = $1 FOR UPDATE", [parsed.directive.target]);
       if (!target) applied = { target: parsed.directive.target, missing: true };
       else if (lifecycle) {
         await client.query("UPDATE messages SET lifecycle = $2, replaced_by = $3 WHERE id = $1", [target.id, lifecycle, message.reference]);
-        applied = { target: parsed.directive.target, lifecycle };
+        applied = { target: target.reference, lifecycle };
       }
     }
     await client.query("COMMIT");

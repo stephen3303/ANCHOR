@@ -254,7 +254,32 @@ NNNN`;
   assert.equal(integrity.checked, seededMessages + 1);
   assert.deepEqual(integrity.failures, []);
 
-  console.log(`Message API test passed: ${seededMessages} seeded messages, command-level acknowledgement, per-person state, ingest, integrity.`);
+  // References: a REF with sender and DTG but no serial still finds its message, as the legacy system does.
+  const navsea = withNew.messages.find((m) => m.reference === "NAVSEAINST 4790.8");
+  const dtgKey = navsea.dtg.replace(/\s+/g, "");
+  const cancel = `R 051200Z NOV 26
+FM NAVSEA
+TO FLEET MAINTENANCE ACTIVITIES
+BT
+UNCLAS
+SUBJ/CANCELLATION OF MAINTENANCE GUIDANCE//
+MSGID/GENADMIN/NAVSEA/NAVSEAINST 4790.9//
+REF/A/GENADMIN/${navsea.originator.toUpperCase()}/${dtgKey}//
+REF/B/DOC/NAVSEA/01NOV26//
+NARR/THIS MSG CANCELS REF A. REF B IS NAVSEA TECH MANUAL S9086, REV 4.//
+RMKS/1. PURPOSE. CANCEL REF A.//
+BT
+NNNN`;
+  const cancelled = await json(await call(taylor, "/api/ingest", "POST", { raw: cancel }), 201);
+  assert.deepEqual(cancelled.applied, { target: "NAVSEAINST 4790.8", lifecycle: "CANCELLED" });
+  assert.equal(cancelled.message.relatesTo, "NAVSEAINST 4790.8");
+  assert.deepEqual(cancelled.message.refs.map((r) => [r.letter, r.kind]), [["A", "GENADMIN"], ["B", "DOC"]]);
+  assert.equal(cancelled.message.refs[1].amplification, "REF B IS NAVSEA TECH MANUAL S9086, REV 4.");
+  assert.equal(cancelled.message.referenceIssues, undefined);
+  const afterCancel = await json(await call(taylor, "/api/messages"));
+  assert.equal(afterCancel.messages.find((m) => m.id === navsea.id).lifecycle, "CANCELLED");
+
+  console.log(`Message API test passed: ${seededMessages} seeded messages, command-level acknowledgement, per-person state, ingest, references, integrity.`);
 } catch (error) {
   console.error(error);
   if (logs) console.error(logs.slice(-4000));

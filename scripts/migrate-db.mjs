@@ -6,11 +6,19 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const literal = (value) => `'${value.replaceAll("'", "''")}'`;
+const sha256 = (text) => createHash("sha256").update(text).digest("hex");
+// Checksums are taken over LF line endings, so a Windows checkout (Git's
+// core.autocrlf turns LF into CRLF) hashes the same as Linux and CI. Ledgers
+// written before this rule may hold the CRLF hash; that exact hash of the same
+// text is accepted once and rewritten to the LF hash.
+const toLf = (text) => text.replaceAll("\r\n", "\n");
+const crlfHash = (lfText) => sha256(lfText.replaceAll("\n", "\r\n"));
 // One explicit seed amendment requested after 006 shipped. Only this exact
 // before/after pair is accepted; all other applied-file changes still fail.
 const seedAmendment = {
   name: "006-standard-message-template.sql",
-  from: "8db320b28a498319d703d22373749f81e45d03d0db1f3b688a2fc4d78b1c1d4f",
+  // The shipped 006 hashed with LF and, on Windows checkouts, with CRLF.
+  from: ["8db320b28a498319d703d22373749f81e45d03d0db1f3b688a2fc4d78b1c1d4f", "1899ade704a20db7dc061ce394ef6e402e158ef922390132e75a87773e885206"],
   to: "99862484c415f2f86b63141cf8a2f3ba9c4248eb77adb279b44a151ef57d0dac",
   upgrade: "008-standard-message-body-textarea.sql",
 };
@@ -19,7 +27,7 @@ try {
   const migrations = ["database/init", "database/migrations"]
     .flatMap((directory) => readdirSync(join(root, directory))
       .filter((name) => name.endsWith(".sql"))
-      .map((name) => ({ name, sql: readFileSync(join(root, directory, name), "utf8") })))
+      .map((name) => ({ name, sql: toLf(readFileSync(join(root, directory, name), "utf8")) })))
     .sort((a, b) => a.name.localeCompare(b.name));
   if (new Set(migrations.map(({ name }) => name)).size !== migrations.length) {
     throw new Error("Migration filenames must be unique.");
@@ -45,17 +53,18 @@ try {
     );`,
   ];
   for (const { name, sql } of migrations) {
-    const checksum = createHash("sha256").update(sql).digest("hex");
+    const checksum = sha256(sql);
     if (canAmendSeed && name === seedAmendment.name && checksum === seedAmendment.to) {
-      statements.push(`DO $amendment$ BEGIN
-        IF EXISTS (SELECT 1 FROM schema_migrations WHERE name=${literal(name)} AND sha256=${literal(seedAmendment.from)}) THEN
+      for (const from of seedAmendment.from) statements.push(`DO $amendment$ BEGIN
+        IF EXISTS (SELECT 1 FROM schema_migrations WHERE name=${literal(name)} AND sha256=${literal(from)}) THEN
           INSERT INTO schema_migration_amendments(name,previous_sha256,new_sha256,upgrade_migration)
-            VALUES (${literal(name)},${literal(seedAmendment.from)},${literal(checksum)},${literal(seedAmendment.upgrade)});
+            VALUES (${literal(name)},${literal(from)},${literal(checksum)},${literal(seedAmendment.upgrade)});
           UPDATE schema_migrations SET sha256=${literal(checksum)} WHERE name=${literal(name)};
           RAISE NOTICE 'Recorded the approved Standard Message Body textarea seed amendment';
         END IF;
       END $amendment$;`);
     }
+    statements.push(`UPDATE schema_migrations SET sha256=${literal(checksum)} WHERE name=${literal(name)} AND sha256=${literal(crlfHash(sql))};`);
     statements.push(
       `DO $migration$ BEGIN
         IF EXISTS (SELECT 1 FROM schema_migrations WHERE name = ${literal(name)} AND sha256 <> ${literal(checksum)}) THEN

@@ -43,6 +43,11 @@ try {
   docker info *> $null
   if ($LASTEXITCODE -ne 0) { throw "Docker is not running. Start Docker Desktop and try again." }
 
+  # Migrations and seeds run with host Node (see README), so check before pulling.
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    throw "Node.js is not installed. Install Node 22 LTS (winget install OpenJS.NodeJS.LTS), open a new terminal, and rerun."
+  }
+
   Step "Checking for uncommitted changes"
   $dirty = git status --porcelain --untracked-files=no
   if ($dirty) {

@@ -66,6 +66,7 @@ function Clock() {
 function Header({ onMenu }: { onMenu: () => void }) {
   const { user: CURRENT_USER, signOut } = useUserSession();
   const { offline } = useStore();
+  const watchView = usePathname() === "/watch-turnover";
   const [open, setOpen] = useState(false);
   return (
     <header className="no-print relative z-40 flex h-16 shrink-0 items-center gap-3 bg-gradient-to-r from-navy-950 via-navy-900 to-navy-800 px-3 text-white shadow-md sm:h-[72px] sm:px-4">
@@ -95,12 +96,12 @@ function Header({ onMenu }: { onMenu: () => void }) {
         <div className="hidden items-center gap-2 border-l border-white/25 pl-4 xl:flex">
           <Globe className="size-7" aria-hidden />
           <div className="leading-tight">
-            <div className="text-sm font-semibold">{offline ? "DISCONNECTED AFLOAT" : "C2OIX FEED ONLINE"}</div>
-            <div className="text-[11px] text-white/80">{offline ? "No external network" : "Last ingest 2 min ago"}</div>
+            <div className="text-sm font-semibold">{watchView ? "DEMO FEED · UNVERIFIED" : offline ? "DISCONNECTED AFLOAT" : "C2OIX FEED ONLINE"}</div>
+            <div className="text-[11px] text-white/80">{watchView ? "Successful ingest not recorded" : offline ? "No external network" : "Last ingest 2 min ago"}</div>
           </div>
         </div>
         <div className="border-l border-white/25 pl-4">
-          <Clock />
+          {watchView ? <span className="hidden text-xs lg:block">Reporting clock<br />shown below</span> : <Clock />}
         </div>
         <div className="relative border-l border-white/25 pl-3">
           <button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 rounded-md p-1 hover:bg-white/10" aria-expanded={open}>

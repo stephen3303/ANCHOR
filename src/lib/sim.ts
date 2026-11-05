@@ -1,14 +1,14 @@
-// The two server simulators and the command's links, ported from the Base44 build.
+// The simulated C2OIX circuit and the command's links (Comms & Network screen).
 //
 //   C2OIX server  - outside the command. Holds a repository of example traffic and
-//                   hands the next message over only when an operator releases it.
+//                   hands the next message over only when the Message Admin releases it.
 //   ANCHOR server - at this command. Beats the circuit, ingests what is handed over,
 //                   passes it on to every workstation it can reach, and holds every
 //                   release for transmit until the circuit takes it.
 //
 // Traffic moves one hop at a time and waits at the last node it could reach.
 // Everything here is fictional example traffic.
-import type { Classification, Precedence } from "./types";
+import type { Classification, Message, MessageType, Precedence } from "./types";
 
 export type Station = "ws1" | "ws2" | "ws3";
 export const STATIONS: Station[] = ["ws1", "ws2", "ws3"];
@@ -54,23 +54,6 @@ export interface SimTransmission {
   attempts: number;
   transmittedAt?: string;
   receipt?: string;
-}
-
-export interface ExternalServer {
-  feedActive: boolean;
-  beats: number;
-  received: number;
-  lastBeatAt?: string;
-  note: string;
-}
-
-export interface LocalServer {
-  beats: number;
-  received: number;
-  lastBeatAt?: string;
-  peerState: "up" | "down" | "unknown";
-  latencyMs?: number;
-  note: string;
 }
 
 export interface LinkState {
@@ -173,3 +156,45 @@ export const fullyDelivered = (m: SimMessage) => m.status === "ingested" && STAT
 
 /** "C2OIX-0003-LXYZ" */
 export const receiptFor = (serial: number) => `C2OIX-${String(serial).padStart(4, "0")}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
+
+/** Inbox ids for simulated traffic, so the store never sends their state to the server. */
+const SIM_ID_PREFIX = "sim-";
+export const isSimMessageId = (id: string) => id.startsWith(SIM_ID_PREFIX);
+export const simMessageId = (m: Pick<SimMessage, "seq">) => `${SIM_ID_PREFIX}${m.seq}`;
+
+const TYPE_BY_ORIGINATOR: [string, MessageType][] = [["CNO", "ALNAV"], ["COMSUBLANT", "COMSUBLANT MSG"]];
+const IMPORTANCE: Record<Precedence, Message["importance"]> = { FLASH: "High", IMMEDIATE: "High", PRIORITY: "Medium", ROUTINE: "Low" };
+
+/** The inbox copy of a simulated message once a workstation has been handed it. */
+export function toInboxMessage(m: SimMessage, at: string): Message {
+  const paragraphs = m.body.split("\n").filter(Boolean);
+  const raw = [`${m.precedence} ${m.dtg}`, `FM ${m.originator}`, `TO ${m.to}`, ...(m.info ? [`INFO ${m.info}`] : []), "BT", m.classification, `SUBJ/${m.subject}//`, ...paragraphs, "BT"].join("\n");
+  return {
+    id: simMessageId(m),
+    dtg: m.dtg,
+    received: at,
+    subject: m.subject,
+    reference: m.reference,
+    type: TYPE_BY_ORIGINATOR.find(([k]) => m.originator.startsWith(k))?.[1] ?? "FLEET MSG",
+    originator: m.originator,
+    source: m.originator.split(" ")[0],
+    to: m.to,
+    info: m.info,
+    precedence: m.precedence,
+    classification: m.classification,
+    importance: IMPORTANCE[m.precedence],
+    lifecycle: "ACTIVE",
+    communities: ["Submarine Warfare"],
+    attachments: [],
+    sections: [{ heading: "Text", body: paragraphs }],
+    rawText: raw,
+    ackRequired: false,
+    c2oixId: `C2OIX-SIM-${String(m.seq).padStart(4, "0")}`,
+    sha256: Array.from({ length: 64 }, (_, i) => ((m.seq * 2654435761 + i * 40503) >>> (i % 24)) % 16).map((n) => n.toString(16)).join(""),
+    sizeKb: m.sizeKb,
+    retention: "Simulated traffic: cleared by Reset messages",
+    distribution: [],
+    addressees: [],
+    related: [],
+  };
+}

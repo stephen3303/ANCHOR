@@ -103,7 +103,7 @@ export function WatchPrep() {
 
       <div className={`flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-xs ${offline || stale ? "border-amber-300 bg-amber-50 text-amber-950" : "border-line bg-slate-50"}`} role="status">
         <span><strong>{offline ? "OFFLINE · cached demo" : "Demo online mode · live feed unverified"}</strong> · Last successful ingest: unavailable · Last sync: {fmtDateTime(lastSync)}{stale ? " · STALE against reporting clock" : ""}</span>
-        <div className="flex items-center gap-3"><Link href="/offline" className={link}>{pendingSync} pending sync</Link><button className={link} onClick={() => setRefreshed(new Date().toISOString())}><RefreshCw className="mr-1 inline size-3" />Refresh view</button></div>
+        <div className="flex items-center gap-3"><Link href="/network" className={link}>{pendingSync} pending sync</Link><button className={link} onClick={() => setRefreshed(new Date().toISOString())}><RefreshCw className="mr-1 inline size-3" />Refresh view</button></div>
       </div>
 
 

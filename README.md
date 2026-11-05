@@ -527,9 +527,7 @@ remaining application-level validation, and rollback-only schema tests.
 | `/briefings/generated` | Generated briefing |
 | `/watch-turnover` | Watch Turnover with notes and checklist |
 | `/drafting` | Drafting & Release: fill a published template, save a private draft, and approve each step as its signed-in holder; only released messages enter the Messages list |
-| `/simulators` | Server Simulators: the external C2OIX server and the local ANCHOR server |
-| `/topology` | Network Topology: two servers, three workstations; break and restore any link |
-| `/offline` | Offline / EMCON mode with sync queue (toggle "Simulate EMCON") |
+| `/network` | Comms & Network: C2OIX circuit, ANCHOR server and three workstations. The Message Admin releases example traffic one message at a time, breaks and restores links, and resets messages for redelivery. (`/simulators`, `/topology` and `/offline` redirect here.) |
 | `/reports` | Acknowledgement accountability and traffic measures |
 | `/audit` | Audit & Integrity: append-only, hash-chained log with a recompute check |
 | `/admin` | Tabs: subscription approval queue, alert rules and access groups; Users; Routing & Release (workflows, release authority, transmission settings at `/admin#routing`; the old `/admin/routing` redirects there) |
@@ -550,7 +548,7 @@ The UI follows the mockups. Where they differ from the ANCHOR requirements packa
 - **Audit.** Every action in the prototype is written to the audit log. Each event is chained to the one before it by SHA-256, and Audit & Integrity recomputes the chain and names the first break.
 - **No Reply / Forward.** The mockups show them, but releasing traffic stays with Designated Release Authorities, so the prototype offers Share Link instead.
 - **Routing and release.** Outgoing traffic follows an admin-defined chain matched by message type and originator. Steps are held by people on the roster; only the Release Authority or a designated release authority can release, the DTG and serial are assigned at release, and the Message Admin transmits from the queue.
-- **Circuit = EMCON.** Breaking the C2OIX circuit on Network Topology or Server Simulators is the same switch as offline mode. Releases are held at the ANCHOR server and C2OIX defers inbound traffic until it returns.
+- **Circuit = EMCON.** Breaking the C2OIX circuit on Comms & Network is the same switch as offline mode, and the only control for it. Connection status and the sync queue live in the header bar; queued items sync automatically when the circuit returns. Releases are held at the ANCHOR server and C2OIX defers inbound traffic until it returns.
 
 ## Stack
 

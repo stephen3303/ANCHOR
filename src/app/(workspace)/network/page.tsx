@@ -3,8 +3,9 @@
 import { useCurrentUser } from "@/lib/current-user";
 import { hasRole, MESSAGE_ADMIN } from "@/lib/roles";
 import { useState, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, Inbox, Monitor, Network, RotateCcw, Send, Server, X } from "lucide-react";
-import { Button, PageHeader, Panel, PrecedenceBadge, cx } from "@/components/ui";
+import { ArrowDown, ArrowUp, Inbox, Monitor, RadioTower, RotateCcw, Send, Server, Undo2, Waypoints, X } from "lucide-react";
+import { Button, EmptyState, PageHeader, Panel, PrecedenceBadge, StatusDot, cx, tableWrap, tbodyRow } from "@/components/ui";
+import { MessageCellsRow, MessageHeaderRow, messageColumns } from "@/components/message-columns";
 import { fmtDateTime } from "@/lib/format";
 import { NODES, STATIONS, fullyDelivered, owedTo, type NodeKey, type Station } from "@/lib/sim";
 import { useSim } from "@/lib/sim-store";
@@ -15,8 +16,6 @@ const TILE: Record<Tone, string> = {
   attention: "border-amber-300 bg-amber-50",
   error: "border-red-300 bg-red-50",
 };
-const TONE_LABEL: Record<Tone, string> = { up: "Reporting normally", attention: "Reporting offline", error: "Reporting a lost link" };
-const TONE_PILL: Record<Tone, string> = { up: "bg-green-100 text-green-800", attention: "bg-amber-100 text-amber-900", error: "bg-red-100 text-red-800" };
 
 interface Pipe {
   waiting: number;
@@ -52,7 +51,7 @@ function useTopology() {
   return { ...sim, pipes, reachable, held, atC2oix };
 }
 
-export default function TopologyPage() {
+export default function NetworkPage() {
   const t = useTopology();
   const isMessageAdmin = hasRole(useCurrentUser(), MESSAGE_ADMIN);
   const [queueNode, setQueueNode] = useState<NodeKey | null>(null);
@@ -67,12 +66,18 @@ export default function TopologyPage() {
   return (
     <>
       <PageHeader
-        icon={Network}
-        title="Network Topology"
+        icon={Waypoints}
+        title="Comms & Network"
         subtitle={isMessageAdmin
-          ? "A demonstration of the command's links: two servers and three workstations. Break any connection and watch how traffic and the command's reporting change."
-          : "Link status for the command's two servers and three workstations. The Message Admin monitors and restores the links."}
-        actions={isMessageAdmin && <Button icon={RotateCcw} onClick={t.restoreAll} disabled={t.circuitUp && !down.length}>Restore all connections</Button>}
+          ? "The command's links: the C2OIX circuit, the ANCHOR server and three workstations. Release traffic one message at a time and break any link to see where it waits. Breaking the circuit puts every screen into EMCON / offline mode."
+          : "The command's two servers and three workstations. Release example traffic one message at a time to see where it goes. The Message Admin manages the links."}
+        actions={
+          <>
+            {/* Demo controls: anyone can release and reset example traffic. */}
+            <Button icon={Undo2} onClick={t.resetMessages} disabled={!t.repo.some((m) => m.status !== "queued")}>Reset messages</Button>
+            {isMessageAdmin && <Button icon={RotateCcw} onClick={t.restoreAll} disabled={t.circuitUp && !down.length}>Restore all connections</Button>}
+          </>
+        }
       />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
@@ -87,14 +92,15 @@ export default function TopologyPage() {
       <Panel title="Command Links" className="mb-4" action={<span className="text-xs text-muted">{isMessageAdmin ? "Click a connection to break or restore it" : "View only. The Message Admin manages links."}</span>}>
         <div className="mx-auto flex max-w-5xl flex-col items-center">
           <NodeCard node="c2oix" status={t.circuitUp ? "Reachable" : "Unreachable"} up={t.circuitUp} pipes={t.pipes.c2oix} onQueue={() => setQueueNode("c2oix")}>
-            <div>Feed {t.external.feedActive ? "running" : "stopped"} · {t.atC2oix} waiting for this command</div>
-            <Button size="sm" variant="primary" icon={Send} className="mt-2" onClick={t.releaseNext} disabled={!t.external.feedActive || !t.atC2oix}>Release next message</Button>
+            <div>{t.atC2oix} waiting for this command</div>
+            <Button size="sm" variant="primary" icon={Send} className="mt-2" onClick={t.releaseNext} disabled={!t.atC2oix}>Release next message</Button>
           </NodeCard>
 
           <LinkButton label="C2OIX circuit" up={t.circuitUp} disabled={!isMessageAdmin} onClick={t.circuitUp ? t.disconnect : t.connect} />
 
           <NodeCard node="anchor" status="Online" up pipes={t.pipes.anchor} onQueue={() => setQueueNode("anchor")}>
             <div>Circuit {t.circuitUp ? "up" : "down"} · {t.reachable.length} of 3 workstations reachable · {t.held} held for transmit</div>
+            <Button size="sm" icon={RadioTower} href="/transmissions" className="mt-2">Transmission Queue</Button>
           </NodeCard>
 
           <div className="h-5 w-0.5 bg-slate-300" aria-hidden />
@@ -116,54 +122,7 @@ export default function TopologyPage() {
         </div>
       </Panel>
 
-      <Panel title="What the Command Reports" className="mb-4">
-        <ul className="divide-y divide-line">
-          {[
-            {
-              where: "Header and offline banner",
-              tone: (t.circuitUp ? "up" : "attention") as Tone,
-              what: t.circuitUp ? "Header shows UNCLASSIFIED and C2OIX FEED ONLINE. No offline banner." : "Header shows EMCON / OFFLINE and DISCONNECTED AFLOAT, and the amber offline banner is on every screen.",
-            },
-            {
-              where: "Offline Mode screen",
-              tone: (t.circuitUp ? "up" : "attention") as Tone,
-              what: t.circuitUp ? "Connected. Queued local changes sync on demand." : "Working from the local store. Acknowledgements and edits queue for sync when the circuit returns.",
-            },
-            {
-              where: "Workstations",
-              tone: (down.length ? "error" : "up") as Tone,
-              what: down.length
-                ? `${down.map((s) => NODES[s].code).join(", ")} cannot reach the ANCHOR server, so they receive no traffic from it and hold their work locally.`
-                : "Every workstation reaches the ANCHOR server.",
-            },
-            {
-              where: "Inbound traffic",
-              tone: (!t.reachable.length ? "attention" : "up") as Tone,
-              what: !t.circuitUp
-                ? "C2OIX defers traffic for this command. It is taken as a backlog when the circuit returns."
-                : !t.reachable.length
-                  ? "Nothing can take traffic past the ANCHOR server, so received messages wait there until a workstation link is restored."
-                  : "Received traffic passes the ANCHOR server straight on to every workstation it can reach, and waits there for the rest.",
-            },
-            {
-              where: "Release queue",
-              tone: (t.circuitUp ? "up" : "attention") as Tone,
-              what: t.circuitUp ? "Releases leave the command on the next pulse." : `Every release is held by the ANCHOR server (${t.held} now) and goes out when the circuit is restored.`,
-            },
-            { where: "Audit & Integrity", tone: "up" as Tone, what: "Every break, restore and ingest is appended to the audit chain." },
-          ].map((row) => (
-            <li key={row.where} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 first:pt-0 last:pb-0">
-              <span className="w-[200px] shrink-0 text-xs font-semibold uppercase tracking-wide text-navy-800">{row.where}</span>
-              <span className={cx("shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold uppercase", TONE_PILL[row.tone])}>{TONE_LABEL[row.tone]}</span>
-              <span className="min-w-0 flex-1 text-sm text-muted">{row.what}</span>
-            </li>
-          ))}
-        </ul>
-      </Panel>
-
-      <p className="text-sm text-muted">
-        The two servers are the Server Simulators: the same repository, beats and release queue. Nothing is handed over by itself. Release each message from the C2OIX node. Breaking the circuit puts the whole app into EMCON / offline mode.
-      </p>
+      <RepositoryPanel />
 
       {queueNode && <QueueDialog node={queueNode} onClose={() => setQueueNode(null)} />}
     </>
@@ -310,5 +269,55 @@ function QueueDialog({ node, onClose }: { node: NodeKey; onClose: () => void }) 
         </div>
       </div>
     </div>
+  );
+}
+
+/** Every example message and how far it has got. */
+function RepositoryPanel() {
+  const { repo } = useSim();
+  const cols = messageColumns<(typeof repo)[number]>({
+    seq: { className: "font-mono text-xs", cell: (m) => m.seq },
+    subject: (m) => m.subject,
+    reference: { className: "font-mono text-xs font-semibold", cell: (m) => m.reference },
+    from: (m) => m.originator,
+    precedence: (m) => <PrecedenceBadge p={m.precedence} />,
+    workstations: (m) =>
+      m.status !== "ingested" ? (
+        <span className="text-muted">-</span>
+      ) : fullyDelivered(m) ? (
+        <span className="text-green-700">All three</span>
+      ) : (
+        <span className="text-amber-800">Owed to {STATIONS.filter((s) => owedTo(m, s)).map((s) => NODES[s].code).join(", ")}</span>
+      ),
+    status: (m) => (
+      <>
+        <StatusDot tone={m.status === "ingested" ? "green" : m.status === "deferred" ? "amber" : "gray"}>
+          {m.status === "ingested" ? "Ingested" : m.status === "deferred" ? "Deferred at C2OIX" : "Queued at C2OIX"}
+        </StatusDot>
+        {m.lastError && m.status === "deferred" && <div className="text-xs text-muted">{m.lastError}</div>}
+      </>
+    ),
+  });
+  return (
+    <Panel title={`Example Traffic (${repo.length})`} className="mb-4" bodyClassName="p-0">
+      {repo.length ? (
+        <div className={cx(tableWrap, "rounded-none border-0")}>
+          <table className="w-full min-w-[860px]">
+            <thead>
+              <MessageHeaderRow cols={cols} />
+            </thead>
+            <tbody>
+              {repo.map((m) => (
+                <tr key={m.seq} className={tbodyRow}>
+                  <MessageCellsRow cols={cols} row={m} />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <EmptyState>No example traffic.</EmptyState>
+      )}
+    </Panel>
   );
 }

@@ -29,6 +29,10 @@ function gitCommit(): string {
 const nextConfig: NextConfig = {
   /* config options here */
   output: "standalone",
+  // Server Simulators, Network Topology and Offline Mode became one screen.
+  async redirects() {
+    return ["/simulators", "/topology", "/offline"].map((source) => ({ source, destination: "/network", permanent: true }));
+  },
   cacheComponents: true,
   partialPrefetching: true,
   // Inlined into the client bundle at build time, so the standalone Docker

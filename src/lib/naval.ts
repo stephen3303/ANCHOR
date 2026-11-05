@@ -196,7 +196,8 @@ export function parseNavalMessage(raw: string): ParsedMessage {
   if (!header.TO) fail("Missing the TO line.");
   i++; // past BT
 
-  const classLine = lines[i++]?.trim().toUpperCase() ?? "";
+  // Templates write the classification line as a set ("UNCLAS//"); the closing // is not part of it.
+  const classLine = (lines[i++]?.trim().toUpperCase() ?? "").replace(/\s*\/\/$/, "");
   if (CLASSIFIED.test(classLine)) fail("This prototype accepts only UNCLAS or CUI traffic. Classified text was refused and not stored.");
   const classification = CLASS_LINES[classLine] ?? fail(`Unknown classification line "${classLine}".`);
 

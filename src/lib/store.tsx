@@ -19,6 +19,7 @@ import {
 import { MOCK_NOW } from "./format";
 import { appendEvent, chainLog, type ChainedAuditEvent } from "./audit";
 import { useCurrentUser } from "./current-user";
+import type { ActionUpdate, WatchIssue } from "./watch-workspace";
 import type { AckReceipt, Community, Message, MessageUserState, Subscription, SyncItem } from "./types";
 
 /** Where the message list came from: still loading, the server's store, or the bundled demo data. */
@@ -98,6 +99,11 @@ interface Store {
   undoTamper: () => void;
   tampered: boolean;
 
+  watchIssues: WatchIssue[];
+  saveWatchIssue: (issue: Omit<WatchIssue, "by" | "at">) => void;
+  watchActionUpdates: Record<string, ActionUpdate[]>;
+  updateWatchAction: (id: string, status: ActionUpdate["status"], note: string) => void;
+  watchNotesUpdated: { by: string; at: string } | null;
   watchNotes: string[];
   setWatchNotes: (n: string[]) => void;
   checklist: Record<string, boolean>;
@@ -131,6 +137,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [audit, setAudit] = useState(() => chainLog(AUDIT_EVENTS));
   const [original, setOriginal] = useState<ChainedAuditEvent | null>(null);
   const [watchNotes, setWatchNotes] = useState(WATCH_NOTES);
+  const [watchNotesUpdated, setWatchNotesUpdated] = useState<{ by: string; at: string } | null>(null);
+  const [watchIssues, setWatchIssues] = useState<WatchIssue[]>([]);
+  const [watchActionUpdates, setWatchActionUpdates] = useState<Record<string, ActionUpdate[]>>({});
   const [checklist, setChecklist] = useState<Record<string, boolean>>(
     Object.fromEntries(TURNOVER_CHECKLIST.map((c, i) => [c, i < TURNOVER_CHECKLIST.length - 1])),
   );
@@ -345,9 +354,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         notify("Demonstration edit reverted");
       },
 
+      watchIssues,
+      saveWatchIssue: (issue) => {
+        const updated = { ...issue, by: CURRENT_USER.name, at: new Date().toISOString() };
+        setWatchIssues((items) => [...items.filter((item) => item.id !== issue.id), updated]);
+        log("Update Watch Issue", issue.issue, "Watch-reported note; separate from official traffic.");
+        if (offline) queue("Watch Notes", issue.issue);
+      },
+      watchActionUpdates,
+      updateWatchAction: (id, status, note) => {
+        const update = { status, note, by: CURRENT_USER.name, at: new Date().toISOString() };
+        setWatchActionUpdates((items) => ({ ...items, [id]: [...(items[id] || []), update] }));
+        log("Update Watch Action", id, `${status}: ${note}`);
+        if (offline) queue("Action Item", id);
+      },
+      watchNotesUpdated,
       watchNotes,
       setWatchNotes: (n) => {
         setWatchNotes(n);
+        setWatchNotesUpdated({ by: CURRENT_USER.name, at: new Date().toISOString() });
         log("Update Watch Notes", "Watch Turnover");
         if (offline) queue("Watch Notes", "Watch notes");
       },
@@ -360,7 +385,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toast,
       notify,
     }),
-    [CURRENT_USER, messages, messageSource, ackReceipts, refreshMessages, online, saveState, sendAck, userState, subscriptions, approvals, offline, syncQueue, lastSync, audit, original, watchNotes, checklist, briefing, toast, log, notify, queue],
+    [CURRENT_USER, messages, messageSource, ackReceipts, refreshMessages, online, saveState, sendAck, userState, subscriptions, approvals, offline, syncQueue, lastSync, audit, original, watchNotes, watchNotesUpdated, watchIssues, watchActionUpdates, checklist, briefing, toast, log, notify, queue],
   );
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;

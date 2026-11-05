@@ -9,14 +9,14 @@ import { Button, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tag } from 
 import { DraftMessage } from "@/components/draft-message";
 import type { Message } from "@/lib/types";
 
-export function MessageDetail({ id, onBack }: { id: string; onBack?: () => void }) {
+export function MessageDetail({ id, onBack, backLabel = "Back to Messages" }: { id: string; onBack?: () => void; backLabel?: string }) {
   const { messageById, messageSource } = useStore();
   const m = messageById(id);
   if (!m) return <MissingMessage loading={messageSource === "loading"} />;
-  return <LoadedDetail m={m} onBack={onBack} />;
+  return <LoadedDetail m={m} onBack={onBack} backLabel={backLabel} />;
 }
 
-function LoadedDetail({ m, onBack }: { m: Message; onBack?: () => void }) {
+function LoadedDetail({ m, onBack, backLabel }: { m: Message; onBack?: () => void; backLabel: string }) {
   const id = m.id;
   const { markRead, markUnread, log, notify, briefing, setBriefing } = useStore();
 
@@ -26,6 +26,14 @@ function LoadedDetail({ m, onBack }: { m: Message; onBack?: () => void }) {
     // Log once per open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  const downloadOriginal = () => {
+    const url = URL.createObjectURL(new Blob([m.rawText], { type: "text/plain;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url; anchor.download = `${m.id}-original.txt`; anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    log("Export", `Message (${m.reference})`, "Downloaded original source text.");
+  };
 
   const addToBriefing = () => {
     const extra = m.communities.filter((c) => !briefing.communities.includes(c));
@@ -47,7 +55,7 @@ function LoadedDetail({ m, onBack }: { m: Message; onBack?: () => void }) {
       <div className="flex flex-wrap items-center gap-2">
         {onBack ? (
           <button type="button" autoFocus onClick={onBack} className="flex items-center gap-1.5 font-medium text-link hover:underline">
-            <ArrowLeft className="size-4" /> Back to Messages
+            <ArrowLeft className="size-4" /> {backLabel}
           </button>
         ) : (
           <Link href="/messages" className="flex items-center gap-1.5 font-medium text-link hover:underline">
@@ -57,7 +65,7 @@ function LoadedDetail({ m, onBack }: { m: Message; onBack?: () => void }) {
         <div className="ml-auto flex flex-wrap gap-2">
           <Button icon={Bell} href="/subscriptions">Subscribe</Button>
           <Button variant="primary" icon={FilePlus2} onClick={addToBriefing}>Add to Briefing</Button>
-          <Button variant="primary" icon={Download} onClick={() => { log("Export", `Message (${m.reference})`); notify("Exported PDF with integrity block"); }}>Export PDF</Button>
+          <Button variant="primary" icon={Download} onClick={downloadOriginal}>Download original</Button>
           <Button icon={Printer} href={`/messages/${m.id}/print`}>Print</Button>
         </div>
       </div>

@@ -113,8 +113,8 @@ export const INITIAL_WORKFLOWS: RoutingWorkflow[] = [
   },
 ];
 
+/** Designated release authorities. The Commander releases as the Release Authority role, without a designation. */
 export const INITIAL_AUTHORITIES: ReleaseAuthority[] = [
-  { id: "ra-walsh", personId: "p-walsh", designation: "Commander", isCommandingOfficer: true, scope: [] },
   { id: "ra-chen", personId: "p-chen", designation: "Chief of Staff", isCommandingOfficer: false, scope: ["SAFETY MSG"] },
   { id: "ra-brooks", personId: "p-brooks", designation: "Logistics Officer (N4)", isCommandingOfficer: false, scope: ["FLEET MSG"] },
 ];

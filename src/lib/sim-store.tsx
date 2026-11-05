@@ -5,14 +5,14 @@
 // The circuit between the two servers is the command's own link state: it is the
 // same flag as EMCON / offline mode, so breaking it here puts every screen into
 // offline mode, and restoring connectivity anywhere lets the next pulse drain the
-// backlog. Released drafts are held for transmit until the circuit takes them.
+// backlog. Released drafts wait in the server's transmission queue until the
+// Message Admin transmits them (Transmission Queue); the simulator only shows them.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useStore } from "./store";
 import { useRouting } from "./routing-store";
 import {
   NODES,
   STATIONS,
-  receiptFor,
   seedRepository,
   type ExternalServer,
   type LinkState,
@@ -105,32 +105,26 @@ export function SimProvider({ children }: { children: ReactNode }) {
           subject: d.subject,
           precedence: d.precedence,
           releasedAt: d.releasedAt ?? "",
-          status: sent[d.id] ? "transmitted" : "held",
-          attempts: sent[d.id] ? 1 : 0,
-          transmittedAt: sent[d.id]?.at,
-          receipt: sent[d.id]?.receipt,
+          status: d.transmittedAt || sent[d.id] ? "transmitted" : "held",
+          attempts: d.transmittedAt || sent[d.id] ? 1 : 0,
+          transmittedAt: d.transmittedAt ?? sent[d.id]?.at,
+          receipt: sent[d.id]?.receipt ?? (d.transmittedAt ? `ANCHOR-${d.id.slice(0, 8).toUpperCase()}` : undefined),
         })),
     [drafts, sent],
   );
 
-  /** With the circuit up: take the deferred backlog, pass traffic on, and transmit what is held. */
+  /** With the circuit up: take the deferred backlog and pass traffic on. Transmitting is the Message Admin's. */
   const drain = useCallback(
     (at: string) => {
       const deferred = repo.filter((m) => m.status === "deferred");
       const pulled = repo.map((m) => (m.status === "deferred" ? ingest(m, at) : m));
       const fwd = forward(pulled, links, at);
-      const held = transmissions.filter((t) => t.status === "held");
       setRepo(fwd.repo);
-      if (held.length) {
-        setSent((s) => ({ ...s, ...Object.fromEntries(held.map((t, i) => [t.draftId, { at, receipt: receiptFor(external.received + i + 1) }])) }));
-        held.forEach((t) => log("Transmit", t.reference, `Released message accepted by C2OIX. ${t.subject}`));
-      }
       deferred.forEach((m) => log("Ingest", m.reference, `Deferred backlog taken from C2OIX on reconnect. ${m.subject}`));
       setLocal((l) => ({ ...l, received: l.received + deferred.length }));
-      setExternal((e) => ({ ...e, received: e.received + held.length }));
-      return { backlog: deferred.length, forwarded: fwd.count, pushed: held.length };
+      return { backlog: deferred.length, forwarded: fwd.count, pushed: 0 };
     },
-    [repo, links, transmissions, external.received, log],
+    [repo, links, log],
   );
 
   const pulse = useCallback(() => {
@@ -208,7 +202,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
         if (circuitUp) return;
         setOffline(false);
         const r = drain(nowIso());
-        log("Circuit Up", "C2OIX circuit", `Reconnected. ${r.backlog} deferred taken, ${r.pushed} releases transmitted.`);
+        log("Circuit Up", "C2OIX circuit", `Reconnected. ${r.backlog} deferred taken.`);
       },
       disconnect: () => {
         if (!circuitUp) return;
@@ -240,12 +234,9 @@ export function SimProvider({ children }: { children: ReactNode }) {
         // Drain against the restored links.
         const deferred = repo.filter((m) => m.status === "deferred").length;
         const fwd = forward(repo.map((m) => (m.status === "deferred" ? ingest(m, at) : m)), up, at);
-        const held = transmissions.filter((t) => t.status === "held");
         setRepo(fwd.repo);
-        setSent((s) => ({ ...s, ...Object.fromEntries(held.map((t, i) => [t.draftId, { at, receipt: receiptFor(external.received + i + 1) }])) }));
         setLocal((l) => ({ ...l, received: l.received + deferred }));
-        setExternal((e) => ({ ...e, received: e.received + held.length }));
-        log("Link Reported", "All connections", `Circuit and all three workstation links restored. ${deferred} deferred taken, ${held.length} releases transmitted.`);
+        log("Link Reported", "All connections", `Circuit and all three workstation links restored. ${deferred} deferred taken. Queued releases wait for the Message Admin.`);
         notify("All connections restored");
       },
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { useCurrentUser } from "@/lib/current-user";
+import { hasRole, MESSAGE_ADMIN } from "@/lib/roles";
 import { useState } from "react";
 import {
   CheckCircle2,
@@ -24,6 +26,8 @@ type Tab = "overview" | "cached" | "create" | "queue" | "settings";
 
 export default function OfflinePage() {
   const { offline, setOffline, syncQueue, syncNow, lastSync, queueLocal, notify, messages } = useStore();
+  // The command's link state is the Message Admin's to change; everyone else sees it.
+  const isMessageAdmin = hasRole(useCurrentUser(), MESSAGE_ADMIN);
   const [tab, setTab] = useState<Tab>("overview");
   const [subject, setSubject] = useState("");
   const [ref, setRef] = useState("");
@@ -48,7 +52,7 @@ export default function OfflinePage() {
         </div>
         <div className="flex items-center gap-3 rounded-md border border-line bg-white px-3 py-2">
           <span className="text-sm font-semibold">Simulate EMCON</span>
-          <Toggle label="Simulate EMCON / offline" checked={offline} onChange={setOffline} />
+          <Toggle label="Simulate EMCON / offline" checked={offline} onChange={setOffline} disabled={!isMessageAdmin} />
         </div>
       </div>
 

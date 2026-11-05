@@ -2,17 +2,13 @@
 // matches a person on the routing roster (src/lib/routing.ts), so the people
 // who review and release in the routing chains can also sign in.
 import { CURRENT_USER } from "./data";
+import {
+  AUDITOR, DESIGNATED_RELEASE_AUTHORITY as DRA, MESSAGE_ADMIN, RELEASE_AUTHORITY, REPORT_VIEWER,
+  rolesFor, SUBSCRIPTION_APPROVER, SYSTEM_ADMIN,
+} from "./roles";
 
-/** Every role an account can hold, in display order. */
-export const ROLE_CATALOG = CURRENT_USER.roles.map(({ name, detail }) => ({ name, detail }));
-export type RoleName = (typeof ROLE_CATALOG)[number]["name"];
-export const SYSTEM_ADMIN_ROLE = "System Admin";
-
-/** Expand a list of granted role names into the full profile role list. */
-export const rolesFor = (granted: readonly string[]) =>
-  ROLE_CATALOG.map((role) => ({ ...role, granted: granted.includes(role.name) }));
-
-const BASE = ["Message Viewer", "Subscription Requester"];
+export { ROLE_CATALOG, rolesFor, type RoleName } from "./roles";
+export const SYSTEM_ADMIN_ROLE = SYSTEM_ADMIN;
 
 export interface DemoUser {
   login: string;
@@ -47,7 +43,7 @@ const staff = (
     commandSource: "COMSUBLANT",
     location: "Ashore",
     email, dsn,
-    roles: rolesFor([...BASE, ...roles]),
+    roles: rolesFor(roles),
     groups: ["COMSUBLANT", ...groups],
   },
 });
@@ -57,21 +53,21 @@ const { login, name, ...taylorProfile } = CURRENT_USER;
 export const DEMO_USERS: DemoUser[] = [
   { login, name, commandName: COMMAND_NAME, profile: taylorProfile },
   staff("RWalsh", "RADM", "Walsh", "Commander", "COMSUBLANT", "Submarine Warfare", "walsh.r@example.mil", "312-555-1000",
-    ["Briefing Creator", "Report Viewer", "Designated Release Authority"], ["Command Staff"]),
+    [REPORT_VIEWER, RELEASE_AUTHORITY], ["Command Staff"]),
   staff("DOkafor", "CAPT", "Okafor", "Deputy Commander", "COMSUBLANT", "Submarine Warfare", "okafor.d@example.mil", "312-555-1001",
-    ["Briefing Creator", "Report Viewer", "Subscription Approver"], ["Command Staff"]),
+    [REPORT_VIEWER, SUBSCRIPTION_APPROVER], ["Command Staff"]),
   staff("AChen", "CAPT", "Chen", "Chief of Staff", "COMSUBLANT", "Submarine Warfare", "chen.a@example.mil", "312-555-1002",
-    ["Briefing Creator", "Report Viewer", "Subscription Approver", "Designated Release Authority"], ["Command Staff"]),
+    [REPORT_VIEWER, SUBSCRIPTION_APPROVER, DRA], ["Command Staff"]),
   staff("MRamos", "CDR", "Ramos", "Operations Officer (N3)", "COMSUBLANT N3", "Submarine Warfare", "ramos.m@example.mil", "312-555-1030",
-    ["Briefing Creator", "Report Viewer", "Subscription Approver"], ["COMSUBLANT N3", "Watch Floor"]),
+    [REPORT_VIEWER, SUBSCRIPTION_APPROVER], ["COMSUBLANT N3", "Watch Floor"]),
   staff("KBrooks", "LCDR", "Brooks", "Logistics Officer (N4)", "COMSUBLANT N4", "Supply Corps", "brooks.k@example.mil", "312-555-1040",
-    ["Report Viewer", "Subscription Approver", "Designated Release Authority"], ["COMSUBLANT N4"]),
+    [REPORT_VIEWER, SUBSCRIPTION_APPROVER, DRA], ["COMSUBLANT N4"]),
   staff("RPatel", "LT", "Patel", "Supply Officer (N41)", "COMSUBLANT N4", "Supply Corps", "patel.r@example.mil", "312-555-1041",
-    ["Report Viewer"], ["COMSUBLANT N4"]),
+    [REPORT_VIEWER], ["COMSUBLANT N4"]),
   staff("SNguyen", "YNC", "Nguyen", "Admin Chief (N1)", "COMSUBLANT N1", "Administration", "nguyen.s@example.mil", "312-555-1010",
-    ["Report Viewer", "System Admin"], ["COMSUBLANT N1"]),
+    [REPORT_VIEWER, AUDITOR, SYSTEM_ADMIN], ["COMSUBLANT N1"]),
   staff("EMorales", "LCDR", "Morales", "Intelligence Officer (N2)", "COMSUBLANT N2", "Information Warfare", "morales.e@example.mil", "312-555-1020",
-    ["Briefing Creator", "Report Viewer"], ["COMSUBLANT N2", "Watch Floor"]),
+    [REPORT_VIEWER], ["COMSUBLANT N2", "Watch Floor"]),
   staff("DHarper", "ITC", "Harper", "Information Systems Security Manager (N6)", "COMSUBLANT N6", "Information Systems", "harper.d@example.mil", "312-555-1261",
-    ["Report Viewer", "System Admin"], ["COMSUBLANT N6", "Comms Division"]),
+    [MESSAGE_ADMIN, REPORT_VIEWER, AUDITOR, SYSTEM_ADMIN], ["COMSUBLANT N6", "Comms Division"]),
 ];

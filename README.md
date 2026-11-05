@@ -192,6 +192,30 @@ signs it out immediately and removes it from the account picker. Admins cannot
 deactivate themselves or remove their own System Admin role. This is role-based
 UI gating on a passwordless demo, not real authorization.
 
+### Roles
+
+One ANCHOR instance serves one command. An account can hold any combination of
+these roles; no combination is blocked.
+
+| Role | What it allows | Assigned by | Demo holders |
+| --- | --- | --- | --- |
+| Message Viewer | Read messages, request subscriptions, build briefings. Every account holds it. | Automatic | Everyone |
+| Subscription Approver | Review subscription requests and assign feeds to users | System Admin | Okafor, Chen, Ramos, Brooks, Taylor |
+| Report Viewer | The Reports page | System Admin | Most accounts |
+| Auditor | The Audit & Integrity page and `/api/integrity` | System Admin | Taylor, Nguyen, Harper |
+| Message Admin | Transmit released traffic, manage the C2OIX circuit and workstation links, send acknowledgements | System Admin | Harper |
+| Designated Release Authority | Release the message types in their designation | Release Authority, by designation | Chen, Brooks |
+| Release Authority | The commanding officer: release any traffic, designate release authorities, withdraw any queued release. One per command. | System Admin | Walsh |
+| System Admin | Users, roles, routing workflows and sequence settings | System Admin | Taylor, Nguyen, Harper |
+
+Everyone can see that an acknowledgement is due and can see link status, but only
+the Message Admin can send acknowledgements or change links. Sending an
+acknowledgement also records the outgoing acknowledgement message in the
+transmission log. Migration `008-roles-and-transmissions.sql` maps existing
+accounts onto these roles: Briefing Creator and Subscription Requester fold into
+Message Viewer, System Admins also become Auditors, the commander's designation
+becomes Release Authority, and the demo N6 ISSM (DHarper) becomes Message Admin.
+
 Sessions use random HttpOnly, SameSite=Strict cookies and expire after eight
 hours; only SHA-256 token hashes are stored in `user_sessions`. Refreshing the
 page preserves the account. Use the header menu's **Sign out / switch account**
@@ -269,7 +293,12 @@ Saved chains survive reloads and are retained across text edits and resubmission
 The server enforces ownership, membership, roles, step order and expected revisions.
 
 Final release atomically freezes the approved text, allocates the command serial,
-and publishes the same message ID into main's artifact-backed message store.
+and puts the message in the **Transmission Queue** (`/transmissions`). A released
+message cannot be edited. Until it is transmitted, the person who released it or
+the Release Authority can withdraw the release with a reason; the draft returns
+to its drafter and needs fresh approvals (its serial stays used). When the
+Message Admin transmits it, the same message ID is published into main's
+artifact-backed message store and appears in Messages.
 Existing ingestion, acknowledgements, per-user read state and shared column order
 are preserved. Migration 007 additionally locks released local message records,
 their saved template inputs, reference snapshots and outgoing records against
@@ -434,7 +463,10 @@ REST endpoints:
 | `GET /api/session` | Current session profile, or null when signed out |
 | `GET /api/admin/users` | List all accounts, active and deactivated (System Admin) |
 | `POST /api/admin/users` | Add an account: `{ login, rank, surname, billet, unit, email?, roles }` (System Admin) |
-| `PATCH /api/admin/users/{id}` | Change `billet`, `unit`, `roles` or `active` (System Admin) |
+| `PATCH /api/admin/users/{id}` | Change `billet`, `unit`, `roles` or `active` (System Admin; Designated Release Authority is left to the Release Authority) |
+| `PATCH /api/routing/designations` | Replace release designations `{ revision, authorities }` (Release Authority) |
+| `GET /api/transmissions` | The command's transmission queue and log |
+| `POST /api/transmissions/{id}` | `{ action: "transmit" }` (Message Admin) or `{ action: "revoke", comment }` (releaser or Release Authority) |
 | `POST /api/session` | Passwordless demo sign-in using `{ userId }` |
 | `DELETE /api/session` | Revoke the current session and clear its cookie |
 | `GET /api/message-templates` | List up to 100 active published templates |
@@ -503,7 +535,7 @@ The UI follows the mockups. Where they differ from the ANCHOR requirements packa
 - **Disconnected / EMCON.** Actions taken offline are queued and replicate on sync, with bandwidth-aware priority.
 - **Audit.** Every action in the prototype is written to the audit log. Each event is chained to the one before it by SHA-256, and Audit & Integrity recomputes the chain and names the first break.
 - **No Reply / Forward.** The mockups show them, but releasing traffic stays with Designated Release Authorities, so the prototype offers Share Link instead.
-- **Routing and release.** Outgoing traffic follows an admin-defined chain matched by message type and originator. Steps are held by people on the roster; only a designated release authority can release, and the DTG and serial are assigned at release.
+- **Routing and release.** Outgoing traffic follows an admin-defined chain matched by message type and originator. Steps are held by people on the roster; only the Release Authority or a designated release authority can release, the DTG and serial are assigned at release, and the Message Admin transmits from the queue.
 - **Circuit = EMCON.** Breaking the C2OIX circuit on Network Topology or Server Simulators is the same switch as offline mode. Releases are held at the ANCHOR server and C2OIX defers inbound traffic until it returns.
 
 ## Stack

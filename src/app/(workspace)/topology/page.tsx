@@ -1,5 +1,7 @@
 "use client";
 
+import { useCurrentUser } from "@/lib/current-user";
+import { hasRole, MESSAGE_ADMIN } from "@/lib/roles";
 import { useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Inbox, Monitor, Network, RotateCcw, Send, Server, X } from "lucide-react";
 import { Button, PageHeader, Panel, PrecedenceBadge, cx } from "@/components/ui";
@@ -52,6 +54,7 @@ function useTopology() {
 
 export default function TopologyPage() {
   const t = useTopology();
+  const isMessageAdmin = hasRole(useCurrentUser(), MESSAGE_ADMIN);
   const [queueNode, setQueueNode] = useState<NodeKey | null>(null);
   const down = STATIONS.filter((s) => t.links[s].state === "down");
 
@@ -66,8 +69,10 @@ export default function TopologyPage() {
       <PageHeader
         icon={Network}
         title="Network Topology"
-        subtitle="A demonstration of the command's links: two servers and three workstations. Break any connection and watch how traffic and the command's reporting change."
-        actions={<Button icon={RotateCcw} onClick={t.restoreAll} disabled={t.circuitUp && !down.length}>Restore all connections</Button>}
+        subtitle={isMessageAdmin
+          ? "A demonstration of the command's links: two servers and three workstations. Break any connection and watch how traffic and the command's reporting change."
+          : "Link status for the command's two servers and three workstations. The Message Admin monitors and restores the links."}
+        actions={isMessageAdmin && <Button icon={RotateCcw} onClick={t.restoreAll} disabled={t.circuitUp && !down.length}>Restore all connections</Button>}
       />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
@@ -79,14 +84,14 @@ export default function TopologyPage() {
         ))}
       </div>
 
-      <Panel title="Command Links" className="mb-4" action={<span className="text-xs text-muted">Click a connection to break or restore it</span>}>
+      <Panel title="Command Links" className="mb-4" action={<span className="text-xs text-muted">{isMessageAdmin ? "Click a connection to break or restore it" : "View only. The Message Admin manages links."}</span>}>
         <div className="mx-auto flex max-w-5xl flex-col items-center">
           <NodeCard node="c2oix" status={t.circuitUp ? "Reachable" : "Unreachable"} up={t.circuitUp} pipes={t.pipes.c2oix} onQueue={() => setQueueNode("c2oix")}>
             <div>Feed {t.external.feedActive ? "running" : "stopped"} · {t.atC2oix} waiting for this command</div>
             <Button size="sm" variant="primary" icon={Send} className="mt-2" onClick={t.releaseNext} disabled={!t.external.feedActive || !t.atC2oix}>Release next message</Button>
           </NodeCard>
 
-          <LinkButton label="C2OIX circuit" up={t.circuitUp} onClick={t.circuitUp ? t.disconnect : t.connect} />
+          <LinkButton label="C2OIX circuit" up={t.circuitUp} disabled={!isMessageAdmin} onClick={t.circuitUp ? t.disconnect : t.connect} />
 
           <NodeCard node="anchor" status="Online" up pipes={t.pipes.anchor} onQueue={() => setQueueNode("anchor")}>
             <div>Circuit {t.circuitUp ? "up" : "down"} · {t.reachable.length} of 3 workstations reachable · {t.held} held for transmit</div>
@@ -99,7 +104,7 @@ export default function TopologyPage() {
               const up = t.links[s].state === "up";
               return (
                 <div key={s} className="flex flex-col items-center">
-                  <LinkButton label={`${NODES[s].code} link`} up={up} onClick={() => t.setLink(s, up ? "down" : "up")} />
+                  <LinkButton label={`${NODES[s].code} link`} up={up} disabled={!isMessageAdmin} onClick={() => t.setLink(s, up ? "down" : "up")} />
                   <NodeCard node={s} status={up ? "Connected" : "Offline"} up={up} pipes={t.pipes[s]} onQueue={() => setQueueNode(s)} compact>
                     <div>{up ? "Reaches ANCHOR" : "Cannot reach ANCHOR: holds work locally"}</div>
                     {t.links[s].reportedAt && <div>Reported {fmtDateTime(t.links[s].reportedAt!)}</div>}
@@ -223,21 +228,22 @@ function NodeCard({
   );
 }
 
-function LinkButton({ label, up, onClick }: { label: string; up: boolean; onClick: () => void }) {
+function LinkButton({ label, up, onClick, disabled }: { label: string; up: boolean; onClick: () => void; disabled?: boolean }) {
   return (
     <div className="flex flex-col items-center py-1">
       <div className={cx("h-5 w-1", up ? "bg-green-500" : "border-l-4 border-dashed border-red-500")} aria-hidden />
       <button
         type="button"
         onClick={onClick}
+        disabled={disabled}
         aria-pressed={!up}
-        title={up ? `Break the ${label}` : `Restore the ${label}`}
+        title={disabled ? "Only the Message Admin manages comm links." : up ? `Break the ${label}` : `Restore the ${label}`}
         className={cx(
-          "rounded-full border-2 px-3 py-1 text-xs font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-600",
+          "rounded-full border-2 px-3 py-1 text-xs font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-600 disabled:cursor-not-allowed disabled:opacity-80",
           up ? "border-green-500 bg-green-50 text-green-800 hover:bg-green-100" : "border-red-500 bg-red-50 text-red-800 hover:bg-red-100",
         )}
       >
-        {label}: {up ? "up" : "down"} · {up ? "break" : "restore"}
+        {label}: {up ? "up" : "down"}{!disabled && ` · ${up ? "break" : "restore"}`}
       </button>
       <div className={cx("h-5 w-1", up ? "bg-green-500" : "border-l-4 border-dashed border-red-500")} aria-hidden />
     </div>

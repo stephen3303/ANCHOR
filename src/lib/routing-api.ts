@@ -18,7 +18,12 @@ export interface ApiRoutingEvent extends RoutingEvent {
   snapshotHash: string;
   routeSnapshot: RouteStep[];
 }
-export interface RoutingPerson extends Person { canRelease: boolean }
+export interface RoutingPerson extends Person {
+  /** Holds Release Authority or Designated Release Authority. */
+  canRelease: boolean;
+  /** The command's Release Authority: releases any traffic without a designation. */
+  releaseAuthority: boolean;
+}
 export interface RoutingConfiguration {
   revision: number;
   workflows: RoutingWorkflow[];

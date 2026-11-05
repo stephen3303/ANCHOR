@@ -6,6 +6,8 @@ import { Clock, RefreshCw, X } from "lucide-react";
 import { CURRENT_USER, ONGOING_TOPICS } from "@/lib/data";
 import { MOCK_NOW, fmtDateTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
+import { useCurrentUser } from "@/lib/current-user";
+import { hasRole, MESSAGE_ADMIN } from "@/lib/roles";
 import { HOUR, screeningMessages } from "@/lib/watch-prep";
 import { changesInWindow, issueThreads, deadlineState, remaining, watchActions, type WatchAction, type ActionUpdate } from "@/lib/watch-workspace";
 import { MessageReaderNavigation } from "@/components/message";
@@ -193,6 +195,7 @@ function ActionRow({ action, asOf, openSource }: { action: WatchAction; asOf: nu
   const { updateWatchAction, acknowledge, offline } = useStore();
   const [status, setStatus] = useState<ActionUpdate["status"]>(action.status);
   const [note, setNote] = useState("");
+  const canAck = hasRole(useCurrentUser(), MESSAGE_ADMIN);
   const overdue = action.due !== null && action.due < asOf && action.status !== "Complete";
   const last = action.history.at(-1);
   return <article className="py-3" data-testid="watch-action">
@@ -207,7 +210,7 @@ function ActionRow({ action, asOf, openSource }: { action: WatchAction; asOf: nu
       <p className="mt-2 text-xs font-semibold">Source passage · {action.message.reference} · Action section</p><blockquote className="mt-1 whitespace-pre-wrap border-l-2 border-line pl-3 text-xs">{action.passage}</blockquote>
       <div className="mt-2 flex flex-wrap items-center gap-3"><button className={link} onClick={() => openSource(action.message.id)}>Open full source</button><PrecedenceBadge p={action.message.precedence} /><span className="text-xs text-muted">Transmission precedence only</span></div>
       {action.message.aiSummary && <details className="mt-2 border-l-2 border-purple-300 pl-3 text-xs"><summary className="cursor-pointer text-purple-800">Generated summary · not authoritative</summary><p className="mt-1">{action.message.aiSummary}</p></details>}
-      {action.kind === "Acknowledgement" ? <Button className="mt-3" size="sm" onClick={() => acknowledge(action.message.id)}>Acknowledge receipt{offline ? " (queue offline)" : ""}</Button> : <form className="no-print mt-3 space-y-2 rounded bg-slate-50 p-3" onSubmit={(e) => { e.preventDefault(); updateWatchAction(action.id, status, note.trim()); setNote(""); }}>
+      {action.kind === "Acknowledgement" ? (canAck ? <Button className="mt-3" size="sm" onClick={() => acknowledge(action.message.id)}>Acknowledge receipt{offline ? " (queue offline)" : ""}</Button> : <p className="mt-3 text-sm font-semibold text-red-800">The Message Admin sends this acknowledgement.</p>) : <form className="no-print mt-3 space-y-2 rounded bg-slate-50 p-3" onSubmit={(e) => { e.preventDefault(); updateWatchAction(action.id, status, note.trim()); setNote(""); }}>
         <label className="block text-xs">Watch-reported task status<select className={field} value={status} onChange={(e) => setStatus(e.target.value as ActionUpdate["status"])}>{["Open", "In progress", "Blocked", "Complete"].map((s) => <option key={s}>{s}</option>)}</select></label>
         <label className="block text-xs">Progress / blocker / completion evidence<textarea required maxLength={2000} rows={2} className={field} value={note} onChange={(e) => setNote(e.target.value)} /></label><Button type="submit" size="sm" disabled={!note.trim()}>Save task update</Button>
       </form>}

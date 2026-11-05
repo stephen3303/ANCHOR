@@ -1,8 +1,8 @@
 import { connection } from "next/server";
-import { rolesFor } from "@/lib/demo-users";
+import { rolesFor } from "@/lib/roles";
 import { database } from "@/lib/server/db";
 import { ApiError, apiFailure, readTemplatePayload } from "@/lib/server/template-api";
-import { parseNewUser, requireUserAdmin, USER_COLUMNS } from "@/lib/server/user-admin";
+import { assertRoleAssignment, parseNewUser, requireUserAdmin, USER_COLUMNS } from "@/lib/server/user-admin";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -27,6 +27,7 @@ export async function POST(request: Request) {
       roles: rolesFor(input.roles), groups: [...new Set([admin.groups[0] ?? admin.commandName, input.unit])],
     };
     const pool = database();
+    await assertRoleAssignment(pool, admin.commandId, null, input.roles, []);
     const { rows: [created] } = await pool.query(`INSERT INTO users (login, name, command_id, profile)
       VALUES ($1, $2, $3, $4::jsonb) ON CONFLICT DO NOTHING RETURNING id`,
       [input.login, input.name, admin.commandId, JSON.stringify(profile)]);

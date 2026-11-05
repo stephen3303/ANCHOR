@@ -14,7 +14,7 @@ export function DraftMessage({ message, onBack, print = false }: { message: Mess
       {!released && <Button href="/drafting">Open Drafting & Release</Button>}
       {print ? <Button icon={Printer} onClick={() => window.print()}>{printLabel}</Button> : <Button icon={Printer} href={`/messages/${message.id}/print`}>{printLabel}</Button>}
     </div>
-    <p className="rounded border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{released ? "Released in ANCHOR — External transmission not performed. This is not an official external source record." : "Draft — Not transmitted or released. This is not an official source record."}</p>
+    <p className="rounded border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{released ? (message.transmittedAt ? "Released and transmitted by the Message Admin." : "Released — waiting in the transmission queue for the Message Admin.") : "Draft — Not transmitted or released. This is not an official source record."}</p>
     <h1 className="text-2xl font-bold">{message.subject}</h1>
     <dl className="grid gap-2 text-sm sm:grid-cols-2">
       <div><dt className="font-semibold">Sender command</dt><dd>{message.originator}</dd></div>

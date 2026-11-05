@@ -12,6 +12,7 @@ import type {
   Subscription,
   SyncItem,
 } from "./types";
+import { AUDITOR, REPORT_VIEWER, rolesFor, SUBSCRIPTION_APPROVER, SYSTEM_ADMIN } from "./roles";
 
 export const CURRENT_USER = {
   name: "LT Taylor",
@@ -26,15 +27,7 @@ export const CURRENT_USER = {
   location: "Ashore",
   email: "taylor.j@example.mil",
   dsn: "312-555-1234",
-  roles: [
-    { name: "Message Viewer", detail: "View messages and attachments", granted: true },
-    { name: "Briefing Creator", detail: "Create and customize briefings", granted: true },
-    { name: "Subscription Requester", detail: "Request subscriptions for approval", granted: true },
-    { name: "Report Viewer", detail: "Acknowledgement and traffic reports", granted: true },
-    { name: "Subscription Approver", detail: "Approve unit subscription requests", granted: true },
-    { name: "Designated Release Authority", detail: "Release outgoing command traffic", granted: false },
-    { name: "System Admin", detail: "Manage unit users and settings", granted: true },
-  ],
+  roles: rolesFor([REPORT_VIEWER, SUBSCRIPTION_APPROVER, AUDITOR, SYSTEM_ADMIN]),
   groups: ["COMSUBLANT", "COMSUBLANT N6", "Comms Division"],
 };
 

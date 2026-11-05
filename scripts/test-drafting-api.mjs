@@ -196,7 +196,7 @@ try {
   const configRequest = (body, cookie = sessionCookie) => fetch(`${base}/api/routing`, { method: "PATCH", headers: { Cookie: cookie, Origin: base, "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const configRead = async () => (await fetch(`${base}/api/routing`, { headers: { Cookie: sessionCookie } })).json();
   const sessions = {};
-  for (const loginName of ["MRamos", "AChen", "RWalsh", "RPatel"]) sessions[loginName] = await login(accountList.users.find((user) => user.login === loginName).id);
+  for (const loginName of ["MRamos", "AChen", "RWalsh", "RPatel", "DHarper"]) sessions[loginName] = await login(accountList.users.find((user) => user.login === loginName).id);
   const ramos = sessions.MRamos.cookie, chen = sessions.AChen.cookie, walsh = sessions.RWalsh.cookie;
   assert.equal((await fetch(`${base}/api/messages?view=drafts`)).status, 401);
   assert.equal((await fetch(`${base}/api/routing`)).status, 401);
@@ -253,25 +253,62 @@ try {
   await transition(draft.id, "advance", ramos);
   await transition(draft.id, "advance", chen);
   const walshId = sessions.RWalsh.user.id;
-  sql(`UPDATE users SET profile = jsonb_set(profile,'{roles}',(SELECT jsonb_agg(CASE WHEN role->>'name' = 'Designated Release Authority' THEN jsonb_set(role,'{granted}','false') ELSE role END) FROM jsonb_array_elements(profile->'roles') role)) WHERE id = '${walshId}';`);
+  const setWalshRole = (granted) => sql(`UPDATE users SET profile = jsonb_set(profile,'{roles}',(SELECT jsonb_agg(CASE WHEN role->>'name' = 'Release Authority' THEN jsonb_set(role,'{granted}','${granted}') ELSE role END) FROM jsonb_array_elements(profile->'roles') role)) WHERE id = '${walshId}';`);
+  setWalshRole(false);
   draft = await readDraft(draft.id);
   assert.equal((await patchDraft(draft.id, { action: "release", revision: draft.revision }, walsh)).status, 403, "Current database roles, not stale browser claims, authorize release");
   assert.equal((await readMessages()).messages.length, seedCount);
-  sql(`UPDATE users SET profile = jsonb_set(profile,'{roles}',(SELECT jsonb_agg(CASE WHEN role->>'name' = 'Designated Release Authority' THEN jsonb_set(role,'{granted}','true') ELSE role END) FROM jsonb_array_elements(profile->'roles') role)) WHERE id = '${walshId}';`);
+  setWalshRole(true);
   const releaseAttempts = await Promise.all([patchDraft(draft.id, { action: "release", revision: draft.revision }, walsh),patchDraft(draft.id, { action: "release", revision: draft.revision }, walsh)]);
   assert.deepEqual(releaseAttempts.map((response) => response.status).sort(), [200,409]);
+  // Release queues the message for the Message Admin; it is not in the message store yet.
+  assert.equal((await readMessages()).messages.length, seedCount, "A queued release is not yet transmitted traffic");
+  const harper = sessions.DHarper.cookie;
+  const queue = async (cookie = sessionCookie) => (await (await fetch(`${base}/api/transmissions`, { headers: { Cookie: cookie } })).json()).transmissions;
+  const txAction = (id, body, cookie) => fetch(`${base}/api/transmissions/${id}`, { method: "POST", headers: { Cookie: cookie, Origin: base, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const transmitRelease = async (messageId) => {
+    const entry = (await queue()).find((item) => item.status === "queued" && item.messageId === messageId);
+    assert.ok(entry, "Release is queued for transmission");
+    assert.equal((await txAction(entry.id, { action: "transmit" }, harper)).status, 200);
+  };
+  let queued = (await queue(sessions.RPatel.cookie)).filter((entry) => entry.status === "queued");
+  assert.equal(queued.length, 1, "Everyone in the command sees the queue");
+  assert.equal(queued[0].messageId, draft.id); assert.equal(queued[0].releasedBy, walshId);
+  assert.equal((await readDraft(draft.id)).status, "released");
+  assert.equal((await txAction(queued[0].id, { action: "transmit" }, walsh)).status, 403, "Release Authority does not transmit");
+  assert.equal((await txAction(queued[0].id, { action: "revoke", comment: "Not mine" }, ramos)).status, 403, "Only the releaser or Release Authority withdraws");
+  assert.equal((await txAction(queued[0].id, { action: "revoke" }, walsh)).status, 400, "Withdrawal needs a reason");
+  // The releaser withdraws the release; the draft returns to its drafter and needs fresh approvals.
+  assert.equal((await txAction(queued[0].id, { action: "revoke", comment: "Hold for updated figures" }, walsh)).status, 200);
+  assert.equal((await txAction(queued[0].id, { action: "transmit" }, harper)).status, 409, "A withdrawn release cannot be transmitted");
+  draft = await readDraft(draft.id);
+  assert.equal(draft.status, "returned"); assert.equal(draft.releasedAt, undefined); assert.equal(draft.dtg, undefined);
+  assert.equal(draft.route.at(-1).status, "returned");
+  assert.ok((await readDesk()).events.some((event) => event.draftId === draft.id && event.type === "release_revoked"));
+  await transition(draft.id, "submit");
+  await transition(draft.id, "advance", ramos);
+  await transition(draft.id, "advance", chen);
+  draft = await readDraft(draft.id);
+  assert.equal((await patchDraft(draft.id, { action: "release", revision: draft.revision }, walsh)).status, 200);
+  queued = (await queue()).filter((entry) => entry.status === "queued");
+  assert.equal(queued.length, 1);
+  assert.equal((await txAction(queued[0].id, { action: "transmit" }, ramos)).status, 403, "Only the Message Admin transmits");
+  assert.equal((await txAction(queued[0].id, { action: "transmit" }, harper)).status, 200);
+  assert.equal((await txAction(queued[0].id, { action: "revoke", comment: "Too late" }, walsh)).status, 409, "A transmitted release cannot be withdrawn");
+  assert.ok((await readDraft(draft.id)).transmittedAt);
   const released = (await readMessages()).messages.find((message) => message.id === draft.id);
   assert.equal(released.kind, "released"); assert.equal(released.renderedText, approvedText); assert.equal(released.rawText, approvedText);
   assert.ok(released.c2oixId.startsWith("ANCHOR-"), "Local release must not invent an external receipt");
   const localArtifact = await (await fetch(`${base}/api/messages/${released.id}/artifact`, { headers: { Cookie: sessionCookie } })).json();
   assert.equal(localArtifact.intact, true);
   assert.equal(localArtifact.rawText, approvedText);
-  assert.equal(released.localSequence, "#0042"); assert.ok(released.dtg); assert.equal(released.releasedBy, walshId);
+  assert.equal(released.localSequence, "#0043", "A withdrawn release keeps its sequence number used"); assert.ok(released.dtg); assert.equal(released.releasedBy, walshId);
   assert.equal((await readMessages()).messages.length, seedCount + 1);
   assert.ok((await readMessages(sessions.RPatel.cookie)).messages.some((message) => message.id === draft.id));
   assert.equal((await patchDraft(draft.id, { action: "withdraw", revision: (await readDraft(draft.id)).revision })).status, 409);
   const releasedHistory = (await readDesk()).events.filter((event) => event.draftId === draft.id);
-  assert.equal(releasedHistory.filter((event) => event.type === "released").length, 1);
+  assert.equal(releasedHistory.filter((event) => event.type === "released").length, 2);
+  assert.equal(releasedHistory.filter((event) => event.type === "transmitted").length, 1);
   assert.equal(new Set(releasedHistory.filter((event) => event.revision >= approvalRevision).map((event) => event.snapshotHash)).size, 1);
   assert.throws(() => sql(`UPDATE outgoing_message_events SET comment = 'tampered' WHERE message_id = '${draft.id}';`), /append-only/);
   assert.throws(() => sql(`DELETE FROM outgoing_message_events WHERE message_id = '${draft.id}';`), /append-only/);
@@ -280,6 +317,9 @@ try {
   assert.equal((await patchDraft(draft.id, { action: "route", revision: frozenRevision, steps: [] })).status, 409);
   for (const statement of [
     `UPDATE outgoing_messages SET workflow_status='drafting' WHERE id='${draft.id}';`,
+    `UPDATE outgoing_messages SET workflow_status='returned' WHERE id='${draft.id}';`,
+    `UPDATE outgoing_messages SET record=jsonb_set(record,'{rawText}','"changed"') WHERE id='${draft.id}';`,
+    `UPDATE outgoing_messages SET record=jsonb_set(record,'{transmittedAt}','"2026-01-01T00:00:00Z"') WHERE id='${draft.id}';`,
     `DELETE FROM outgoing_messages WHERE id='${draft.id}';`,
     `UPDATE messages SET record=jsonb_set(record,'{subject}','"changed"') WHERE id='${draft.id}';`,
     `UPDATE messages SET lifecycle='CANCELLED' WHERE id='${draft.id}';`,
@@ -298,9 +338,13 @@ try {
     await transition(message.id, "submit"); await transition(message.id, "advance", ramos); await transition(message.id, "advance", chen);
   }
   const parallelReleases = await Promise.all(parallelIds.map((id) => transition(id, "release", walsh)));
-  assert.deepEqual(parallelReleases.map((result) => result.message.localSequence).sort(), ["#0043","#0044"]);
+  assert.deepEqual(parallelReleases.map((result) => result.message.localSequence).sort(), ["#0044","#0045"]);
+  const parallelQueue = (await queue()).filter((entry) => entry.status === "queued");
+  assert.equal(parallelQueue.length, 2);
+  const transmissions = await Promise.all(parallelQueue.flatMap((entry) => [txAction(entry.id, { action: "transmit" }, harper), txAction(entry.id, { action: "transmit" }, harper)]));
+  assert.deepEqual(transmissions.map((response) => response.status).sort(), [200,200,409,409], "Each release is transmitted once");
   sql(routingSeed.stdout);
-  assert.equal((await configRead()).settings.nextSequence, 45, "Routine reseeding must never reset the release counter");
+  assert.equal((await configRead()).settings.nextSequence, 46, "Routine reseeding must never reset the release counter");
   const withdrawnCreate = await postMessage({ ...messagePayload, requestId: randomUUID(), subject: "Withdraw this draft" });
   const withdrawnId = (await withdrawnCreate.json()).message.id;
   const ramosId = sessions.MRamos.user.id;
@@ -367,6 +411,7 @@ try {
   ]);
   assert.deepEqual(racingResponses.map((response) => response.status).sort(), [200,409]);
   const racingDraft = await readDraft(racingMessage.id);
+  if (racingDraft.status === "released") await transmitRelease(racingMessage.id);
   const racingPublished = (await readMessages()).messages.find((message) => message.id === racingMessage.id);
   if (racingDraft.status === "released") {
     assert.equal(racingPublished.rawText, racingMessage.rawText);
@@ -407,6 +452,7 @@ try {
   await transition(wrapMessage.id, "edit", sessionCookie, wrapInputs);
   await transition(wrapMessage.id, "submit");
   const wrappedPublication = await transition(wrapMessage.id, "release", walsh);
+  await transmitRelease(wrapMessage.id);
   assert.equal(wrappedPublication.message.rawText, wrapMessage.rawText);
   const wrappedArtifact = await (await fetch(`${base}/api/messages/${wrapMessage.id}/artifact`, { headers: { Cookie: sessionCookie } })).json();
   assert.equal(wrappedArtifact.rawText, wrapMessage.rawText); assert.equal(wrappedArtifact.intact, true);
@@ -626,20 +672,30 @@ try {
       await openAs("MRamos"); await actInBrowser("Endorse and advance");
       await openAs("AChen"); await actInBrowser("Endorse and advance");
       await openAs("RWalsh"); await actInBrowser("Release message");
-      await expect(page.getByRole("link", { name: "View released message", exact: true })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Open Transmission Queue", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Edit template fields", exact: true })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Customize routing", exact: true })).toHaveCount(0);
-      await page.getByRole("link", { name: "View released message", exact: true }).click();
+      // Only the Message Admin transmits; everyone else sees the queue read-only.
+      await page.goto(`${base}/transmissions`);
+      await expect(page.getByRole("button", { name: "Transmit", exact: true })).toHaveCount(0);
+      await switchAccount("DHarper"); await page.goto(`${base}/transmissions`);
+      await expect(page.getByRole("button", { name: "Transmit", exact: true })).toBeEnabled();
+      const transmitted = page.waitForResponse((response) => response.url().includes("/api/transmissions/") && response.request().method() === "POST");
+      await page.getByRole("button", { name: "Transmit", exact: true }).click();
+      assert.equal((await transmitted).status(), 200);
+      await expect(page.getByText("Nothing is waiting to be transmitted.", { exact: true })).toBeVisible();
+      await openAs("RWalsh");
+      await page.getByRole("link", { name: "View transmitted message", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Browser-created draft", exact: true })).toBeVisible();
       await expect(page.getByText("Approved message text", { exact: true })).toBeVisible();
       await page.goto(`${base}/messages`);
       await page.getByRole("textbox", { name: "Search messages", exact: true }).fill("Browser-created draft");
       await expect(page.getByRole("button", { name: "Browser-created draft", exact: true })).toBeVisible();
       await page.goto(`${base}/messages/${browserMessage.id}/print`);
-      await expect(page.getByText("Released in ANCHOR — External transmission not performed.", { exact: false })).toBeVisible();
+      await expect(page.getByText("Released and transmitted by the Message Admin.", { exact: false })).toBeVisible();
       assert.deepEqual(browserErrors, []);
       await page.request.delete(`${base}/api/session`);
-      console.log("Browser drafting passed: template form, persisted private draft, real-account reviews, return/correction with hydrated commands, release, message list, reader and print.");
+      console.log("Browser drafting passed: template form, persisted private draft, real-account reviews, return/correction with hydrated commands, release, Message Admin transmission, message list, reader and print.");
     } finally { await browser.close(); }
   }
   const rotated = await login(seededUser.id, sessionCookie);
@@ -656,15 +712,44 @@ try {
   assert.equal((await admin("", "GET", undefined, "")).status, 401);
   const managed = await (await admin("")).json();
   assert.equal(managed.users.length, 11);
-  assert.ok(managed.users.find((user) => user.login === "RWalsh").roles.includes("Designated Release Authority"));
+  assert.ok(managed.users.find((user) => user.login === "RWalsh").roles.includes("Release Authority"));
   assert.equal((await admin("", "POST", { login: "TJones", rank: "lt", surname: "Jones", billet: "Assistant N3", unit: "COMSUBLANT N3", roles: ["Message Viewer"] }, sessionCookie)).status, 201);
   assert.equal((await admin("", "POST", { login: "tjones", rank: "LT", surname: "Jones", billet: "Assistant N3", unit: "COMSUBLANT N3", roles: [] })).status, 409);
   assert.equal((await admin("", "POST", { login: "Bad", rank: "LT", surname: "X", billet: "B", unit: "U", roles: ["Emperor"] })).status, 400);
   assert.equal((await admin("", "POST", { login: "X1", rank: "LT", surname: "X", billet: "B", unit: "U", roles: [] }, sessionCookie.replace(/=.*/, "=bad"))).status, 401);
   assert.equal((await (await fetch(`${base}/api/users`)).json()).users.length, 12);
-  const edited = await admin(`/${patel.id}`, "PATCH", { billet: "Assistant Logistics Officer (N4A)", roles: ["Message Viewer", "Briefing Creator"] });
+  const edited = await admin(`/${patel.id}`, "PATCH", { billet: "Assistant Logistics Officer (N4A)", roles: ["Report Viewer"] });
   assert.equal(edited.status, 200, await edited.clone().text());
-  assert.deepEqual((await edited.json()).user.roles, ["Message Viewer", "Briefing Creator"]);
+  assert.deepEqual((await edited.json()).user.roles, ["Message Viewer", "Report Viewer"], "Message Viewer is every account's baseline");
+  assert.equal((await admin("", "POST", { login: "Retired", rank: "LT", surname: "X", billet: "B", unit: "U", roles: ["Briefing Creator"] })).status, 400, "Folded roles are gone");
+  // System Admin cannot grant or remove a release designation, and a command has one Release Authority.
+  assert.equal((await admin(`/${patel.id}`, "PATCH", { roles: ["Designated Release Authority"] })).status, 400);
+  const chenUser = managed.users.find((user) => user.login === "AChen");
+  assert.equal((await admin(`/${chenUser.id}`, "PATCH", { roles: ["Report Viewer"] })).status, 400, "Removing a designation is the Release Authority's");
+  const secondCo = await admin(`/${patel.id}`, "PATCH", { roles: ["Release Authority"] });
+  assert.equal(secondCo.status, 409); assert.match((await secondCo.json()).error, /already holds Release Authority/);
+  assert.equal((await admin("", "POST", { login: "CO2", rank: "CAPT", surname: "X", billet: "B", unit: "U", roles: ["Release Authority"] })).status, 409);
+  assert.equal((await admin(`/${patel.id}`, "PATCH", { roles: ["Message Admin", "Auditor", "Subscription Approver", "Report Viewer"] })).status, 200, "Other roles combine freely");
+  // The Release Authority designates; holding a designation is what grants the role.
+  const designations = (body, cookie) => fetch(`${base}/api/routing/designations`, { method: "PATCH", headers: { Cookie: cookie, Origin: base, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  let routingNow = await configRead();
+  const patelDesignation = { id: "dra-patel", personId: patel.id, designation: "Supply Officer (N41)", isCommandingOfficer: true, scope: [] };
+  assert.equal((await designations({ revision: routingNow.revision, authorities: [...routingNow.authorities, patelDesignation] }, sessionCookie)).status, 403, "System Admin cannot designate");
+  const walshCookie = sessions.RWalsh.cookie;
+  const designated = await designations({ revision: routingNow.revision, authorities: [...routingNow.authorities, patelDesignation] }, walshCookie);
+  assert.equal(designated.status, 200, await designated.clone().text());
+  routingNow = await designated.json();
+  assert.equal(routingNow.authorities.find((entry) => entry.personId === patel.id).isCommandingOfficer, false);
+  assert.ok(routingNow.people.find((person) => person.id === patel.id).canRelease);
+  assert.ok((await (await admin("")).json()).users.find((user) => user.id === patel.id).roles.includes("Designated Release Authority"));
+  assert.equal((await designations({ revision: routingNow.revision, authorities: [...routingNow.authorities, { ...patelDesignation, id: "dra-walsh", personId: walshId }] }, walshCookie)).status, 400, "The Release Authority needs no designation");
+  const undesignated = await designations({ revision: routingNow.revision, authorities: routingNow.authorities.filter((entry) => entry.personId !== patel.id) }, walshCookie);
+  assert.equal(undesignated.status, 200);
+  assert.ok(!(await (await admin("")).json()).users.find((user) => user.id === patel.id).roles.includes("Designated Release Authority"));
+  // A System Admin routing save keeps the Release Authority's designations.
+  routingNow = await configRead();
+  assert.equal((await configRequest({ ...routingNow, authorities: [] })).status, 200);
+  assert.equal((await configRead()).authorities.length, routingNow.authorities.length);
   assert.equal(JSON.parse(sql(`SELECT profile::text FROM users WHERE id = '${patel.id}';`)).billet, "Assistant Logistics Officer (N4A)");
   assert.equal((await admin(`/${seededUser.id}`, "PATCH", { active: false })).status, 400, "Admins cannot deactivate themselves");
   assert.equal((await admin(`/${seededUser.id}`, "PATCH", { roles: ["Message Viewer"] })).status, 400, "Admins cannot drop their own System Admin role");

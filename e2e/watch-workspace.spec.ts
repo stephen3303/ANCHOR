@@ -3,11 +3,18 @@ import { readFile } from "node:fs/promises";
 
 test.use({ launchOptions: { executablePath: process.env.E2E_CHROMIUM_EXECUTABLE || undefined, args: ["--no-sandbox"] } });
 
-test.beforeEach(async ({ page }) => {
+// Sending acknowledgements and changing the command's link state are Message Admin duties.
+const MESSAGE_ADMIN_TESTS = [
+  'acknowledgement leaves task open; explicit task updates and notes retain attribution',
+  'corrections expose both versions, mobile fits, and stale offline state stays visible',
+];
+
+test.beforeEach(async ({ page }, testInfo) => {
+  const loginName = MESSAGE_ADMIN_TESTS.includes(testInfo.title) ? 'DHarper' : 'LTaylor';
   const response = await page.request.get('/api/users');
   expect(response.ok()).toBeTruthy();
   const { users } = await response.json();
-  const account = users.find((u: { login: string }) => u.login === 'LTaylor');
+  const account = users.find((u: { login: string }) => u.login === loginName);
   expect(account, 'Seed the demo database before running browser checks').toBeTruthy();
   const login = await page.request.post('/api/session', { data: { userId: account.id } });
   expect(login.ok()).toBeTruthy();
@@ -66,14 +73,14 @@ test('acknowledgement leaves task open; explicit task updates and notes retain a
   await task.getByLabel('Progress / blocker / completion evidence').fill('Awaiting confirmation from IT Chief.');
   await task.getByRole('button', { name: 'Save task update' }).click();
   await expect(task).toContainText('Blocked');
-  await expect(task).toContainText('LT Taylor');
+  await expect(task).toContainText('ITC Harper');
   await page.getByRole('button', { name: 'Add issue', exact: true }).click();
   await page.getByLabel('Outstanding issue', { exact: true }).fill('Pending connectivity confirmation');
   await page.getByLabel('Next step', { exact: true }).fill('Confirm alternate circuit');
   await page.getByRole('button', { name: 'Save issue', exact: true }).click();
   await expect(page.locator('#watch-notes')).toContainText('Pending connectivity confirmation');
   await page.locator('#watch-notes').getByText('Note details', { exact: true }).click();
-  await expect(page.locator('#watch-notes')).toContainText('Updated by LT Taylor');
+  await expect(page.locator('#watch-notes')).toContainText('Updated by ITC Harper');
 });
 
 test('quiet period retains overdue older actions without package controls', async ({ page }) => {

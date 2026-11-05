@@ -27,7 +27,7 @@ export async function listDrafts(user: AppUser, id?: string): Promise<{ drafts: 
     drafterName: row.drafter_name, status: row.workflow_status, route: row.routing_route, workflowId: row.workflow_id ?? undefined,
     created: row.created_at.toISOString(), updated: row.updated_at.toISOString(), revision: row.routing_revision, customRoute: row.route_custom,
     dtg: row.released_at ? row.record.dtg : undefined, localSequence: row.record.localSequence, msn: row.record.msn,
-    releasedAt: row.released_at?.toISOString(), releasedBy: row.released_by ?? undefined, releaseDesignation: row.record.releaseDesignation,
+    releasedAt: row.released_at?.toISOString(), releasedBy: row.released_by ?? undefined, releaseDesignation: row.record.releaseDesignation, transmittedAt: row.record.transmittedAt,
     renderedText: row.rendered_text, templateVersionId: row.template_version_id, templateName: row.template_name, templateVersion: row.template_version_number, inputValues: row.input_values,
     commandSelections: Object.fromEntries([...new Set(references.filter((ref) => ref.draft_id === row.draft_id).map((ref) => ref.field_key))].map((field) => [field, references.filter((ref) => ref.draft_id === row.draft_id && ref.field_key === field).map((ref) => ({ id: ref.command_id, name: ref.snapshot.name }))])),
     definition: { name: row.template_name, description: row.description, text: row.output_definition.body,

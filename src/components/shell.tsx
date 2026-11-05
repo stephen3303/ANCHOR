@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import {
   Anchor,
-  BarChart3,
   BellRing,
   ChevronDown,
   FilePenLine,
@@ -16,17 +15,15 @@ import {
   Mail,
   Menu,
   Network,
-  Search,
   Settings,
   ShieldCheck,
   UserCog,
   Waypoints,
   WifiOff,
-  ClipboardList,
   RadioTower,
   X,
 } from "lucide-react";
-import { AUDITOR, hasRole, MESSAGE_ADMIN, REPORT_VIEWER, SUBSCRIPTION_APPROVER, type RoleName } from "@/lib/roles";
+import { AUDITOR, hasRole, MESSAGE_ADMIN, SUBSCRIPTION_APPROVER, type RoleName } from "@/lib/roles";
 import { useStore } from "@/lib/store";
 import { useRouting } from "@/lib/routing-store";
 import { needsOwnAck } from "@/lib/data";
@@ -40,13 +37,10 @@ import { cx } from "./ui";
 const NAV: { href: string; label: string; icon: typeof Home; badge?: "unread" | "routing" | "sync" | "approvals"; role?: RoleName }[] = [
   { href: "/", label: "Home", icon: Home },
   { href: "/messages", label: "Messages", icon: Mail, badge: "unread" as const },
-  { href: "/templates", label: "Message Templates", icon: FilePlus2 },
   { href: "/subscriptions", label: "Subscriptions", icon: Network },
-  { href: "/search", label: "Search", icon: Search },
-  { href: "/watch-turnover", label: "Watch Turnover", icon: ClipboardList },
+  { href: "/templates", label: "Message Templates", icon: FilePlus2 },
   { href: "/drafting", label: "Drafting & Release", icon: FilePenLine, badge: "routing" as const },
-  { href: "/transmissions", label: "Transmission Queue", icon: RadioTower },
-  { href: "/reports", label: "Reports", icon: BarChart3, role: REPORT_VIEWER },
+  { href: "/transmissions", label: "Transmission & Acknowledge", icon: RadioTower },
   { href: "/audit", label: "Audit & Integrity", icon: ShieldCheck, role: AUDITOR },
   { href: "/network", label: "Comms & Network", icon: Waypoints, badge: "sync" as const },
   { href: "/admin", label: "Admin", icon: UserCog, badge: "approvals" as const },

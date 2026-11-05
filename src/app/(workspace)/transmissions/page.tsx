@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { AckStatusSection } from "@/components/ack-status";
 import { AlertTriangle, RadioTower, Send, Undo2 } from "lucide-react";
 import { Button, EmptyState, PageHeader, Panel, Pill, PrecedenceBadge, tableWrap, td, th, theadRow, tbodyRow } from "@/components/ui";
 import { fieldCls } from "@/components/routing";
 import { useCurrentUser } from "@/lib/current-user";
 import { fmtDateTime } from "@/lib/format";
-import { hasRole, MESSAGE_ADMIN, RELEASE_AUTHORITY } from "@/lib/roles";
+import { hasRole, MESSAGE_ADMIN, RELEASE_AUTHORITY, REPORT_VIEWER } from "@/lib/roles";
 import { useStore } from "@/lib/store";
 import { referenceProblems } from "@/lib/reference-links";
 import type { Transmission } from "@/lib/transmissions";
@@ -28,6 +29,8 @@ export default function TransmissionsPage() {
   const [failure, setFailure] = useState("");
   const isMessageAdmin = hasRole(user, MESSAGE_ADMIN);
   const isReleaseAuthority = hasRole(user, RELEASE_AUTHORITY);
+  // The Message Admin owns acknowledgements; Report Viewers keep the view they had on Reports.
+  const seesAckStatus = isMessageAdmin || hasRole(user, REPORT_VIEWER);
   const queued = transmissions.filter((t) => t.status === "queued");
   const log = transmissions.filter((t) => t.status !== "queued");
   const problems = isMessageAdmin ? messages.filter((m) => m.kind !== "draft").map((m) => ({ m, issues: referenceProblems(m, references) })).filter((p) => p.issues.length) : [];
@@ -42,8 +45,8 @@ export default function TransmissionsPage() {
 
   return (
     <>
-      <PageHeader icon={RadioTower} title="Transmission Queue"
-        subtitle="Released traffic waits here until the Message Admin transmits it. Everyone in the command can see the queue." />
+      <PageHeader icon={RadioTower} title="Transmission & Acknowledge"
+        subtitle="Released traffic waits here until the Message Admin transmits it, and acknowledgements of the command's own traffic are tracked below. Everyone in the command can see the queue." />
       {error && <p role="alert" className="mb-4 rounded bg-red-50 p-3 text-red-800">{error}</p>}
       {failure && <p role="alert" className="mb-4 rounded bg-red-50 p-3 text-red-800">{failure}</p>}
       {!isMessageAdmin && <p className="mb-4 text-sm text-muted">Only the Message Admin transmits. The person who released a message, or the Release Authority, can withdraw the release until it is transmitted.</p>}
@@ -86,6 +89,8 @@ export default function TransmissionsPage() {
           </ul>
         ) : <EmptyState>Nothing is waiting to be transmitted.</EmptyState>}
       </Panel>
+
+      {seesAckStatus && <AckStatusSection />}
 
       <Panel title="Transmission log" bodyClassName="p-0">
         {log.length ? (

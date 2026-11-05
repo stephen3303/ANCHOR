@@ -8,7 +8,7 @@
 // releases it, and waits at the last node it could reach until a link is restored.
 // Once a workstation is handed a message it appears in Messages. Released drafts wait
 // in the server's transmission queue until the Message Admin transmits them
-// (Transmission Queue); the simulator only shows them.
+// (Transmission & Acknowledge); the simulator only shows them.
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { useStore } from "./store";
 import { useRouting } from "./routing-store";

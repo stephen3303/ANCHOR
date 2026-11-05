@@ -92,7 +92,7 @@ export function AckPanel({ m, compact }: { m: Message; compact?: boolean }) {
         <span>
           <strong>Sent by your command</strong> · {acked} of {commands.length} addressee commands acknowledged
         </span>
-        <Link href="/reports" className="ml-auto font-semibold text-link hover:underline">View in Reports</Link>
+        <Link href="/transmissions" className="ml-auto font-semibold text-link hover:underline">View on Transmission &amp; Acknowledge</Link>
       </div>
     );
   }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, CornerUpLeft, FilePenLine, Plus, Send, XCircle } from "lucide-react";
 import { ActAs, HolderNote, fieldCls } from "@/components/routing";
 import { DraftRoutingEditor } from "@/components/draft-routing-editor";
@@ -16,12 +17,20 @@ import type { RoutingEventType } from "@/lib/types";
 
 type Filter = "all" | "mine" | "waiting" | "released";
 const EVENTS: Record<RoutingEventType,string> = {created:"Created",submitted:"Submitted",advanced:"Endorsed",returned:"Returned",revised:"Revised",released:"Released",withdrawn:"Withdrawn",release_revoked:"Release withdrawn",transmitted:"Transmitted"};
+// The Templates page links here with ?template=<id> to start a draft from that template.
 export default function DraftingPage() {
+  return <Suspense fallback={<p role="status">Loading Drafting &amp; Release…</p>}><Drafting /></Suspense>;
+}
+
+function Drafting() {
   const routing = useRouting();
+  const router = useRouter();
   const { drafts, actorId } = routing;
+  const startTemplate = useSearchParams().get("template") ?? "";
   const [filter,setFilter] = useState<Filter>("all");
   const [selected,setSelected] = useState<string|null>(null);
-  const [creating,setCreating] = useState(false);
+  const [creating,setCreatingState] = useState(!!startTemplate);
+  const setCreating = (value: boolean) => { setCreatingState(value); if (!value && startTemplate) router.replace("/drafting"); };
   const waiting = (draft: ApiDraft) => draft.status === "in_routing" && currentStep(draft)?.personId === actorId;
   const rows = drafts.filter((draft) => filter === "all" || (filter === "mine" && draft.drafterId === actorId) || (filter === "waiting" && waiting(draft)) || (filter === "released" && draft.status === "released"));
   const draft = rows.find((item) => item.id === selected) ?? rows[0];
@@ -32,7 +41,7 @@ export default function DraftingPage() {
     {routing.loading && <p role="status">Loading persisted drafts and command routing…</p>}
     <div className="grid gap-4 xl:grid-cols-[340px_1fr]">
       <Panel title={`Drafts (${rows.length})`} bodyClassName="p-0">
-        <div className="px-3 pt-2"><Tabs tabs={[{id:"all",label:"All"},{id:"waiting",label:`Waiting on me (${drafts.filter(waiting).length})`},{id:"mine",label:"My drafts"},{id:"released",label:"Released"}]} active={filter} onChange={(value) => {setFilter(value);setCreating(false);}} /></div>
+        <div className="px-3 pt-2"><Tabs tabs={[{id:"all",label:"All"},{id:"waiting",label:`Waiting on me\u00a0(${drafts.filter(waiting).length})`},{id:"mine",label:"My drafts"},{id:"released",label:"Released"}]} active={filter} fit onChange={(value) => {setFilter(value);setCreating(false);}} /></div>
         {rows.length ? <ul className="max-h-[720px] divide-y divide-line/70 overflow-y-auto">{rows.map((item) => <li key={item.id}>
           <button type="button" onClick={() => {setSelected(item.id);setCreating(false);}} className={cx("block w-full px-4 py-3 text-left",!creating && draft?.id === item.id ? "bg-navy-100/70":"hover:bg-navy-50")}>
             <div className="flex flex-wrap gap-1.5"><Pill className={DRAFT_STATUS[item.status].className}>{DRAFT_STATUS[item.status].label}</Pill><PrecedenceBadge p={item.precedence} />{waiting(item) && <Pill className="bg-navy-700 text-white">Your action</Pill>}</div>
@@ -41,7 +50,7 @@ export default function DraftingPage() {
           </button>
         </li>)}</ul> : <EmptyState>{routing.loading ? "Loading…" : "No drafts in this view."}</EmptyState>}
       </Panel>
-      {creating ? <div><div className="mb-3 flex justify-end"><Button onClick={() => setCreating(false)}>Cancel new draft</Button></div><DraftComposer onSaved={(id) => {setSelected(id);setFilter("all");setCreating(false);}} /></div>
+      {creating ? <div><div className="mb-3 flex justify-end"><Button onClick={() => setCreating(false)}>Cancel new draft</Button></div><DraftComposer initialTemplateId={startTemplate} onSaved={(id) => {setSelected(id);setFilter("all");setCreating(false);}} /></div>
         : draft ? <Workspace key={draft.id} draft={draft} /> : <Panel><EmptyState>Start a new draft from a published template.</EmptyState></Panel>}
     </div>
   </>;
@@ -70,7 +79,7 @@ function Workspace({draft}: {draft: ApiDraft}) {
     <Panel title={draft.subject}>
       <div className="mb-3 flex flex-wrap gap-2"><Pill className={DRAFT_STATUS[draft.status].className}>{DRAFT_STATUS[draft.status].label}</Pill><PrecedenceBadge p={draft.precedence} /><span className="text-sm">{draft.type} · {draft.templateName} version {draft.templateVersion} · Revision {draft.revision}</span></div>
       <p className="text-sm text-muted">Drafted by {draft.drafterName} · Saved {fmtDateTime(draft.updated)} · Sender {draft.originator}</p>
-      {draft.status === "released" ? <div className="mt-3 rounded bg-green-50 p-3 text-sm text-green-900"><p>Released as {draft.releaseDesignation}: {draft.localSequence} · {draft.dtg}. The message is final and cannot be edited.</p>{draft.transmittedAt ? <><p>Transmitted {fmtDateTime(draft.transmittedAt)}. Now in Messages.</p><Button className="mt-2" href={`/messages/${draft.id}`}>View transmitted message</Button></> : <><p>Waiting in the transmission queue for the Message Admin. Until it is transmitted, the releaser or the Release Authority can withdraw the release.</p><Button className="mt-2" href="/transmissions">Open Transmission Queue</Button></>}</div>
+      {draft.status === "released" ? <div className="mt-3 rounded bg-green-50 p-3 text-sm text-green-900"><p>Released as {draft.releaseDesignation}: {draft.localSequence} · {draft.dtg}. The message is final and cannot be edited.</p>{draft.transmittedAt ? <><p>Transmitted {fmtDateTime(draft.transmittedAt)}. Now in Messages.</p><Button className="mt-2" href={`/messages/${draft.id}`}>View transmitted message</Button></> : <><p>Waiting in the transmission queue for the Message Admin. Until it is transmitted, the releaser or the Release Authority can withdraw the release.</p><Button className="mt-2" href="/transmissions">Open Transmission &amp; Acknowledge</Button></>}</div>
         : <p className="mt-3 rounded bg-amber-50 p-3 text-sm text-amber-900">Not released or transmitted. Hidden from the Messages list. The drafter can edit until publication. Saving text or routing changes stops review and clears all approvals; resubmit afterward.</p>}
       <pre className="mt-4 max-h-[640px] overflow-auto whitespace-pre-wrap break-words rounded border border-line bg-slate-50 p-4 font-mono text-sm">{draft.renderedText}</pre>
       {draft.status !== "released" && hasOverlongMessageLine(draft.renderedText ?? "") && <p role="alert" className="mt-3 rounded bg-amber-50 p-3 text-sm text-amber-900">This older draft has lines over 69 characters. The drafter must save edits to apply wrapping and obtain fresh approvals before publication.</p>}

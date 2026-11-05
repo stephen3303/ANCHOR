@@ -99,7 +99,7 @@ not reset release counters or overwrite administrators' workflow changes.
 | Published traffic, ingest, integrity, acknowledgements | `src/lib/server/messages.ts`, `src/lib/naval.ts`, `src/lib/ingest-record.ts` |
 | Roles, users, admin | `src/lib/roles.ts`, `src/lib/demo-users.ts`, `src/lib/server/user-admin.ts`, `src/components/routing-admin.tsx` |
 | Formatting and input validation | `src/lib/message-format.ts`, `src/lib/message-inputs.ts`, `src/lib/generated-inputs.ts`, `src/lib/format.ts` |
-| Watch workspace | `src/components/watch-prep.tsx`, `src/lib/watch-workspace.ts`, `src/lib/watch-prep.ts` |
+| Watch Handoff on Home | `src/components/watch-handoff.tsx`, `src/lib/watch-handoff.ts`, `src/lib/server/watch-handoffs.ts`, `/api/watch-handoffs`, `/api/watch-stations` |
 
 `(workspace)` is a route group, not a URL prefix. `/drafting` is the single
 message-creation flow; `/messages/create` is only a compatibility redirect.
@@ -172,9 +172,31 @@ network demonstration, not proof of external delivery.
 
 `src/lib/store.tsx` loads published messages from the API but can fall back to
 bundled demo data if the store is unavailable/empty. Check `messageSource` and
-API responses before claiming persistence works. Watch notes/action updates,
-some legacy preferences, and simulation state are still in memory; do not
-present watch-reported completion or acknowledgements as task closure.
+API responses before claiming persistence works. Legacy session notes/action updates, some preferences, and simulation state
+are still in memory. Formal Watch Handoff records and station assignments use
+PostgreSQL (migration 013); do not present handoff acceptance, watch-reported
+completion, or message acknowledgements as task closure.
+
+### Watch Handoff
+
+- Home displays the handoff section only for its built-in Watch Officer view.
+  `/watch-turnover` redirects to `/?view=watch&handoff=open#watch-handoff`; it
+  does not change the user's saved default. View selection grants no authority.
+- System Admin configures station/team assignments. Current assigned officers
+  participate; administrative privileges alone cannot edit/accept a handoff.
+  Command Report Viewers, Auditors, and Release Authority can read only when the
+  station enables command visibility; System Admin can always inspect/configure.
+- Outgoing officer owns Draft edits/readiness; only the designated incoming
+  officer accepts Ready records. Incomplete checklist items require documented
+  acceptance exceptions. All writes are authenticated, command-scoped, and
+  revision-checked. Do not bypass conflicts or replace unsaved local input.
+- Accepted records, events, and corrections are immutable/append-only. Corrections
+  are separate attributed entries, not edits to accepted content. New handoffs
+  inherit only unresolved issues from the station's latest accepted record and
+  retain lineage/source/history links. Canonical message state is unaffected.
+- `test:handoff` runs validation tests. `test:handoff:api` and
+  `test:handoff:browser` require a fresh build and PostgreSQL create/drop privileges;
+  they use a disposable database, never live station assignments.
 
 ### Personal pub/sub feeds
 

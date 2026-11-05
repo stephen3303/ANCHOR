@@ -27,7 +27,10 @@
     "test:drafting:api": "node scripts/test-drafting-api.mjs",
     "test:drafting:browser": "node scripts/test-drafting-api.mjs --browser",
     "test:templates:seed": "tsx scripts/test-template-seed.ts",
-    "test:navigation": "playwright test"
+    "test:navigation": "playwright test",
+    "test:handoff": "tsx --test src/lib/watch-handoff.test.ts",
+    "test:handoff:api": "node scripts/test-watch-handoff.mjs",
+    "test:handoff:browser": "node scripts/test-watch-handoff.mjs --browser"
   },
   "dependencies": {
     "lucide-react": "^1.61.0",

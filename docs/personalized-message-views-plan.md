@@ -25,7 +25,10 @@ does not change application behavior.
 - Keep mandatory acknowledgements, overdue assigned tasks, and command-designated
   alerts visible across views and outside ordinary relevance/time filters.
 - Start with a dashboard of recorded data, not an AI-generated narrative.
-- Keep Watch Turnover as a separate handoff workflow.
+- Watch Handoff is now integrated only into Watch Officer Home; its station/team
+  permissions and formal acceptance workflow are documented in
+  [watch-handoff-home.md](plans/watch-handoff-home.md). The duplicate turnover
+  navigation/page is retired.
 
 ## Home layout
 

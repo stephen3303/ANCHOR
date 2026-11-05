@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MessageTopic } from "./message-topics";
+import { isPendingTopic, type MessageTopic } from "./message-topics";
 
-async function request(path: string, method = "GET") {
-  const response = await fetch(path, { method, cache: "no-store" });
+async function request(path: string, method = "GET", body?: unknown) {
+  const response = await fetch(path, { method, cache: "no-store", ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}) });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Could not load message subscriptions.");
   return data;
@@ -17,6 +17,8 @@ export function useTopicSubscriptions(offline: boolean) {
   const [topicsError, setTopicsError] = useState("");
   const [pendingTopic, setPendingTopic] = useState<string | null>(null);
   const pending = useRef(false);
+  const messageTopicsRef = useRef<MessageTopic[]>([]);
+  useEffect(() => { messageTopicsRef.current = messageTopics; }, [messageTopics]);
   const version = useRef(0);
   const live = useRef(true);
   useEffect(() => {
@@ -45,8 +47,11 @@ export function useTopicSubscriptions(offline: boolean) {
     ++version.current; // A stale catalog fetch must not undo a saved preference.
     setPendingTopic(id); setTopicsError("");
     try {
-      const data = await request(`/api/subscriptions/${id}`, subscribed ? "PUT" : "DELETE");
-      if (live.current) setMessageTopics((all) => all.map((topic) => topic.id === data.id ? { ...topic, subscribed: data.subscribed } : topic));
+      // A template's Type with no messages yet is subscribed by name, which creates its topic.
+      const name = isPendingTopic(id) ? messageTopicsRef.current.find((topic) => topic.id === id)?.name : undefined;
+      const data = name !== undefined ? await request("/api/subscriptions", "POST", { name }) : await request(`/api/subscriptions/${id}`, subscribed ? "PUT" : "DELETE");
+      const match = data.previousId ?? data.id;
+      if (live.current) setMessageTopics((all) => all.map((topic) => topic.id === match ? { ...topic, id: data.id, subscribed: data.subscribed } : topic));
     } catch (error) {
       if (live.current) setTopicsError(error instanceof Error ? error.message : "Subscription was not saved.");
     } finally {

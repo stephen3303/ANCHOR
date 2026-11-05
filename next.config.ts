@@ -33,7 +33,10 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       ...["/simulators", "/topology", "/offline"].map((source) => ({ source, destination: "/network", permanent: true })),
+      // Reports' acknowledgement status moved onto Transmission & Acknowledge.
+      { source: "/reports", destination: "/transmissions", permanent: true },
       { source: "/personalized-preview", destination: "/", permanent: false },
+      { source: "/watch-turnover", destination: "/?view=watch&handoff=open#watch-handoff", permanent: false },
     ];
   },
   cacheComponents: true,

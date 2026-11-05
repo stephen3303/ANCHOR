@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { DRAFT_KEYS, isKnownKey, keyName } from "@/lib/message-types";
-import { FilePlus2, RefreshCw } from "lucide-react";
+import { isKnownKey } from "@/lib/message-types";
+import { FilePenLine, FilePlus2, Plus, RefreshCw, X } from "lucide-react";
 import { Button, PageHeader, Panel } from "@/components/ui";
 import { TemplatePreview, templateInputClass } from "@/components/template-preview";
 import { useStore } from "@/lib/store";
 import { defaultGeneratorBinding, GENERATED_OUTPUTS, isGeneratedOutputKey } from "@/lib/generated-inputs";
-import { COMMAND_SEPARATORS, validateStandardTemplateText, INPUT_TYPES, isStaticChoice, validateTemplateForPublication, type CommandSeparator, type InputType, type TemplateDefinition, type TemplateField, type TemplateSummary } from "@/lib/message-templates";
+import { COMMAND_SEPARATORS, PRECEDENCE_FIELD, RELEASE_DTG_FIELD, validateStandardTemplateText, INPUT_TYPES, isStaticChoice, validateTemplateForPublication, templateType, type CommandSeparator, type InputType, type TemplateDefinition, type TemplateField, type TemplateSummary } from "@/lib/message-templates";
 
 import { newStandardTemplate, prepareTemplateEdit, STANDARD_TEMPLATE_TEXT, standardField } from "@/lib/standard-template";
 
@@ -25,7 +25,7 @@ const choiceLabels = (field: FieldEditor) => field.control === "checkbox" ? ["YE
 function fieldConfig(field: FieldEditor): TemplateField {
   const locked = standardField(field.name);
   if (locked) return locked;
-  if (field.name === "Type") return { name: field.name, control: "text", required: true, options: [], fixedValue: field.fixedValue ?? "" };
+  if (field.name === "Type") return { name: field.name, control: "text", required: true, options: [], fixedValue: field.fixedValue || "TYPE" }; // Replaced by the template name on validation.
   const options = isStaticChoice(field.control) ? choiceLabels(field) : [];
   const optionOutputs = Object.fromEntries(choiceLabels(field).filter((label) => field.optionOutputs && Object.hasOwn(field.optionOutputs, label) && field.optionOutputs[label].trim()).map((label) => [label, field.optionOutputs![label]]));
   return {
@@ -38,6 +38,8 @@ function fieldConfig(field: FieldEditor): TemplateField {
 
 export default function TemplatesPage() {
   const { refreshTopics } = useStore();
+  // The page opens on the template list; Create template or Edit opens the editor.
+  const [composing, setComposing] = useState(false);
   const [step, setStep] = useState(1);
   const [editing, setEditing] = useState<{ id: string; versionId: string; version: number } | null>(null);
   const [name, setName] = useState("");
@@ -124,7 +126,7 @@ export default function TemplatesPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not open the template for editing.");
       const template = data.template as TemplateDefinition & { id: string; versionId: string; version: number };
-      setEditing({ id: template.id, versionId: template.versionId, version: template.version });
+      setEditing({ id: template.id, versionId: template.versionId, version: template.version }); setComposing(true);
       setName(template.name); setDescription(template.description);
       const editable = prepareTemplateEdit(template);
       setText(editable.text);
@@ -149,11 +151,20 @@ export default function TemplatesPage() {
       }
       setTemplates((current) => current.filter((item) => item.id !== template.id));
       if (inspected?.id === template.id) setInspected(null);
-      if (editing?.id === template.id || saved?.id === template.id) reset();
+      if (editing?.id === template.id || saved?.id === template.id) { reset(); setComposing(false); }
       setDeleteNotice(`Deleted "${template.name}". Existing drafts and messages are preserved.`);
       await loadTemplates();
     } catch (reason) { setListError(reason instanceof Error ? reason.message : "Could not delete the template."); }
     finally { setBusy(false); }
+  };
+  const closeEditor = () => {
+    if (!saved && (name || description || text !== STANDARD_TEMPLATE_TEXT || editing) && !window.confirm("Discard the current unsaved template changes?")) return;
+    reset(); setComposing(false);
+  };
+  const startCreate = () => {
+    if (composing && !saved && (name || description || text !== STANDARD_TEMPLATE_TEXT || editing) && !window.confirm("Discard the current unsaved template changes and start a new template?")) return;
+    reset(); setComposing(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const reset = () => {
     setEditing(null); setStep(1); setName(""); setDescription(""); setText(STANDARD_TEMPLATE_TEXT); setFields(initialFields()); setDefinition(null); setSaved(null); setError("");
@@ -161,28 +172,29 @@ export default function TemplatesPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader icon={FilePlus2} title="Message Templates" subtitle="Turn a plaintext template into a reusable message form." />
+      <PageHeader icon={FilePlus2} title="Message Templates" subtitle="Each template drafts one message type. Start a draft from a template, or turn a plaintext template into a reusable message form."
+        actions={<Button variant="primary" icon={Plus} disabled={busy || inspecting !== null} onClick={startCreate}>Create template</Button>} />
       <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">Local prototype authoring. Do not enter classified or operational data. Passwordless demo accounts are not identity verification; production publishing permissions are not implemented.</p>
       {deleteNotice && <p role="status" className="text-sm">{deleteNotice}</p>}
-      {saved ? <Panel title="Template published">
+      {!composing ? null : saved ? <Panel title="Template published" action={<Button size="sm" icon={X} onClick={() => { reset(); setComposing(false); }}>Close</Button>}>
         <div role="status" className="space-y-3">
           <p><strong>{saved.name}</strong> version {saved.version} is saved in PostgreSQL and available for future message drafting.</p>
           <p className="text-sm text-muted">Existing drafts and published messages retain their pinned versions. Edit a template to publish another version for future drafts.</p>
-          <Button variant="primary" href="/drafting">Drafting &amp; Release</Button>
+          <Button variant="primary" icon={FilePenLine} href={`/drafting?template=${saved.id}`}>Draft a {saved.name} message</Button>
           <Button disabled={busy || inspecting !== null} onClick={() => void startEdit(saved.id)}>Edit this template</Button>
           <Button disabled={busy || inspecting !== null} onClick={reset}>Create another template</Button>
         </div>
-      </Panel> : <Panel title={`${editing ? `Edit template (from version ${editing.version})` : "Create a template"} — Step ${step} of 3`}>
-        {editing && <div className="mb-4 space-y-2"><p className="text-sm text-muted">Publishing creates a new immutable version. Existing messages keep their original definition and text.</p><Button disabled={busy} onClick={reset}>Cancel template editing</Button></div>}
+      </Panel> : <Panel title={`${editing ? `Edit template (from version ${editing.version})` : "Create a template"} — Step ${step} of 3`} action={<Button size="sm" icon={X} disabled={busy} onClick={closeEditor}>{editing ? "Cancel editing" : "Cancel"}</Button>}>
+        {editing && <p className="mb-4 text-sm text-muted">Publishing creates a new immutable version. Existing messages keep their original definition and text.</p>}
         <ol aria-label="Template creation steps" className="mb-5 flex flex-wrap gap-4 text-sm">
           {["Paste template", "Configure variables", "Review and publish"].map((label, index) => <li key={label} aria-current={step === index + 1 ? "step" : undefined} className={step === index + 1 ? "font-bold text-navy-800" : "text-muted"}>{index + 1}. {label}</li>)}
         </ol>
         {error && <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
         {step === 1 && <div className="space-y-4">
-          <label className="block space-y-1 text-sm font-semibold">Template name<input className={templateInputClass} value={name} disabled={busy} maxLength={150} onChange={(event) => setName(event.target.value)} placeholder="Readiness report" /></label>
+          <label className="block space-y-1 text-sm font-semibold">Template name<input className={templateInputClass} value={name} disabled={busy} maxLength={150} onChange={(event) => setName(event.target.value)} placeholder="CASREP or SAFETY:ELECTRICAL" /><span className="block text-xs font-normal text-muted">The name is the message type this template drafts.</span></label>
           <label className="block space-y-1 text-sm font-semibold">Description (optional)<textarea className={templateInputClass} rows={2} value={description} disabled={busy} maxLength={2000} onChange={(event) => setDescription(event.target.value)} /></label>
           <label className="block space-y-1 text-sm font-semibold">Plaintext template<textarea className={`${templateInputClass} font-mono`} rows={14} value={text} disabled={busy} maxLength={50000} onChange={(event) => setText(event.target.value)} placeholder={"FM {{ Origin }}\nTO {{ Recipients }}\nMSGID/{{ Type }}//\nSUBJ/{{ Subject }}\n\n{{ Remarks }}"} aria-describedby="placeholder-help" /></label>
-          <p id="placeholder-help" className="text-sm text-muted">Start from the standard template. Precedence, DateTime, Origin, Recipients, Info, Classification, Subject, POC and Message Number are mandatory and use locked standard behavior. Keep two standalone BT lines and finish with NNNN. Every template must include <code>{"{{ Type }}"}</code>; define its fixed pub/sub identifier in the next step. Mark other variables as <code>{"{{ Name }}"}</code>. Names are case-sensitive and may contain letters, numbers, spaces, underscores and hyphens. Repeated names share one input. Only named substitutions are supported—no scripts or conditionals.</p>
+          <p id="placeholder-help" className="text-sm text-muted">Start from the standard template. Precedence, DateTime, Origin, Recipients, Info, Classification, Subject, POC and Message Number are mandatory and use locked standard behavior. Drafters pick Precedence once for the draft, and DateTime is the DTG stamped when the Release Authority releases the message. Keep two standalone BT lines and finish with NNNN. Every template must include <code>{"{{ Type }}"}</code>; define its fixed pub/sub identifier in the next step. Mark other variables as <code>{"{{ Name }}"}</code>. Names are case-sensitive and may contain letters, numbers, spaces, underscores and hyphens. Repeated names share one input. Only named substitutions are supported—no scripts or conditionals.</p>
           <Button variant="primary" disabled={busy} onClick={configure}>Detect and configure variables</Button>
         </div>}
         {step === 2 && <div className="space-y-4">
@@ -193,8 +205,8 @@ export default function TemplatesPage() {
               <p className="font-semibold">Standard field · configuration locked</p>
               <p>{INPUT_TYPES.find(([type]) => type === field.control)?.[1]} · Required{field.separator ? ` · ${field.separator}-separated` : ""}</p>
               {!!choiceLabels(field).length && <p>{choiceLabels(field).map((option) => `${option}${field.optionOutputs?.[option] ? ` → ${field.optionOutputs[option]}` : ""}`).join("; ")}</p>}
-              <p className="text-xs text-muted">Behavior is shared with the standard template. {field.control === "autogenerated" ? "Sender command is resolved by the server from the signed-in account; drafters cannot override it." : "Message drafters supply the value."}</p>
-            </div> : field.name === "Type" ? <label className="block space-y-1 text-sm">Type value (required)<input className={templateInputClass} maxLength={200} list="msgid-type-keys" value={field.fixedValue ?? ""} onChange={(event) => setFields((current) => current.map((item, position) => position === index ? { ...item, fixedValue: event.target.value } : item))} /><datalist id="msgid-type-keys">{DRAFT_KEYS.map((key) => <option key={key} value={key}>{keyName(key)}</option>)}</datalist>{field.fixedValue?.trim() && !isKnownKey(field.fixedValue.trim().toUpperCase()) && <span role="status" className="block text-xs text-amber-800">Not a catalog type. Subscriptions can&apos;t select it; use a type such as SAFETY or SAFETY:ELECTRICAL.</span>}<span className="text-xs text-muted">Fixed text used as the pub/sub identifier. Drafters cannot change it. Case and internal spacing are preserved.</span></label> : <>
+              <p className="text-xs text-muted">Behavior is shared with the standard template. {field.control === "autogenerated" ? "Sender command is resolved by the server from the signed-in account; drafters cannot override it." : field.name === RELEASE_DTG_FIELD ? "The DTG is stamped when the Release Authority releases the message. Drafters do not enter it." : field.name === PRECEDENCE_FIELD ? "Filled from the draft's single precedence choice." : "Message drafters supply the value."}</p>
+            </div> : field.name === "Type" ? <div className="space-y-1 text-sm" data-testid="type-field"><p className="font-semibold">Message type · set by the template name</p><p className="font-mono">{templateType(name) || "Enter a template name"}</p>{templateType(name) && !isKnownKey(templateType(name)) && <p role="status" className="text-xs text-amber-800">Not a catalog type. Name the template after a type such as CASREP or SAFETY:ELECTRICAL.</p>}<p className="text-xs text-muted">Written in MSGID field 2. Each template drafts one message type, and subscribers to that type see what it sends.</p></div> : <>
             <div className="flex flex-wrap items-center gap-4">
               <label className="min-w-64 flex-1 space-y-1 text-sm">Input type<select className={templateInputClass} value={field.control} onChange={(event) => setFields((current) => current.map((item, position) => position === index ? { ...item, control: event.target.value as InputType, required: event.target.value === "autogenerated" ? true : item.required } : item))}>{INPUT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
               {field.control !== "autogenerated" && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={field.required} onChange={(event) => setFields((current) => current.map((item, position) => position === index ? { ...item, required: event.target.checked } : item))} className="accent-navy-700" />{field.control === "checkbox" ? "Must be checked" : "Required"}</label>}
@@ -232,13 +244,13 @@ export default function TemplatesPage() {
         {listError && <p role="alert" className="mb-3 text-sm text-red-700">{listError}</p>}
         {loading ? <p role="status" className="text-sm text-muted">Loading templates…</p> : templates.length ? <ul className="divide-y divide-line">
           {templates.map((template) => <li key={template.id} data-testid={`template-${template.id}`} className="flex flex-wrap items-center justify-between gap-3 py-3">
-            <div><h3 className="font-semibold">{template.name}</h3><p className="text-sm text-muted">Version {template.version} · {template.variableCount} variables</p><p className="text-sm text-muted">{template.description}</p></div>
-            <div className="flex gap-2"><Button size="sm" disabled={busy || inspecting !== null} onClick={() => void inspect(template.id)}>{inspecting === template.id ? "Opening…" : "View template"}</Button>{template.canEdit && <><Button size="sm" disabled={busy || inspecting !== null} aria-label={`Edit ${template.name}`} onClick={() => void startEdit(template.id)}>Edit template</Button><Button size="sm" variant="danger" disabled={busy || inspecting !== null} aria-label={`Delete ${template.name}`} onClick={() => void removeTemplate(template)}>Delete template</Button></>}</div>
+            <div><h3 className="font-semibold">{template.name}</h3><p className="text-sm text-muted">Version {template.version} · {template.variableCount} variables{template.createdByName ? ` · Created by ${template.createdByName}` : ""}</p><p className="text-sm text-muted">{template.description}</p>{template.editNote && <p id={`edit-note-${template.id}`} className="text-xs text-muted">{template.editNote}</p>}</div>
+            <div className="flex flex-wrap gap-2"><Button size="sm" disabled={busy || inspecting !== null} onClick={() => void inspect(template.id)}>{inspecting === template.id ? "Opening…" : "View template"}</Button><Button size="sm" variant="primary" icon={FilePenLine} href={`/drafting?template=${template.id}`} aria-label={`Draft a message from ${template.name}`}>Draft message</Button><Button size="sm" disabled={!template.canEdit || busy || inspecting !== null} aria-label={`Edit ${template.name}`} aria-describedby={template.editNote ? `edit-note-${template.id}` : undefined} title={template.editNote} onClick={() => void startEdit(template.id)}>Edit template</Button>{template.canEdit && <Button size="sm" variant="danger" disabled={busy || inspecting !== null} aria-label={`Delete ${template.name}`} onClick={() => void removeTemplate(template)}>Delete template</Button>}</div>
           </li>)}
-        </ul> : !listError && <p className="text-sm text-muted">No published templates yet. Create the first one above.</p>}
-        <p className="mt-3 text-xs text-muted">Showing up to 100 most recently published templates. Deleting removes a template from new-draft choices; existing drafts, messages and immutable versions are retained.</p>
+        </ul> : !listError && <p className="text-sm text-muted">No published templates yet. Use Create template to add the first one.</p>}
+        <p className="mt-3 text-xs text-muted">Showing up to 100 most recently published templates. The template&apos;s creator or a System Admin can edit it. Editing publishes a new version for future drafts; existing drafts and messages keep the version they were written from. Deleting removes a template from new-draft choices; existing drafts, messages and immutable versions are retained.</p>
       </Panel>
-      {inspected && <Panel title={`${inspected.name} — Version ${inspected.version}`} action={<Button size="sm" onClick={() => setInspected(null)}>Close</Button>}>
+      {inspected && <Panel title={`${inspected.name} — Version ${inspected.version}`} action={<div className="flex gap-2">{templates.find((item) => item.id === inspected.id)?.canEdit && <Button size="sm" disabled={busy || inspecting !== null} onClick={() => void startEdit(inspected.id)}>Edit template</Button>}<Button size="sm" onClick={() => setInspected(null)}>Close</Button></div>}>
         <p className="mb-4 text-sm text-muted">{inspected.description} This is a read-only published definition; sample values are not saved.</p>
         <TemplatePreview key={`${inspected.id}:${inspected.versionId}`} definition={inspected} />
       </Panel>}

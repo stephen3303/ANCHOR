@@ -46,3 +46,25 @@ test("date and military date/time inputs validate real calendar days", () => {
   assert.deepEqual(validateMessageInputs([field("datetime-local")], { Value: "24 OCT 2026 1830Z" }), { Value: "24 OCT 2026 1830Z" });
   for (const Value of ["31 FEB 2026 1830Z", "24 OCT 2026 6:30 PM", "24 OCT 2026 1830L", "24 OCT 2026 2400Z"]) assert.throws(() => validateMessageInputs([field("datetime-local")], { Value }));
 });
+
+test("drafters never type Precedence or the release DTG; the draft supplies both", async () => {
+  const { draftManagedValues, precedenceInput, renderGeneratedMessage, stampReleaseDtg, unstampReleaseDtg, RELEASE_DTG_MARKER } = await import("./message-templates");
+  const { newStandardTemplate } = await import("./standard-template");
+  const template = newStandardTemplate();
+  const precedence = template.fields.find((field) => field.name === "Precedence")!;
+  assert.equal(precedenceInput(precedence, "FLASH"), "Z - Flash");
+  assert.equal(precedenceInput(precedence, "ROUTINE"), "R - Routine");
+  assert.equal(precedenceInput({ name: "Precedence", control: "text", required: true, options: [] }, "IMMEDIATE"), "O");
+  // Older clients may still send the two values; they are dropped, not stored.
+  const values = validateMessageInputs(template.fields, { Precedence: "Z - Flash", DateTime: "010000Z JAN 26", Recipients: ["00000000-0000-4000-8000-000000000001"], Info: ["00000000-0000-4000-8000-000000000001"], Classification: "UNCLASSIFIED", Type: "X", Subject: "S", POC: "P", Body: "B", "Message Number": "1" });
+  assert.equal(Object.hasOwn(values, "Precedence"), false);
+  assert.equal(Object.hasOwn(values, "DateTime"), false);
+  const text = renderGeneratedMessage(template.text, { ...values, ...draftManagedValues(template.fields, "PRIORITY"), Origin: "COMSUBLANT" }, template.fields);
+  assert.match(text, new RegExp(`^P ${RELEASE_DTG_MARKER}\n`));
+  const released = stampReleaseDtg(text, "051930Z NOV 26");
+  assert.match(released, /^P 051930Z NOV 26\n/);
+  assert.equal(released.includes(RELEASE_DTG_MARKER), false);
+  assert.equal(unstampReleaseDtg(released, "051930Z NOV 26"), text);
+  // The marker is only replaced in the heading, never in the body.
+  assert.equal(stampReleaseDtg(`R X\nBT\n${RELEASE_DTG_MARKER}\nBT`, "D"), `R X\nBT\n${RELEASE_DTG_MARKER}\nBT`);
+});

@@ -58,7 +58,7 @@ export function Panel({
     <section className={cx("rounded-lg border border-line bg-white shadow-sm", className)}>
       {title && (
         <header className="flex items-center justify-between gap-2 border-b border-line/70 px-4 py-3">
-          <h2 className="flex items-center gap-2 text-[15px] font-bold text-ink">
+          <h2 className="flex min-w-0 items-center gap-2 text-[15px] font-bold text-ink [overflow-wrap:anywhere]">
             {Icon && <Icon className="size-5 text-navy-800" aria-hidden />}
             {title}
           </h2>
@@ -105,7 +105,7 @@ export function Button({ variant = "secondary", size = "md", icon: Icon, href, c
   );
   if (href)
     return (
-      <Link href={href} className={cls}>
+      <Link href={href} className={cls} aria-label={rest["aria-label"]}>
         {inner}
       </Link>
     );
@@ -267,9 +267,11 @@ export function TextInput({ label, className, ...rest }: { label?: string; class
 
 /* ---------- tabs ---------- */
 
-export function Tabs<T extends string>({ tabs, active, onChange }: { tabs: { id: T; label: string }[]; active: T; onChange: (t: T) => void }) {
+// `fit` keeps every tab inside a narrow container (such as a side card): tabs share the width
+// and long labels wrap onto a second line instead of forcing a horizontal scrollbar.
+export function Tabs<T extends string>({ tabs, active, onChange, fit = false }: { tabs: { id: T; label: string }[]; active: T; onChange: (t: T) => void; fit?: boolean }) {
   return (
-    <div role="tablist" className="no-print mb-4 flex gap-1 overflow-x-auto border-b border-line">
+    <div role="tablist" className={cx("no-print mb-4 flex border-b border-line", fit ? "" : "gap-1 overflow-x-auto")}>
       {tabs.map((t) => (
         <button
           key={t.id}
@@ -278,7 +280,8 @@ export function Tabs<T extends string>({ tabs, active, onChange }: { tabs: { id:
           aria-selected={active === t.id}
           onClick={() => onChange(t.id)}
           className={cx(
-            "-mb-px whitespace-nowrap border-b-[3px] px-4 py-2.5 text-[15px] transition-colors",
+            "-mb-px border-b-[3px] transition-colors",
+            fit ? "min-w-0 flex-auto px-1.5 py-2 text-center text-sm leading-tight" : "whitespace-nowrap px-4 py-2.5 text-[15px]",
             active === t.id ? "border-navy-600 font-semibold text-navy-700" : "border-transparent text-ink hover:text-navy-700",
           )}
         >

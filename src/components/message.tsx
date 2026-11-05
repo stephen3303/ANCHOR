@@ -10,6 +10,7 @@ import {
   Download,
   ExternalLink,
   FileCode2,
+  FilePenLine,
   FileSpreadsheet,
   FileText,
   FileType2,
@@ -315,6 +316,11 @@ export function ReferencesPanel({ m }: { m: Message }) {
   const citedBy = references.citedBy(m);
   return (
     <div className="space-y-4">
+      {m.kind !== "draft" && m.dtg && (
+        <div className="flex justify-end">
+          <Button size="sm" icon={FilePenLine} href={`/drafting?reference=${encodeURIComponent(m.id)}`}>Cite in a new draft</Button>
+        </div>
+      )}
       {m.referenceIssues?.length ? (
         <div role="note" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           <p className="font-semibold">This message breaks NTP 3(J) reference rules. It is listed for the Message Admin on Transmissions:</p>

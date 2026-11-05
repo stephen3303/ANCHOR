@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { MESSAGES } from "./data";
 import { parseNavalMessage } from "./naval";
-import { formatReferences, formatReferenceSet, messageKey, parseReferenceSet, splitAmplification, validateReferences, type MessageReference } from "./references";
+import { draftReferenceIssues, formatDraftReferences, formatReferences, formatReferenceSet, messageKey, parseReferenceSet, parseReferenceValue, splitAmplification, storedReferences, validateReferences, type MessageReference } from "./references";
 
 // NTP 3(J) Annex A, Figure A-1.
 const FIGURE_A1 = [
@@ -131,4 +131,23 @@ test("demo traffic cites its references in NTP form and reads them back", () => 
     assert.deepEqual(p.referenceIssues, [], m.reference);
   }
   assert.ok(withRefs.some((m) => m.refs![0].dtg), "at least one demo reference uses sender and DTG");
+});
+
+test("drafted references keep their order, and a directive reads back as the parser sees it", () => {
+  const value = JSON.stringify([
+    { letter: "Z", kind: "genadmin", originator: "comsublant n3", dtg: "021430Z OCT 26", serial: "COMSUBLANT 061/26", notations: [], amplification: "QUAL REPORTING", messageId: "comsublant-061-26", directive: "SUPERSEDES" },
+    { kind: "DOC", originator: "COMSUBLANT", dtg: "01OCT26", notations: ["NOTAL"], amplification: "COMSUBLANTINST 3500.1A" },
+  ]);
+  const refs = parseReferenceValue(value);
+  assert.deepEqual(refs.map((r) => [r.letter, r.kind, r.originator, r.dtg]), [["A", "GENADMIN", "COMSUBLANT N3", "021430ZOCT26"], ["B", "DOC", "COMSUBLANT", "01OCT26"]]);
+  assert.deepEqual(draftReferenceIssues(refs), []);
+  const lines = formatDraftReferences(refs);
+  assert.equal(lines.at(-1), "NARR/THIS MSG SUPERSEDES REF A. REF A IS QUAL REPORTING. REF B IS COMSUBLANTINST 3500.1A.//");
+  const p = parseNavalMessage(RAW.replace(/REF\/A[\s\S]*?N7\.\/\/\n/, `${lines.join("\n")}\n`));
+  assert.deepEqual(p.directive, { kind: "SUPERSEDES", target: "COMSUBLANT 061/26", letter: "A" });
+  assert.deepEqual(p.refs, storedReferences(refs).map((r, i) => ({ ...r, amplification: p.refs[i].amplification })));
+  assert.equal(storedReferences(refs)[0].hasOwnProperty("messageId"), false);
+  assert.deepEqual(parseReferenceValue(""), []);
+  assert.throws(() => parseReferenceValue(JSON.stringify([{ kind: "DOC", notations: ["SECRET"] }])), /NOTAL, PASEP or BOM/);
+  assert.throws(() => parseReferenceValue(JSON.stringify(Array.from({ length: 27 }, () => ({})))), /at most 26/);
 });

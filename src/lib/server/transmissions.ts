@@ -8,6 +8,7 @@ import { ApiError } from "./api-error";
 import { database } from "./db";
 import { appendRoutingEvent } from "./routing-data";
 import { sha256, storeMessage } from "./messages";
+import { formatReferences } from "@/lib/references";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -25,7 +26,7 @@ export function acknowledgementText(m: Message, commandName: string) {
     `TO ${m.originator}`,
     m.classification,
     "SUBJ/ACKNOWLEDGEMENT//",
-    `REF/A/MSG/${m.originator}/${m.dtg}//`,
+    ...formatReferences([{ letter: "A", kind: "MSG", originator: m.originator, dtg: m.dtg, serial: m.reference, notations: [], amplification: m.subject }]),
     `RMKS/1. REF A (${m.reference}) RECEIVED AND ACKNOWLEDGED.//`,
   ].join("\n");
 }

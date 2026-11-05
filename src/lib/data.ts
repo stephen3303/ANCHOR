@@ -13,6 +13,7 @@ import type {
   SyncItem,
 } from "./types";
 import { AUDITOR, REPORT_VIEWER, rolesFor, SUBSCRIPTION_APPROVER, SYSTEM_ADMIN } from "./roles";
+import { formatReferences, isSerialOnly, normDtg, type MessageReference } from "./references";
 
 export const CURRENT_USER = {
   name: "LT Taylor",
@@ -94,7 +95,7 @@ function wrap(text: string, width = 69, indent = ""): string[] {
  * message with prosigns, uppercase sets and fixed-width lines. Seeds can supply
  * their own rawText instead. Real ingest would store the received bytes here.
  */
-function rawMessage(s: Seed, serial: number): string {
+function rawMessage(s: Seed, serial: number, refs: MessageReference[]): string {
   const up = (t: string) => t.toUpperCase();
   const out: string[] = [
     `${PROSIGN[s.precedence]} ${s.dtg}`,
@@ -106,7 +107,11 @@ function rawMessage(s: Seed, serial: number): string {
     ...wrap(`SUBJ/${up(s.subject)}//`),
     `MSGID/${up(s.subtag ? `${s.type}:${s.subtag}` : s.type)}/${up(s.originator)}/${up(s.reference)}//`,
   ];
-  if (s.relatesTo) out.push(`REF/A/MSG/${up(s.relatesTo)}//`);
+  for (const r of refs) {
+    // Serial-only references are the older ANCHOR demo form, kept so that path stays tested.
+    if (isSerialOnly(r)) out.push(`REF/${r.letter}/${r.kind}/${r.serial}//`);
+  }
+  if (!refs.some(isSerialOnly)) formatReferences(refs).forEach((line) => out.push(...wrap(line)));
   const poc = s.sections.find((x) => x.heading === "Point of Contact");
   if (poc) out.push(...wrap(`POC/${up(poc.body.join(" "))}//`));
   s.sections
@@ -741,11 +746,24 @@ export const MESSAGES: Message[] = seeds
     retention: s.lifecycle === "EXPIRED" ? "Permanent (expired)" : "Permanent",
     addressees: [],
     ...s,
-    rawText: s.rawText ?? rawMessage(s, 1001 + i),
+    refs: seedReferences(s),
+    rawText: s.rawText ?? rawMessage(s, 1001 + i, seedReferences(s)),
     c2oixId: `C2OIX-26-${String(48210 + i * 37).padStart(6, "0")}`,
     sha256: mockSha(s.id + s.dtg),
   }))
   .sort((a, b) => b.received.localeCompare(a.received));
+
+/**
+ * The demo message a seed changes, cited per NTP 3(J): its MSGID type, sender
+ * and DTG, with its subject in AMPN. A target the demo doesn't hold keeps the
+ * older serial-only form.
+ */
+function seedReferences(s: Seed): MessageReference[] {
+  if (!s.relatesTo) return [];
+  const target = seeds.find((t) => t.reference === s.relatesTo);
+  if (!target) return [{ letter: "A", kind: "MSG", originator: "", dtg: "", serial: s.relatesTo.toUpperCase(), notations: [] }];
+  return [{ letter: "A", kind: "GENADMIN", originator: target.originator.toUpperCase(), dtg: normDtg(target.dtg), serial: target.reference.toUpperCase(), notations: [], amplification: target.subject.toUpperCase() }];
+}
 
 export const messageById = (id: string) => MESSAGES.find((m) => m.id === id);
 export const messageByRef = (ref: string) => MESSAGES.find((m) => m.reference === ref);

@@ -108,7 +108,7 @@ try {
   const originalRead = await (await fetch(`${base}/api/messages/${original.id}`, { headers: { Cookie: sessionCookie } })).json();
   assert.deepEqual(originalRead.message, original);
   const definition = templateFixture({
-    name: "API test template", description: "Isolated test", text: "TO {{ Destinations }}\n{{ Status }}\n{{ Remarks }}\n{{ Type }}",
+    name: "TEST", description: "Isolated test", text: "TO {{ Destinations }}\n{{ Status }}\n{{ Remarks }}\n{{ Type }}",
     fields: [
       { name: "Destinations", control: "command-multiple", required: true, options: [] },
       { name: "Status", control: "select", required: true, options: ["Ready", "Not ready"] },
@@ -123,7 +123,7 @@ try {
   };
   const changeTopic = (id, subscribed, cookie = sessionCookie, origin = base) => fetch(`${base}/api/subscriptions/${id}`, { method: subscribed ? "PUT" : "DELETE", headers: { Cookie: cookie, Origin: origin } });
   assert.equal((await fetch(`${base}/api/subscriptions`)).status, 401);
-  assert.ok(!(await readTopics()).some((topic) => topic.name === "TEST"), "Publishing a template does not publish a message type");
+  assert.ok(!(await readTopics()).some((topic) => topic.name === "TEST"), "Type is absent before the first template is created");
   const invalidTemplate = await publish({ ...definition, text: "{{ Missing }}" });
   assert.equal(invalidTemplate.status, 400, await invalidTemplate.text());
   assert.equal((await publish({ ...definition, fields: [] })).status, 400);
@@ -139,6 +139,10 @@ try {
   const response = await publish(definition);
   assert.equal(response.status, 201, await response.clone().text());
   const { template } = await response.json();
+  const templateTopic = (await readTopics()).find((topic) => topic.name === "TEST");
+  assert.ok(templateTopic); assert.equal(templateTopic.messageCount, 0); assert.equal(templateTopic.subscribed, false);
+  assert.equal((await changeTopic(templateTopic.id, true)).status, 200, "Users may subscribe before any matching message is sent");
+  assert.deepEqual((await (await fetch(`${base}/api/messages?view=subscriptions`, { headers: { Cookie: sessionCookie } })).json()).messages, []);
   assert.equal(sql(`SELECT created_by FROM message_templates WHERE id = '${template.id}';`).trim(), seededUser.id);
   const stored = await (await fetch(`${base}/api/message-templates/${template.id}`)).json();
   assert.equal(stored.template.text, definition.text);
@@ -172,11 +176,8 @@ try {
   const { message: savedMessage } = await concurrent[0].json();
   assert.equal((await concurrent[1].json()).message.id, savedMessage.id);
   assert.equal(savedMessage.kind, "draft");
-  // Any available template's Type can be subscribed to before its first message is published.
-  const templateTopic = (await readTopics()).find((topic) => topic.name === "TEST");
-  assert.ok(templateTopic, "An available template offers its Type for subscription");
-  assert.ok(templateTopic.id.startsWith("type:")); assert.equal(templateTopic.messageCount, 0); assert.equal(templateTopic.subscribed, false);
-  assert.deepEqual(templateTopic.templates, ["API test template"]);
+  assert.equal((await readTopics()).find((topic) => topic.id === templateTopic.id).messageCount, 0, "Private drafts do not create published-message mappings");
+  assert.deepEqual(templateTopic.templates, ["TEST"], "The Subscriptions page names the template that drafts the type");
   assert.equal(savedMessage.originator, "COMSUBLANT NORFOLK VA");
   assert.equal(customMessageBody(savedMessage.renderedText), `TO ${commands.commands[1].name}; ${commands.commands[0].name}\nReady\nSaved body {{ not-recursively-expanded }}\nTEST`);
   assert.equal(sql("SELECT count(*) FROM message_drafts;").trim(), "1");
@@ -250,6 +251,7 @@ try {
   const corrected = await patchDraft(draft.id, corrections);
   assert.equal(corrected.status, 200, await corrected.clone().text());
   const approvedText = (await corrected.json()).message.renderedText;
+  let upperText = approvedText.toUpperCase();
   assert.equal((await patchDraft(draft.id, corrections)).status, 409);
   await transition(draft.id, "submit");
   draft = await readDraft(draft.id);
@@ -289,7 +291,7 @@ try {
   };
   let queued = (await queue(sessions.RPatel.cookie)).filter((entry) => entry.status === "queued");
   assert.equal(queued.length, 1, "Everyone in the command sees the queue");
-  assert.equal((await readTopics()).find((topic) => topic.name === "TEST").messageCount, 0, "Queued releases are not published traffic");
+  assert.equal((await readTopics()).find((topic) => topic.id === templateTopic.id).messageCount, 0, "Queued releases do not increase published-message counts");
   const subscribeByName = (name, cookie, origin = base) => fetch(`${base}/api/subscriptions`, { method: "POST", headers: { Cookie: cookie, Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
   assert.equal((await subscribeByName("TEST", walsh, "https://untrusted.example")).status, 403);
   assert.equal((await subscribeByName("NO SUCH TEMPLATE TYPE", walsh)).status, 404);
@@ -297,7 +299,7 @@ try {
   const early = await subscribeByName("TEST", walsh);
   assert.equal(early.status, 200, await early.clone().text());
   const earlyTopic = await early.json();
-  assert.equal(earlyTopic.subscribed, true); assert.equal(earlyTopic.previousId, "type:TEST");
+  assert.equal(earlyTopic.subscribed, true); assert.equal(earlyTopic.id, templateTopic.id, "Subscribing by name reuses the template topic");
   assert.equal((await subscribeByName("TEST", walsh)).status, 200, "Subscribing by name is idempotent");
   assert.equal(queued[0].messageId, draft.id); assert.equal(queued[0].releasedBy, walshId);
   assert.equal((await readDraft(draft.id)).status, "released");
@@ -325,6 +327,10 @@ try {
   const released = (await readMessages()).messages.find((message) => message.id === draft.id);
   const publishedTopic = (await readTopics()).find((topic) => topic.name === "TEST");
   assert.ok(publishedTopic); assert.equal(publishedTopic.messageCount, 1);
+  assert.equal(publishedTopic.id, templateTopic.id, "Sending reuses the topic created with the template");
+  assert.equal(publishedTopic.subscribed, true, "Sending preserves subscriptions created before the first message");
+  assert.equal(sql("SELECT count(*) FROM message_topics WHERE name='TEST';").trim(), "1");
+  assert.equal((await changeTopic(publishedTopic.id, false)).status, 200);
   assert.equal(released.subscriptionTopicId, publishedTopic.id);
   assert.equal(publishedTopic.id, earlyTopic.id, "Publication reuses the topic created by an early subscription");
   assert.equal((await readTopics(walsh)).find((topic) => topic.id === publishedTopic.id).subscribed, true);
@@ -348,7 +354,7 @@ try {
   assert.deepEqual(await personalFeed(sessions.RPatel.cookie), []);
   assert.throws(() => sql(`UPDATE message_topics SET name='tampered' WHERE id='${publishedTopic.id}';`), /append-only/);
   assert.throws(() => sql(`DELETE FROM message_topic_messages WHERE message_id='${released.id}';`), /append-only/);
-  console.log("Pub/sub API passed: template subscriptions before first message, pinned Type identity, free idempotent subscriptions, viewer permissions, per-account isolation and unchanged All Messages.");
+  console.log("Pub/sub API passed: template-created topics reused at transmission, subscribe by type name, pinned Type identity, free idempotent subscriptions, viewer permissions, per-account isolation and unchanged All Messages.");
   assert.equal(released.kind, "released"); assert.equal(released.renderedText, approvedText); assert.equal(released.rawText, approvedText);
   assert.ok(released.c2oixId.startsWith("ANCHOR-"), "Local release must not invent an external receipt");
   const localArtifact = await (await fetch(`${base}/api/messages/${released.id}/artifact`, { headers: { Cookie: sessionCookie } })).json();
@@ -541,7 +547,7 @@ try {
   for (const control of ["select", "radio", "checkbox-group", "checkbox"]) {
     const choice = templateFixture({
       name: "Output override test", description: "", text: "{{ Choice }}\n{{ Type }}",
-      fields: [{ name: "Choice", control, required: false, options: control === "checkbox" ? [] : ["Ready", "Not ready"], optionOutputs: control === "checkbox" ? { YES: "ACK", NO: "NO ACK" } : { Ready: "READY FOR TASKING" } }, { name: "Type", control: "text", required: true, options: [], fixedValue: "TEST" }],
+      fields: [{ name: "Choice", control, required: false, options: control === "checkbox" ? [] : ["Ready", "Not ready"], optionOutputs: control === "checkbox" ? { YES: "ACK", NO: "NO ACK" } : { Ready: "READY FOR TASKING" } }, { name: "Type", control: "text", required: true, options: [], fixedValue: "OUTPUT OVERRIDE TEST" }],
     });
     const savedChoice = await publish(choice);
     assert.equal(savedChoice.status, 201, await savedChoice.clone().text());
@@ -551,7 +557,7 @@ try {
     const selectedValue = control === "checkbox" ? false : control === "checkbox-group" ? ["Ready", "Not ready"] : "Ready";
     const choiceCreate = await postMessage({ requestId: randomUUID(), templateVersionId: result.versionId, subject: `Choice ${control}`, precedence: "ROUTINE", values: { ...standardInputValues(commands.commands[0].id), Choice: selectedValue } });
     assert.equal(choiceCreate.status, 201, await choiceCreate.clone().text());
-    assert.equal(customMessageBody((await choiceCreate.json()).message.renderedText), `${control === "checkbox" ? "NO ACK" : control === "checkbox-group" ? "READY FOR TASKING; Not ready" : "READY FOR TASKING"}\nTEST`);
+    assert.equal(customMessageBody((await choiceCreate.json()).message.renderedText), `${control === "checkbox" ? "NO ACK" : control === "checkbox-group" ? "READY FOR TASKING; Not ready" : "READY FOR TASKING"}\nOUTPUT OVERRIDE TEST`);
   }
   assert.equal((await publish({ name: "Old number", description: "", text: "{{ Value }}", fields: [{ name: "Value", control: "number", required: false, options: [] }] })).status, 400);
   assert.equal((await publish({ ...definition, fields: definition.fields.map((field) => field.name === "Status" ? { ...field, optionOutputs: { Invalid: "Unknown option" } } : field) })).status, 400);
@@ -566,7 +572,7 @@ try {
       { name: "Timestamp", control: "autogenerated", required: true, options: [], generator: { key: "current-timestamp", version: 2 } },
       { name: "Date", control: "autogenerated", required: true, options: [], generator: { key: "current-date", version: 2 } },
       { name: "DTG", control: "autogenerated", required: true, options: [], generator: { key: "current-dtg", version: 1 } },
-      { name: "Type", control: "text", required: true, options: [], fixedValue: "TEST" },
+      { name: "Type", control: "text", required: true, options: [], fixedValue: "GENERATED FIELDS" },
     ],
   });
   assert.equal((await publish({ ...automatic, fields: automatic.fields.map((field) => ({ ...field, generator: { key: "eval", version: 1 } })) })).status, 400);

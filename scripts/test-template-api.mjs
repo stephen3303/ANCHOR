@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { templateFixture, standardNames, standardInputNames, standardTemplateText, authorFields } from "./template-test-fixtures.mjs";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { createServer } from "node:net";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -26,8 +26,9 @@ try {
   docker(["sh", "-c", `createdb -U "$POSTGRES_USER" ${testDb}`]);
   created = true;
   sql(readFileSync(`${root}database/init/001-commands.sql`, "utf8"));
-  sql(readFileSync(`${root}database/migrations/002-message-templates.sql`, "utf8"));
-  sql(readFileSync(`${root}database/migrations/003-users-and-sessions.sql`, "utf8"));
+  for (const filename of readdirSync(`${root}database/migrations`).filter((name) => name.endsWith(".sql")).sort()) {
+    sql(readFileSync(`${root}database/migrations/${filename}`, "utf8"));
+  }
   const seed = spawnSync(process.execPath, ["--import", "tsx", "scripts/seed-users.ts", "--sql"], { cwd: root, encoding: "utf8" });
   assert.equal(seed.status, 0, seed.stderr);
   sql(seed.stdout);
@@ -87,7 +88,7 @@ try {
   assert.equal(new URL(workspacePage.url).pathname, "/templates");
   assert.ok((await workspacePage.text()).includes("Plaintext template"), "Signed-in workspace must render its page on the server");
   const definition = templateFixture({
-    name: "API test template", description: "Isolated test", text: "TO {{ Destinations }}\n{{ Status }}\n{{ Remarks }}\n{{ Type }}",
+    name: "TEST", description: "Isolated test", text: "TO {{ Destinations }}\n{{ Status }}\n{{ Remarks }}\n{{ Type }}",
     fields: [
       { name: "Destinations", control: "command-multiple", required: true, options: [] },
       { name: "Status", control: "select", required: true, options: ["Ready", "Not ready"] },
@@ -96,7 +97,7 @@ try {
     ],
   });
   assert.equal((await publish({ ...definition, text: "{{ Remarks }}", fields: [definition.fields.find((field) => field.name === "Remarks")] })).status, 400);
-  assert.equal((await publish({ ...definition, fields: definition.fields.map((field) => field.name === "Type" ? { ...field, fixedValue: " " } : field) })).status, 400);
+  assert.equal((await publish({ ...definition, name: "TEST/SPLIT" })).status, 400, "The template name is the MSGID type, so it cannot hold a field separator");
   const invalidTemplate = await publish({ ...definition, text: "{{ Missing }}" });
   assert.equal(invalidTemplate.status, 400, await invalidTemplate.text());
   assert.equal((await publish({ ...definition, fields: [] })).status, 400);
@@ -106,7 +107,8 @@ try {
   assert.equal((await fetch(`${base}/api/message-templates`, { method: "POST", headers: { "Content-Type": "application/json", Cookie: sessionCookie }, body: "{" })).status, 400);
   sql("UPDATE reference_sources SET enabled = false;");
   assert.equal((await publish(definition)).status, 409);
-  assert.equal(sql("SELECT count(*) FROM message_templates;").trim(), "0");
+  assert.equal(sql("SELECT count(*) FROM message_templates;").trim(), "1");
+  assert.equal(sql("SELECT count(*) FROM message_topics WHERE name='TEST';").trim(), "0", "Failed template creation must not advertise a type");
   sql("UPDATE reference_sources SET enabled = true;");
 
   for (const name of standardNames) {
@@ -127,7 +129,22 @@ try {
   const list = await (await fetch(`${base}/api/message-templates`)).json();
   assert.equal(list.templates[0].id, template.id);
   assert.equal(list.templates[0].variableCount, definition.fields.length);
-  assert.equal(sql("SELECT count(*) FROM message_template_versions WHERE published_at IS NOT NULL;").trim(), "1");
+  assert.equal(sql("SELECT count(*) FROM message_template_versions WHERE published_at IS NOT NULL;").trim(), "2");
+  const readTopics = async () => {
+    const response = await fetch(`${base}/api/subscriptions`, { headers: { Cookie: sessionCookie } });
+    assert.equal(response.status, 200, await response.clone().text());
+    return (await response.json()).topics;
+  };
+  const topic = (await readTopics()).find((item) => item.name === "TEST");
+  assert.ok(topic, "Template creation advertises its Type before any message is sent");
+  assert.equal(topic.messageCount, 0);
+  assert.equal(topic.subscribed, false, "Advertising a type does not automatically subscribe users");
+  assert.equal((await fetch(`${base}/api/subscriptions/${topic.id}`, { method: "PUT", headers: { Origin: base, Cookie: sessionCookie } })).status, 200);
+  assert.equal((await readTopics()).find((item) => item.id === topic.id).subscribed, true);
+  const duplicates = await Promise.all([publish({ ...definition, name: "Shared type one" }), publish({ ...definition, name: "Shared type two" })]);
+  assert.deepEqual(duplicates.map((response) => response.status), [201,201]);
+  assert.equal(sql("SELECT count(*) FROM message_topics WHERE name='TEST';").trim(), "1");
+  assert.equal((await readTopics()).find((item) => item.id === topic.id).subscribed, true, "Concurrent same-type creations preserve existing subscriptions");
   assert.equal((await fetch(`${base}/api/message-templates/not-an-id`)).status, 400);
   assert.equal((await fetch(`${base}/api/message-templates/00000000-0000-0000-0000-000000000000`)).status, 404);
   const commands = await (await fetch(`${base}/api/reference-data/commands?q=TEST`)).json();
@@ -152,7 +169,7 @@ try {
   for (const control of ["select", "radio", "checkbox-group", "checkbox"]) {
     const choice = templateFixture({
       name: "Output override test", description: "", text: "{{ Choice }}\n{{ Type }}",
-      fields: [{ name: "Choice", control, required: false, options: control === "checkbox" ? [] : ["Ready", "Not ready"], optionOutputs: control === "checkbox" ? { YES: "ACK", NO: "NO ACK" } : { Ready: "READY FOR TASKING" } }, { name: "Type", control: "text", required: true, options: [], fixedValue: "TEST" }],
+      fields: [{ name: "Choice", control, required: false, options: control === "checkbox" ? [] : ["Ready", "Not ready"], optionOutputs: control === "checkbox" ? { YES: "ACK", NO: "NO ACK" } : { Ready: "READY FOR TASKING" } }, { name: "Type", control: "text", required: true, options: [], fixedValue: "OUTPUT OVERRIDE TEST" }],
     });
     const savedChoice = await publish(choice);
     assert.equal(savedChoice.status, 201, await savedChoice.clone().text());
@@ -173,7 +190,7 @@ try {
       { name: "Timestamp", control: "autogenerated", required: true, options: [], generator: { key: "current-timestamp", version: 2 } },
       { name: "Date", control: "autogenerated", required: true, options: [], generator: { key: "current-date", version: 2 } },
       { name: "DTG", control: "autogenerated", required: true, options: [], generator: { key: "current-dtg", version: 1 } },
-      { name: "Type", control: "text", required: true, options: [], fixedValue: "TEST" },
+      { name: "Type", control: "text", required: true, options: [], fixedValue: "GENERATED FIELDS" },
     ],
   });
   assert.equal((await publish({ ...automatic, fields: automatic.fields.map((field) => ({ ...field, generator: { key: "eval", version: 1 } })) })).status, 400);
@@ -250,7 +267,7 @@ try {
   const patchTemplate = (id, body, cookie = sessionCookie, origin = base) => fetch(`${base}/api/message-templates/${id}`, { method: "PATCH", headers: { Origin: origin, Cookie: cookie, "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const originalVersion = JSON.parse(sql(`SELECT row_to_json(v) FROM message_template_versions v WHERE id='${template.versionId}';`));
   const pinnedId = sql(`INSERT INTO message_drafts(template_version_id,created_by,subject,rendered_document,rendered_text) VALUES ('${template.versionId}','${seededUser.id}','Pinned draft','{}','Original saved text') RETURNING id;`).trim();
-  const revisedDefinition = { ...definition, text: definition.text.replace("\nNNNN", "\nUPDATED {{ Remarks }}\nNNNN"), fields: definition.fields.map((field) => field.name === "Remarks" ? { ...field, control: "text" } : field) };
+  const revisedDefinition = { ...definition, text: definition.text.replace("\nNNNN", "\nUPDATED {{ Remarks }}\nNNNN"), fields: definition.fields.map((field) => field.name === "Remarks" ? { ...field, control: "text" } : field) , name: "Revised Test" };
   const editPayload = { expectedVersionId: template.versionId, definition: revisedDefinition };
   const activePatel = await login(patel.id);
   assert.equal((await patchTemplate(template.id, editPayload, "")).status, 401);
@@ -258,7 +275,7 @@ try {
   assert.equal((await patchTemplate(template.id, editPayload, sessionCookie, "https://untrusted.example")).status, 403);
   assert.equal((await patchTemplate(template.id, { ...editPayload, expectedVersionId: "invalid" })).status, 400);
   assert.equal((await patchTemplate(template.id, { ...editPayload, definition: { ...definition, fields: [] } })).status, 400);
-  assert.equal((await patchTemplate(template.id, { ...editPayload, definition: { ...definition, fields: definition.fields.map((field) => field.name === "Type" ? { ...field, fixedValue: "" } : field) } })).status, 400);
+  assert.equal((await patchTemplate(template.id, { ...editPayload, definition: { ...definition, name: "A:B:C" } })).status, 400);
   assert.equal((await patchTemplate(template.id, { ...editPayload, definition: { ...definition, fields: definition.fields.map((field) => field.name === "Recipients" ? { ...field, separator: "space" } : field) } })).status, 400);
   assert.equal((await patchTemplate(template.id, { ...editPayload, definition: { ...definition, text: definition.text.replace("NNNN", "") } })).status, 400);
   const simultaneousEdits = await Promise.all([patchTemplate(template.id, editPayload),patchTemplate(template.id, editPayload)]);
@@ -266,6 +283,9 @@ try {
   const versionTwo = (await (await fetch(`${base}/api/message-templates/${template.id}`)).json()).template;
   assert.equal(versionTwo.id, template.id); assert.equal(versionTwo.version, 2);
   assert.equal(versionTwo.text, revisedDefinition.text);
+  const revisedTopic = (await readTopics()).find((item) => item.name === "REVISED TEST");
+  assert.ok(revisedTopic); assert.equal(revisedTopic.messageCount, 0); assert.equal(revisedTopic.subscribed, false);
+  assert.equal((await readTopics()).find((item) => item.id === topic.id).subscribed, true, "Type changes do not rename old topics or reset preferences");
   assert.notEqual(versionTwo.versionId, template.versionId);
   assert.deepEqual(JSON.parse(sql(`SELECT row_to_json(v) FROM message_template_versions v WHERE id='${template.versionId}';`)), originalVersion);
   assert.equal(sql(`SELECT template_version_id FROM message_drafts WHERE id='${pinnedId}';`).trim(), template.versionId);
@@ -318,7 +338,7 @@ try {
       await expect(page.getByRole("group", { name: "Status", exact: true }).getByRole("textbox", { name: /^Options \(one per line\)/ })).toHaveValue("Ready\nNot ready");
       await page.getByRole("group", { name: "Remarks", exact: true }).getByRole("combobox", { name: "Input type", exact: true }).selectOption("textarea");
       const topicInput = page.getByRole("textbox", { name: /^Type value/ });
-      await expect(topicInput).toHaveValue("TEST");
+      await expect(topicInput).toHaveValue("REVISED TEST");
       await topicInput.fill("   ");
       await page.getByRole("button", { name: "Review generated form", exact: true }).click();
       await expect(page.getByRole("alert").filter({ hasText: "Type value is required" })).toBeVisible();
@@ -338,6 +358,16 @@ try {
       assert.equal(current.fields.find((field) => field.name === "Type").fixedValue, "BROWSER TOPIC");
       assert.equal(current.text, versionTwo.text.replace("\nNNNN", "\nBrowser revision\nNNNN"));
       assert.equal(sql(`SELECT template_version_id FROM message_drafts WHERE id='${pinnedId}';`).trim(), template.versionId);
+      await page.goto(`${base}/subscriptions`);
+      const available = (await (await page.request.get(`${base}/api/subscriptions`)).json()).topics.find((item) => item.name === "BROWSER TOPIC");
+      assert.ok(available); assert.equal(available.messageCount, 0);
+      const typeRow = page.getByTestId(`message-topic-${available.id}`);
+      await expect(typeRow).toContainText("0 published messages");
+      await typeRow.getByRole("button", { name: "Subscribe to BROWSER TOPIC", exact: true }).click();
+      await expect(typeRow.getByRole("button", { name: "Unsubscribe from BROWSER TOPIC", exact: true })).toBeEnabled();
+      await page.reload();
+      await expect(typeRow.getByRole("button", { name: "Unsubscribe from BROWSER TOPIC", exact: true })).toBeVisible();
+      await page.goto(`${base}/templates`);
       const disposableRow = page.getByTestId(`template-${disposable.id}`);
       page.once("dialog", (dialog) => dialog.dismiss());
       await disposableRow.getByRole("button", { name: `Delete ${disposable.name}`, exact: true }).click();
@@ -371,6 +401,7 @@ try {
   const deletions = await Promise.all([removeTemplate(template.id), removeTemplate(template.id)]);
   assert.deepEqual(deletions.map((response) => response.status).sort(), [204,404]);
   assert.equal(sql(`SELECT active FROM message_templates WHERE id='${template.id}';`).trim(), "f");
+  assert.equal((await readTopics()).find((item) => item.id === topic.id).subscribed, true, "Template deletion preserves advertised types and saved subscriptions");
   assert.equal(sql(`SELECT jsonb_agg(v ORDER BY version) FROM message_template_versions v WHERE template_id='${template.id}';`), versionsBeforeDelete);
   assert.equal(sql(`SELECT template_version_id FROM message_drafts WHERE id='${pinnedId}';`).trim(), template.versionId);
   assert.equal(sql(`SELECT rendered_text FROM message_drafts WHERE id='${pinnedId}';`).trim(), "Original saved text");

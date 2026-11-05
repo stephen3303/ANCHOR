@@ -36,7 +36,7 @@ interface MessageRow {
 const MESSAGE_SELECT = `
   SELECT m.record, m.lifecycle, m.replaced_by AS "replacedBy", a.c2oix_id AS "c2oixId",
     a.sha256, a.size_bytes AS "sizeBytes", a.raw_text AS "rawText",
-    t.id AS "subscriptionTopicId", t.name AS "subscriptionType"
+    t.id AS "subscriptionTopicId", upper(t.name) AS "subscriptionType"
   FROM messages m JOIN message_artifacts a ON a.c2oix_id = m.c2oix_id
   LEFT JOIN message_topic_messages mt ON mt.message_id=m.id
   LEFT JOIN message_topics t ON t.id=mt.topic_id`;
@@ -63,7 +63,8 @@ export async function messageSnapshot(user: AppUser, subscriptionsOnly = false):
     db.query<MessageRow>(`${MESSAGE_SELECT}
       WHERE (NOT $1::boolean OR EXISTS (SELECT 1 FROM message_topic_subscriptions s JOIN message_topics st ON st.id=s.topic_id
         -- A subscription to a type alone (SAFETY) also catches its subtags (SAFETY:ELECTRICAL).
-        WHERE s.user_id=$2 AND (s.topic_id=t.id OR btrim(split_part(t.name, ':', 1))=st.name)))
+        -- Types compare in upper case, as MSGID fields are written.
+        WHERE s.user_id=$2 AND (upper(st.name)=upper(t.name) OR upper(st.name)=upper(btrim(split_part(t.name, ':', 1))))))
       ORDER BY m.received DESC, m.id`, [subscriptionsOnly, user.id]),
     db.query<{ messageId: string; read: ReadState }>(
       `SELECT message_id AS "messageId", read_state AS read FROM message_user_state WHERE user_id = $1`, [user.id]),

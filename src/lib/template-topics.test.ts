@@ -7,16 +7,20 @@ import { newStandardTemplate, prepareTemplateEdit, STANDARD_FIELD_NAMES, STANDAR
 
 const definition = () => {
   const result = newStandardTemplate();
-  result.fields = result.fields.map((field) => field.name === "Type" ? { ...field, fixedValue: "  READINESS REPORT  " } : field);
+  result.name = "  Readiness  Report  ";
+  result.fields = result.fields.map((field) => field.name === "Type" ? { ...field, fixedValue: "IGNORED" } : field);
   return result;
 };
 const topicOf = (value: ReturnType<typeof definition>) => value.fields.find((field) => field.name === "Type")!;
 
-test("publication requires the exact Type placeholder and an author-defined text value", () => {
+test("publication requires the exact Type placeholder, and the template name is the type", () => {
   const base = definition();
   assert.throws(() => validateTemplateForPublication({ ...base, text: base.text.replace("{{ Type }}", ""), fields: base.fields.filter((field) => field.name !== "Type") }), /Type/);
-  for (const fixedValue of [undefined, "", "   ", 12, null, "a\0b", "a\nb", "a\rb", "x".repeat(201)]) {
-    assert.throws(() => validateTemplateForPublication({ ...base, fields: base.fields.map((field) => field.name === "Type" ? { ...field, fixedValue } : field) }));
+  for (const name of ["", "   ", "CASREP/1", "A:B:C", "<topic>", ":SAFETY"]) {
+    assert.throws(() => validateTemplateForPublication({ ...base, name }), Error, name);
+  }
+  for (const [name, type] of [["casrep", "CASREP"], ["Safety:Electrical", "SAFETY:ELECTRICAL"], ["OPREP-3", "OPREP-3"]]) {
+    assert.equal(topicOf(validateTemplateForPublication({ ...base, name })).fixedValue, type);
   }
   for (const change of [{ control: "textarea" }, { required: false }]) {
     assert.throws(() => validateTemplateForPublication({ ...base, fields: base.fields.map((field) => field.name === "Type" ? { ...field, ...change } : field) }));
@@ -33,13 +37,14 @@ test("topic is persisted but is not a drafter input; rendering ignores spoofed v
   assert.ok(renderGeneratedMessage(parsed.text, { Type: "SPOOFED" }, parsed.fields).includes("MSGID/READINESS REPORT/"));
 });
 
-test("topic remains single-pass plaintext and pinned independently in each version", () => {
+test("topic is pinned independently in each version, from that version's name", () => {
   const first = validateTemplateForPublication(definition());
   const next = definition();
+  next.name = "SAFETY:ELECTRICAL";
   topicOf(next).fixedValue = "{{ Body }} <topic>";
   const second = validateTemplateForPublication(next);
   assert.equal(topicOf(first).fixedValue, "READINESS REPORT");
-  assert.ok(renderGeneratedMessage(second.text, { Body: "Ready" }, second.fields).includes("MSGID/{{ Body }} <topic>/"));
+  assert.ok(renderGeneratedMessage(second.text, { Body: "Ready" }, second.fields).includes("MSGID/SAFETY:ELECTRICAL/"));
 });
 
 test("every standard variable is mandatory and its entire normalized configuration is locked", () => {

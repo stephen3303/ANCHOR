@@ -90,6 +90,24 @@ function wrap(text: string, width = 69, indent = ""): string[] {
 }
 
 /**
+ * Each demo message keeps the C2OIX id it was first seeded with, so a database
+ * seeded earlier still lines up when demo messages are added. Append new demo
+ * messages to the end of this list; never reorder it.
+ */
+const C2OIX_SLOTS = [
+  "comsublant-078-26", "navadmin-236-26", "navadmin-235-26", "comsublant-080-26", "navadmin-234-26", "comsublant-061-26",
+  "navadmin-228-26", "navadmin-231-26", "comsubfor-3500-1", "navseainst-4790-8", "comsublant-074-26", "usff-2026-11",
+  "alnav-079-26", "alnav-071-26", "navadmin-223-26", "alnav-076-26",
+  // Added with the message type catalog.
+  "stonefish-sitrep-003-26", "lanternfish-oprep5-296-26", "stonefish-casrep-26-004", "lanternfish-movrep-012-26", "ironfin-logreq-007-26",
+];
+function c2oixIdFor(id: string) {
+  const slot = C2OIX_SLOTS.indexOf(id);
+  if (slot < 0) throw new Error(`Add demo message ${id} to C2OIX_SLOTS in data.ts.`);
+  return `C2OIX-26-${String(48210 + slot * 37).padStart(6, "0")}`;
+}
+
+/**
  * Builds the mock message as it would arrive off the wire: a plain-text record
  * message with prosigns, uppercase sets and fixed-width lines. Seeds can supply
  * their own rawText instead. Real ingest would store the received bytes here.
@@ -742,7 +760,7 @@ export const MESSAGES: Message[] = seeds
     addressees: [],
     ...s,
     rawText: s.rawText ?? rawMessage(s, 1001 + i),
-    c2oixId: `C2OIX-26-${String(48210 + i * 37).padStart(6, "0")}`,
+    c2oixId: c2oixIdFor(s.id),
     sha256: mockSha(s.id + s.dtg),
   }))
   .sort((a, b) => b.received.localeCompare(a.received));

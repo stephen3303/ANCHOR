@@ -61,6 +61,37 @@ try {
       await db.query(readFileSync(path, "utf8"));
       assert.deepEqual(await snapshot(), before, "Topic backfill must not rewrite canonical messages");
       assert.ok(Number((await db.query("SELECT count(*) AS n FROM message_topic_messages")).rows[0].n) > 0);
+    } else if (path.endsWith("010-template-message-topics.sql")) {
+      const author = (await db.query("SELECT id FROM users WHERE login='LTaylor'")).rows[0].id;
+      const addTemplate = async (key, active = true) => (await db.query("INSERT INTO message_templates(key,name,created_by,active) VALUES ($1,$1,$2,$3) RETURNING id", [key, author, active])).rows[0].id;
+      const addVersion = async (id, version, type, published = true, name = "Type") => (await db.query(`INSERT INTO message_template_versions(template_id,version,created_by,ui_schema,published_at)
+        VALUES ($1,$2,$3,$4::jsonb,CASE WHEN $5 THEN now() END) RETURNING id`, [id, version, author, JSON.stringify({ fields: [{ name, control: "text", required: true, options: [], fixedValue: type }] }), published])).rows[0].id;
+      const active = await addTemplate("topic-backfill-active");
+      await addVersion(active, 1, "EARLIER-ONLY");
+      await addVersion(active, 2, "BACKFILLED-TOPIC");
+      const unpublished = await addVersion(active, 3, "DRAFT-ONLY-TOPIC", false);
+      const archived = await addTemplate("topic-backfill-archived", false);
+      await addVersion(archived, 1, "ARCHIVED-ONLY-TOPIC");
+      await addVersion(await addTemplate("topic-backfill-legacy"), 1, "LEGACY-TOPIC", true, "Msg Type");
+      await addVersion(await addTemplate("topic-backfill-existing"), 1, "NAVADMIN");
+      const existing = (await db.query("SELECT id FROM message_topics WHERE name='NAVADMIN'")).rows[0].id;
+      await db.query("INSERT INTO message_topic_subscriptions(user_id,topic_id) VALUES ($1,$2)", [author, existing]);
+      const before = (await db.query("SELECT jsonb_agg(v ORDER BY id) AS snapshot FROM message_template_versions v")).rows[0].snapshot;
+      await db.query(readFileSync(path, "utf8"));
+      assert.deepEqual((await db.query("SELECT jsonb_agg(v ORDER BY id) AS snapshot FROM message_template_versions v")).rows[0].snapshot, before);
+      const topics = async () => (await db.query("SELECT name FROM message_topics")).rows.map((row) => row.name);
+      assert.ok((await topics()).includes("BACKFILLED-TOPIC"));
+      assert.ok((await topics()).includes("LEGACY-TOPIC"));
+      for (const absent of ["EARLIER-ONLY", "ARCHIVED-ONLY-TOPIC", "DRAFT-ONLY-TOPIC"]) assert.ok(!(await topics()).includes(absent));
+      assert.equal((await db.query("SELECT id FROM message_topics WHERE name='NAVADMIN'")).rows[0].id, existing);
+      assert.equal(Number((await db.query("SELECT count(*) AS n FROM message_topic_subscriptions WHERE user_id=$1 AND topic_id=$2", [author, existing])).rows[0].n), 1);
+      await db.query("UPDATE message_template_versions SET published_at=now() WHERE id=$1", [unpublished]);
+      assert.ok((await topics()).includes("DRAFT-ONLY-TOPIC"), "An unpublished version advertises Type only once published");
+      await db.query("BEGIN");
+      await addVersion(await addTemplate("topic-rollback"), 1, "ROLLBACK-TOPIC");
+      await db.query("ROLLBACK");
+      assert.ok(!(await topics()).includes("ROLLBACK-TOPIC"), "Rolled-back template creation must not leave a topic");
+      console.log("Template topic migration passed: active latest-version backfill, legacy Type, preserved IDs/memberships/pins, publication timing and transactional rollback.");
     } else await db.query(readFileSync(path, "utf8"));
   }
   await db.query(seedSql("scripts/seed-users.ts"));

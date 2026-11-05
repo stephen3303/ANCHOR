@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { DRAFT_KEYS, isKnownKey, keyName } from "@/lib/message-types";
+import { isKnownKey } from "@/lib/message-types";
 import { FilePlus2, RefreshCw } from "lucide-react";
 import { Button, PageHeader, Panel } from "@/components/ui";
 import { TemplatePreview, templateInputClass } from "@/components/template-preview";
+import { useStore } from "@/lib/store";
 import { defaultGeneratorBinding, GENERATED_OUTPUTS, isGeneratedOutputKey } from "@/lib/generated-inputs";
-import { COMMAND_SEPARATORS, validateStandardTemplateText, INPUT_TYPES, isStaticChoice, validateTemplateForPublication, type CommandSeparator, type InputType, type TemplateDefinition, type TemplateField, type TemplateSummary } from "@/lib/message-templates";
+import { COMMAND_SEPARATORS, validateStandardTemplateText, INPUT_TYPES, isStaticChoice, validateTemplateForPublication, templateType, type CommandSeparator, type InputType, type TemplateDefinition, type TemplateField, type TemplateSummary } from "@/lib/message-templates";
 
 import { newStandardTemplate, prepareTemplateEdit, STANDARD_TEMPLATE_TEXT, standardField } from "@/lib/standard-template";
 
@@ -24,7 +25,7 @@ const choiceLabels = (field: FieldEditor) => field.control === "checkbox" ? ["YE
 function fieldConfig(field: FieldEditor): TemplateField {
   const locked = standardField(field.name);
   if (locked) return locked;
-  if (field.name === "Type") return { name: field.name, control: "text", required: true, options: [], fixedValue: field.fixedValue ?? "" };
+  if (field.name === "Type") return { name: field.name, control: "text", required: true, options: [], fixedValue: field.fixedValue || "TYPE" }; // Replaced by the template name on validation.
   const options = isStaticChoice(field.control) ? choiceLabels(field) : [];
   const optionOutputs = Object.fromEntries(choiceLabels(field).filter((label) => field.optionOutputs && Object.hasOwn(field.optionOutputs, label) && field.optionOutputs[label].trim()).map((label) => [label, field.optionOutputs![label]]));
   return {
@@ -36,6 +37,7 @@ function fieldConfig(field: FieldEditor): TemplateField {
 }
 
 export default function TemplatesPage() {
+  const { refreshTopics } = useStore();
   const [step, setStep] = useState(1);
   const [editing, setEditing] = useState<{ id: string; versionId: string; version: number } | null>(null);
   const [name, setName] = useState("");
@@ -98,7 +100,7 @@ export default function TemplatesPage() {
       if (!response.ok) throw new Error(data.error || "Could not publish the template.");
       setSaved(data.template);
       setInspected(null);
-      await loadTemplates();
+      await Promise.all([loadTemplates(), refreshTopics()]);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not publish the template. Your inputs have been preserved."); }
     finally { setBusy(false); }
   };
@@ -177,7 +179,7 @@ export default function TemplatesPage() {
         </ol>
         {error && <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
         {step === 1 && <div className="space-y-4">
-          <label className="block space-y-1 text-sm font-semibold">Template name<input className={templateInputClass} value={name} disabled={busy} maxLength={150} onChange={(event) => setName(event.target.value)} placeholder="Readiness report" /></label>
+          <label className="block space-y-1 text-sm font-semibold">Template name<input className={templateInputClass} value={name} disabled={busy} maxLength={150} onChange={(event) => setName(event.target.value)} placeholder="CASREP or SAFETY:ELECTRICAL" /><span className="block text-xs font-normal text-muted">The name is the message type this template drafts.</span></label>
           <label className="block space-y-1 text-sm font-semibold">Description (optional)<textarea className={templateInputClass} rows={2} value={description} disabled={busy} maxLength={2000} onChange={(event) => setDescription(event.target.value)} /></label>
           <label className="block space-y-1 text-sm font-semibold">Plaintext template<textarea className={`${templateInputClass} font-mono`} rows={14} value={text} disabled={busy} maxLength={50000} onChange={(event) => setText(event.target.value)} placeholder={"FM {{ Origin }}\nTO {{ Recipients }}\nMSGID/{{ Type }}//\nSUBJ/{{ Subject }}\n\n{{ Remarks }}"} aria-describedby="placeholder-help" /></label>
           <p id="placeholder-help" className="text-sm text-muted">Start from the standard template. Precedence, DateTime, Origin, Recipients, Info, Classification, Subject, POC and Message Number are mandatory and use locked standard behavior. Keep two standalone BT lines and finish with NNNN. Every template must include <code>{"{{ Type }}"}</code>; define its fixed pub/sub identifier in the next step. Mark other variables as <code>{"{{ Name }}"}</code>. Names are case-sensitive and may contain letters, numbers, spaces, underscores and hyphens. Repeated names share one input. Only named substitutions are supported—no scripts or conditionals.</p>
@@ -192,7 +194,7 @@ export default function TemplatesPage() {
               <p>{INPUT_TYPES.find(([type]) => type === field.control)?.[1]} · Required{field.separator ? ` · ${field.separator}-separated` : ""}</p>
               {!!choiceLabels(field).length && <p>{choiceLabels(field).map((option) => `${option}${field.optionOutputs?.[option] ? ` → ${field.optionOutputs[option]}` : ""}`).join("; ")}</p>}
               <p className="text-xs text-muted">Behavior is shared with the standard template. {field.control === "autogenerated" ? "Sender command is resolved by the server from the signed-in account; drafters cannot override it." : "Message drafters supply the value."}</p>
-            </div> : field.name === "Type" ? <label className="block space-y-1 text-sm">Type value (required)<input className={templateInputClass} maxLength={200} list="msgid-type-keys" value={field.fixedValue ?? ""} onChange={(event) => setFields((current) => current.map((item, position) => position === index ? { ...item, fixedValue: event.target.value } : item))} /><datalist id="msgid-type-keys">{DRAFT_KEYS.map((key) => <option key={key} value={key}>{keyName(key)}</option>)}</datalist>{field.fixedValue?.trim() && !isKnownKey(field.fixedValue.trim().toUpperCase()) && <span role="status" className="block text-xs text-amber-800">Not a catalog type. Subscriptions can&apos;t select it; use a type such as SAFETY or SAFETY:ELECTRICAL.</span>}<span className="text-xs text-muted">Fixed text used as the pub/sub identifier. Drafters cannot change it. Case and internal spacing are preserved.</span></label> : <>
+            </div> : field.name === "Type" ? <div className="space-y-1 text-sm" data-testid="type-field"><p className="font-semibold">Message type · set by the template name</p><p className="font-mono">{templateType(name) || "Enter a template name"}</p>{templateType(name) && !isKnownKey(templateType(name)) && <p role="status" className="text-xs text-amber-800">Not a catalog type. Name the template after a type such as CASREP or SAFETY:ELECTRICAL.</p>}<p className="text-xs text-muted">Written in MSGID field 2. Each template drafts one message type, and subscribers to that type see what it sends.</p></div> : <>
             <div className="flex flex-wrap items-center gap-4">
               <label className="min-w-64 flex-1 space-y-1 text-sm">Input type<select className={templateInputClass} value={field.control} onChange={(event) => setFields((current) => current.map((item, position) => position === index ? { ...item, control: event.target.value as InputType, required: event.target.value === "autogenerated" ? true : item.required } : item))}>{INPUT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
               {field.control !== "autogenerated" && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={field.required} onChange={(event) => setFields((current) => current.map((item, position) => position === index ? { ...item, required: event.target.checked } : item))} className="accent-navy-700" />{field.control === "checkbox" ? "Must be checked" : "Required"}</label>}

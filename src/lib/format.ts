@@ -22,6 +22,12 @@ export function fmtDateTime(iso: string | Date): string {
   return `${fmtDate(iso)} ${fmtTime(iso)}`;
 }
 
+/** Naval date-time group, e.g. 241830Z OCT 26. */
+export function fmtDTG(iso: string | Date): string {
+  const date = typeof iso === "string" ? new Date(iso) : iso;
+  return `${pad(date.getUTCDate())}${fmtTime(date)} ${MONTHS[date.getUTCMonth()]} ${pad(date.getUTCFullYear() % 100)}`;
+}
+
 /** Short hash for display: first 6 and last 4 characters. */
 export function shortHash(h: string): string {
   return `${h.slice(0, 6)}…${h.slice(-4)}`;

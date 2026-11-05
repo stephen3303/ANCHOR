@@ -11,11 +11,14 @@ docker compose up -d --wait postgres
 npm run db:migrate
 npm run db:seed:commands
 npm run db:seed:users
+npm run db:seed:templates
+npm run db:seed:messages
 ```
 
 The bundled **`database/seeds/PLADS.txt`** supplies all command names; there is
 no dependency on a local Downloads folder. Migrations create the tables; the
-seed commands import the directory and initial demo user. These are distinct
+seed commands import the directory, demo users, the bundled Standard Message
+template, and 16 fictional messages from `src/lib/data.ts`. These are distinct
 operations. See the [root README](../README.md#run-it) to launch the app.
 
 ## Routine database startup (every restart, if not already running)
@@ -43,6 +46,16 @@ purposeful reset, then repeat migration/seeding from first-time setup.
 - Updated `database/seeds/PLADS.txt`: run `npm run db:seed:commands`. Existing IDs
   are retained and missing names are added; this does not delete removed names.
 - Missing initial user: run `npm run db:seed:users`. Existing accounts are preserved.
+- Standard Message template: after migrations and user seeding, run `npm run db:seed:templates`.
+  This publishes the bundled `database/seeds/standard-message.json` definition on
+  a fresh database. Reruns preserve existing templates (including a UI-created
+  Standard Message), published versions, pending revisions and archived state.
+  Changes to the bundled snapshot do not update existing published templates;
+  create a new version deliberately instead. See [seed details](seeds/README.md).
+  Test the seed against a disposable database with `npm run test:templates:seed`.
+- Messages API upgrade: run migrations (including 004), then `npm run db:seed:messages`
+  once. Original mock IDs/documents are preserved; reruns never overwrite records
+  or remove user-created drafts.
 
 The migration runner uses the container's configured credentials, serializes
 concurrent runs with a transaction-scoped advisory lock, and applies all pending
@@ -65,11 +78,15 @@ automatically migrate an existing database.
 | `reference_sources` | Allowlisted provider identities, immutable versioned parameter contracts, mutable availability/sync metadata. |
 | `message_templates` | Stable template key, display metadata, active flag and creator. |
 | `message_template_versions` | Editable unpublished definitions; immutable after publication. |
+| `messages` | Seeded message documents and private draft feed records, with creator/request idempotency keys. |
 | `message_drafts` | Partial or generated message drafts pinned to a published template version. |
 | `message_draft_references` | Ordered selections and resolved snapshots for the current draft. |
 | `schema_migrations` | Applied migration ledger. |
 
-All domain tables have generated UUID keys. Timestamps use `timestamptz`.
+Domain tables have generated UUID keys except `messages.id`, which is text to
+preserve original mock slugs and accommodate UUIDs for new drafts. Each new feed
+record links one-to-one to its draft; its ID is that draft UUID as text.
+Timestamps use `timestamptz`.
 New `created_by` values are server-resolved user UUIDs stored as text, not a caller's
 submitted identity. Legacy creator strings are retained (no foreign key is added
 to historical author columns). Publishing requires the feature opt-in and a
@@ -139,33 +156,45 @@ these values. All generated fields must resolve before authoritative rendering.
 The existing stateless preview API exercises the server resolver but stores
 nothing. It resolves the sender command from the valid session user's
 `users.command_id` joined to `commands`, not a global setting or submitted field.
-Future draft creation must apply the same lookup plus real command authorization.
-Capture one clock instant per
-generation, and save resolved automatic values, generator versions and resolution
-time in the draft's `render_metadata` alongside its rendered document/text.
+The messages API applies the same lookup at creation (production command
+permissions are still future work). It captures one clock instant per generation
+and saves resolved automatic values, generator versions, sender context, and
+resolution time in `render_metadata` alongside the rendered document/text.
 Do not resolve outputs when publishing templates or on every draft read.
 
 ## Saving messages
 
-A draft must reference a published version. Incomplete inputs can be saved with
-null generated output; this supports saving work in progress without implying
-that it is valid or ready to send. Generated structured document and text must
-both be present or both be null.
+`POST /api/messages` accepts a request UUID, exact published template-version
+UUID, subject, precedence, and input values. It requires a valid session. In one
+transaction the service:
 
-The future save service must execute one transaction to:
+- Locks the user's idempotency key and returns an existing matching result, or
+  rejects reuse with different inputs (409).
+- Loads an active published version and validates inputs from its stored field
+  definition. Unknown and autogenerated input keys are rejected.
+- Resolves original option labels/output overrides, directory IDs/names, and
+  automatic fields using one server clock and session sender context.
+- Inserts `message_drafts` with user input IDs, canonical unwrapped document,
+  final text, and render metadata.
+- Inserts ordered `message_draft_references` name/ID snapshots for command fields.
+- Inserts the linked `messages` feed document and commits everything atomically.
 
-- Authenticate/authorize and check the expected draft revision.
-- Validate input values and resolve selected IDs under the appropriate parameters.
-- Resolve autogenerated bindings from trusted command context and one server clock;
-  do not accept resolved automatic values from the client.
-- Update inputs, generated subject/metadata, canonical unwrapped document, final
-  text, and renderer/postprocessor version metadata together.
-- Replace `message_draft_references` with the corresponding resolved selections.
+`GET /api/messages` and `GET /api/messages/:id` return shared seeded received
+records plus only the caller's own drafts. Other users' draft IDs return 404.
+No editing/deletion/release endpoints or offline draft queue exist yet. The
+schema permits partial drafts with null generated output, but this first creation
+API requires all mandatory inputs and always saves a complete rendered snapshot.
+Generated document/text must both be present or both null. A future edit endpoint
+must use revision checks, replace snapshots transactionally, and clear stale
+outputs when saving incomplete inputs.
 
-When saving incomplete/changed inputs without rendering, clear both generated
-outputs, render metadata and obsolete reference snapshots in that transaction.
-The database cannot determine whether two rendered outputs faithfully represent
-their input values; the application owns that invariant.
+The feed's `record` JSONB preserves the existing `Message` UI shape, all seed
+metadata and IDs. New records include `kind: "draft"`, `draftId`, `templateName`
+and `renderedText`; they are read/printed separately from official source traffic.
+Seeded received records have no creator/draft/request key. New drafts are owned,
+untransmitted, UNCLASSIFIED records, not official C2OIX ingestions. No ingestion
+IDs or verified source hashes are invented. Record and draft snapshots are
+written in the same transaction; direct SQL edits must preserve that invariant.
 
 For command selections, `command_id` is a real foreign key. For future non-command
 providers, `external_record_id` holds their stable identifier. Exactly one must

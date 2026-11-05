@@ -1,10 +1,12 @@
 import "server-only";
 import { TemplateValidationError } from "@/lib/message-templates";
+import { MessageInputError } from "@/lib/message-inputs";
 
 import { ApiError } from "./api-error";
 import { requireSessionUser } from "./session";
 export { ApiError } from "./api-error";
 export function apiFailure(error: unknown): Response {
+  if (error instanceof MessageInputError) return Response.json({ error: error.message, fields: error.fields }, { status: 400 });
   if (error instanceof TemplateValidationError) return Response.json({ error: error.message }, { status: 400 });
   if (error instanceof ApiError) return Response.json({ error: error.message }, { status: error.status });
   console.error("Template API request failed", error);

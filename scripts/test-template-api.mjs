@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { createServer } from "node:net";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -25,13 +26,24 @@ try {
   docker(["sh", "-c", `createdb -U "$POSTGRES_USER" ${testDb}`]);
   created = true;
   sql(readFileSync(`${root}database/init/001-commands.sql`, "utf8"));
-  sql(readFileSync(`${root}database/migrations/002-message-templates.sql`, "utf8"));
-  sql(readFileSync(`${root}database/migrations/003-users-and-sessions.sql`, "utf8"));
+  for (const filename of readdirSync(`${root}database/migrations`).filter((name) => name.endsWith(".sql")).sort()) {
+    sql(readFileSync(`${root}database/migrations/${filename}`, "utf8"));
+  }
+  const messageSeed = spawnSync(process.execPath, ["--import", "tsx", "scripts/seed-messages.ts", "--sql"], { cwd: root, encoding: "utf8" });
+  assert.equal(messageSeed.status, 0, messageSeed.stderr);
+  sql(messageSeed.stdout);
+  const seedCount = Number(sql("SELECT count(*) FROM messages;").trim());
+  assert.ok(seedCount > 0);
+  sql(messageSeed.stdout);
+  assert.equal(Number(sql("SELECT count(*) FROM messages;").trim()), seedCount);
   const seed = spawnSync(process.execPath, ["--import", "tsx", "scripts/seed-users.ts", "--sql"], { cwd: root, encoding: "utf8" });
   assert.equal(seed.status, 0, seed.stderr);
   sql(seed.stdout);
   sql(seed.stdout);
   assert.equal(sql("SELECT count(*) FROM users;").trim(), "10");
+  const routingSeed = spawnSync(process.execPath, ["--import", "tsx", "scripts/seed-routing.ts", "--sql"], { cwd: root, encoding: "utf8" });
+  assert.equal(routingSeed.status, 0, routingSeed.stderr);
+  sql(routingSeed.stdout); sql(routingSeed.stdout);
   const seededProfile = JSON.parse(sql("SELECT profile::text FROM users WHERE login = 'LTaylor';"));
   sql("INSERT INTO commands (name) SELECT 'TEST COMMAND ' || lpad(n::text, 2, '0') FROM generate_series(1, 30) n;");
 
@@ -85,6 +97,15 @@ try {
   const workspacePage = await fetch(`${base}/templates`, { headers: { Cookie: sessionCookie } });
   assert.equal(new URL(workspacePage.url).pathname, "/templates");
   assert.ok((await workspacePage.text()).includes("Plaintext template"), "Signed-in workspace must render its page on the server");
+  const readMessages = async (cookie = sessionCookie) => (await fetch(`${base}/api/messages`, { headers: { Cookie: cookie } })).json();
+  const postMessage = (body, cookie = sessionCookie) => fetch(`${base}/api/messages`, { method: "POST", headers: { "Content-Type": "application/json", Origin: base, Cookie: cookie }, body: JSON.stringify(body) });
+  assert.equal((await fetch(`${base}/api/messages`)).status, 401);
+  assert.equal((await postMessage({}, "")).status, 401);
+  const originalMessages = await readMessages();
+  assert.equal(originalMessages.messages.length, seedCount);
+  const original = originalMessages.messages[0];
+  const originalRead = await (await fetch(`${base}/api/messages/${original.id}`, { headers: { Cookie: sessionCookie } })).json();
+  assert.deepEqual(originalRead.message, original);
   const definition = {
     name: "API test template", description: "Isolated test", text: "TO {{ Recipients }}\n{{ Status }}\n{{ Remarks }}",
     fields: [
@@ -125,6 +146,152 @@ try {
   assert.equal(secondPage.commands.length, 5);
   assert.equal(secondPage.nextCursor, null);
   assert.equal((await fetch(`${base}/api/reference-data/commands?cursor=-1`)).status, 400);
+  const messagePayload = { requestId: randomUUID(), templateVersionId: template.versionId, subject: "Integration message draft", precedence: "PRIORITY", values: { Recipients: [commands.commands[1].id, commands.commands[0].id], Status: "Ready", Remarks: "Saved body {{ not-recursively-expanded }}" } };
+  assert.equal((await postMessage({ ...messagePayload, values: { Status: "Ready" } })).status, 400);
+  assert.equal((await postMessage({ ...messagePayload, values: { ...messagePayload.values, Status: "Unlisted" } })).status, 400);
+  assert.equal((await postMessage({ ...messagePayload, values: { ...messagePayload.values, Recipients: ["00000000-0000-4000-8000-999999999999"] } })).status, 400);
+  assert.equal((await postMessage({ ...messagePayload, originator: "SPOOFED" })).status, 400);
+  assert.equal(sql("SELECT count(*) FROM message_drafts;").trim(), "0");
+  sql("UPDATE reference_sources SET enabled = false;");
+  assert.equal((await postMessage(messagePayload)).status, 409);
+  sql("UPDATE reference_sources SET enabled = true;");
+  const concurrent = await Promise.all([postMessage(messagePayload), postMessage(messagePayload)]);
+  assert.deepEqual(concurrent.map((item) => item.status).sort(), [200, 201], await concurrent[0].clone().text());
+  const { message: savedMessage } = await concurrent[0].json();
+  assert.equal((await concurrent[1].json()).message.id, savedMessage.id);
+  assert.equal(savedMessage.kind, "draft");
+  assert.equal(savedMessage.originator, "COMSUBLANT NORFOLK VA");
+  assert.equal(savedMessage.renderedText, `TO ${commands.commands[1].name}; ${commands.commands[0].name}\nReady\nSaved body {{ not-recursively-expanded }}`);
+  assert.equal(sql("SELECT count(*) FROM message_drafts;").trim(), "1");
+  assert.equal(sql("SELECT count(*) FROM message_draft_references;").trim(), "2");
+  assert.equal((await postMessage({ ...messagePayload, subject: "Changed retry" })).status, 409);
+  assert.equal((await readMessages()).messages.length, seedCount, "Unreleased drafts must not enter the feed");
+  const largeTemplateResponse = await publish({ ...definition, text: `${definition.text}\n${"{{ Remarks }}".repeat(1000)}` });
+  assert.equal(largeTemplateResponse.status, 201);
+  const { template: largeTemplate } = await largeTemplateResponse.json();
+  const oversized = await postMessage({ ...messagePayload, requestId: randomUUID(), templateVersionId: largeTemplate.versionId, values: { ...messagePayload.values, Remarks: "x".repeat(5000) } });
+  assert.equal(oversized.status, 400);
+  assert.equal(sql("SELECT count(*) FROM message_drafts;").trim(), "1");
+  const savedRead = await (await fetch(`${base}/api/messages/${savedMessage.id}`, { headers: { Cookie: sessionCookie } })).json();
+  assert.deepEqual(savedRead.message, savedMessage);
+  const savedPage = await (await fetch(`${base}/messages/${savedMessage.id}`, { headers: { Cookie: sessionCookie } })).text();
+  assert.ok(savedPage.includes("Saved draft text") && savedPage.includes("Not transmitted"));
+  const printPage = await (await fetch(`${base}/messages/${savedMessage.id}/print`, { headers: { Cookie: sessionCookie } })).text();
+  assert.ok(printPage.includes("Saved draft text") && !printPage.includes("ANCHOR INTEGRITY VALIDATION"));
+  sql(messageSeed.stdout);
+  assert.equal((await readMessages()).messages.length, seedCount);
+
+  // The same stored message moves through a real, session-authorized chain.
+  const readDesk = async (cookie = sessionCookie) => {
+    const response = await fetch(`${base}/api/messages?view=drafts`, { headers: { Cookie: cookie } });
+    assert.equal(response.status, 200, await response.clone().text()); return response.json();
+  };
+  const readDraft = async (id, cookie = sessionCookie) => (await readDesk(cookie)).drafts.find((draft) => draft.id === id);
+  const patchDraft = (id, body, cookie = sessionCookie, origin = base) => fetch(`${base}/api/messages/${id}`, { method: "PATCH", headers: { Cookie: cookie, Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const transition = async (id, action, cookie = sessionCookie, extras = {}) => {
+    const draft = await readDraft(id, cookie); assert.ok(draft);
+    const response = await patchDraft(id, { action, revision: draft.revision, ...extras }, cookie);
+    assert.equal(response.status, 200, await response.clone().text()); return response.json();
+  };
+  const configRequest = (body, cookie = sessionCookie) => fetch(`${base}/api/routing`, { method: "PATCH", headers: { Cookie: cookie, Origin: base, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const configRead = async () => (await fetch(`${base}/api/routing`, { headers: { Cookie: sessionCookie } })).json();
+  const sessions = {};
+  for (const loginName of ["MRamos", "AChen", "RWalsh", "RPatel"]) sessions[loginName] = await login(accountList.users.find((user) => user.login === loginName).id);
+  const ramos = sessions.MRamos.cookie, chen = sessions.AChen.cookie, walsh = sessions.RWalsh.cookie;
+  assert.equal((await fetch(`${base}/api/messages?view=drafts`)).status, 401);
+  assert.equal((await fetch(`${base}/api/routing`)).status, 401);
+  assert.equal((await fetch(`${base}/api/messages/${savedMessage.id}`, { headers: { Cookie: sessions.RPatel.cookie } })).status, 404);
+  assert.equal((await configRequest(await configRead(), ramos)).status, 403);
+  let draft = await readDraft(savedMessage.id);
+  assert.equal(draft.status, "drafting");
+  assert.equal(draft.templateVersionId, template.versionId);
+  assert.equal(draft.commandSelections.Recipients[0].id, messagePayload.values.Recipients[0]);
+  assert.equal((await patchDraft(draft.id, { action: "submit", revision: draft.revision, actorId: sessions.MRamos.user.id })).status, 400);
+  assert.equal((await patchDraft(draft.id, { action: "release", revision: draft.revision })).status, 409);
+  assert.equal((await patchDraft(draft.id, { action: "submit", revision: draft.revision }, sessionCookie, "https://untrusted.example")).status, 403);
+  await transition(draft.id, "submit");
+  draft = await readDraft(draft.id);
+  assert.equal(draft.status, "in_routing");
+  assert.equal(draft.route[0].personId, sessions.MRamos.user.id);
+  assert.equal((await readDraft(draft.id, ramos)).id, draft.id);
+  assert.equal((await patchDraft(draft.id, { action: "advance", revision: draft.revision })).status, 403);
+  assert.equal((await patchDraft(draft.id, { action: "release", revision: draft.revision }, walsh)).status, 403);
+  assert.equal((await patchDraft(draft.id, { action: "edit", revision: draft.revision, subject: "Bypass review", precedence: "ROUTINE", values: messagePayload.values })).status, 409);
+  const doubleEndorsement = await Promise.all([patchDraft(draft.id, { action: "advance", revision: draft.revision }, ramos), patchDraft(draft.id, { action: "advance", revision: draft.revision }, ramos)]);
+  assert.deepEqual(doubleEndorsement.map((response) => response.status).sort(), [200,409]);
+  draft = await readDraft(draft.id);
+  assert.equal((await patchDraft(draft.id, { action: "return", revision: draft.revision }, chen)).status, 400);
+  await transition(draft.id, "return", chen, { comment: "Correct the remarks." });
+  draft = await readDraft(draft.id);
+  assert.equal(draft.status, "returned");
+  const corrections = { action: "edit", revision: draft.revision, subject: "Approved integration message", precedence: "PRIORITY", messageType: "COMSUBLANT MSG", values: { ...messagePayload.values, Remarks: "Corrected and approved exact template text." } };
+  const corrected = await patchDraft(draft.id, corrections);
+  assert.equal(corrected.status, 200, await corrected.clone().text());
+  const approvedText = (await corrected.json()).message.renderedText;
+  assert.equal((await patchDraft(draft.id, corrections)).status, 409);
+  await transition(draft.id, "submit");
+  draft = await readDraft(draft.id);
+  const approvalRevision = draft.revision;
+  assert.deepEqual(draft.route.map((step) => step.status), ["current","pending","pending"], "Returning/editing cannot retain old endorsements");
+  // Changing the configured workflow cannot silently replace an in-flight route.
+  const originalConfig = await configRead();
+  const changedConfig = { ...originalConfig, workflows: originalConfig.workflows.map((workflow) => ({ ...workflow, name: `${workflow.name} updated` })) };
+  assert.equal((await configRequest(changedConfig)).status, 200);
+  assert.equal((await configRequest(changedConfig)).status, 409);
+  assert.deepEqual((await readDraft(draft.id)).route, draft.route);
+  const latestConfig = await configRead();
+  assert.equal((await configRequest({ ...latestConfig, workflows: originalConfig.workflows })).status, 200);
+  assert.equal((await readMessages()).messages.length, seedCount);
+  // Review uses the saved snapshot, not a newly resolved directory name.
+  sql(`UPDATE commands SET name = 'RENAMED AFTER SUBMISSION' WHERE id = '${commands.commands[0].id}';`);
+  await transition(draft.id, "advance", ramos);
+  await transition(draft.id, "advance", chen);
+  const walshId = sessions.RWalsh.user.id;
+  sql(`UPDATE users SET profile = jsonb_set(profile,'{roles}',(SELECT jsonb_agg(CASE WHEN role->>'name' = 'Designated Release Authority' THEN jsonb_set(role,'{granted}','false') ELSE role END) FROM jsonb_array_elements(profile->'roles') role)) WHERE id = '${walshId}';`);
+  draft = await readDraft(draft.id);
+  assert.equal((await patchDraft(draft.id, { action: "release", revision: draft.revision }, walsh)).status, 403, "Current database roles, not stale browser claims, authorize release");
+  assert.equal((await readMessages()).messages.length, seedCount);
+  sql(`UPDATE users SET profile = jsonb_set(profile,'{roles}',(SELECT jsonb_agg(CASE WHEN role->>'name' = 'Designated Release Authority' THEN jsonb_set(role,'{granted}','true') ELSE role END) FROM jsonb_array_elements(profile->'roles') role)) WHERE id = '${walshId}';`);
+  const releaseAttempts = await Promise.all([patchDraft(draft.id, { action: "release", revision: draft.revision }, walsh),patchDraft(draft.id, { action: "release", revision: draft.revision }, walsh)]);
+  assert.deepEqual(releaseAttempts.map((response) => response.status).sort(), [200,409]);
+  const released = (await readMessages()).messages.find((message) => message.id === draft.id);
+  assert.equal(released.kind, "released"); assert.equal(released.renderedText, approvedText); assert.equal(released.rawText, approvedText);
+  assert.equal(released.localSequence, "#0042"); assert.ok(released.dtg); assert.equal(released.releasedBy, walshId);
+  assert.equal((await readMessages()).messages.length, seedCount + 1);
+  assert.ok((await readMessages(sessions.RPatel.cookie)).messages.some((message) => message.id === draft.id));
+  assert.equal((await patchDraft(draft.id, { action: "withdraw", revision: (await readDraft(draft.id)).revision })).status, 409);
+  const releasedHistory = (await readDesk()).events.filter((event) => event.draftId === draft.id);
+  assert.equal(releasedHistory.filter((event) => event.type === "released").length, 1);
+  assert.equal(new Set(releasedHistory.filter((event) => event.revision >= approvalRevision).map((event) => event.snapshotHash)).size, 1);
+  assert.throws(() => sql(`UPDATE message_routing_events SET comment = 'tampered' WHERE message_id = '${draft.id}';`), /append-only/);
+  assert.throws(() => sql(`DELETE FROM message_routing_events WHERE message_id = '${draft.id}';`), /append-only/);
+  sql(`UPDATE commands SET name = '${commands.commands[0].name}' WHERE id = '${commands.commands[0].id}';`);
+  // Two releases lock the same persistent counter and get distinct sequences.
+  const parallelIds = [];
+  for (let index = 0; index < 2; index++) {
+    const response = await postMessage({ ...messagePayload, requestId: randomUUID(), subject: `Parallel ${index}` });
+    assert.equal(response.status, 201); const { message } = await response.json(); parallelIds.push(message.id);
+    await transition(message.id, "submit"); await transition(message.id, "advance", ramos); await transition(message.id, "advance", chen);
+  }
+  const parallelReleases = await Promise.all(parallelIds.map((id) => transition(id, "release", walsh)));
+  assert.deepEqual(parallelReleases.map((result) => result.message.localSequence).sort(), ["#0043","#0044"]);
+  sql(routingSeed.stdout);
+  assert.equal((await configRead()).settings.nextSequence, 45, "Routine reseeding must never reset the release counter");
+  const withdrawnCreate = await postMessage({ ...messagePayload, requestId: randomUUID(), subject: "Withdraw this draft" });
+  const withdrawnId = (await withdrawnCreate.json()).message.id;
+  const ramosId = sessions.MRamos.user.id;
+  sql(`UPDATE users SET active=false WHERE id='${ramosId}';`);
+  const unsubmitted = await readDraft(withdrawnId);
+  assert.equal((await patchDraft(withdrawnId, { action: "submit", revision: unsubmitted.revision })).status, 409);
+  sql(`UPDATE users SET active=true WHERE id='${ramosId}';`);
+  await transition(withdrawnId, "submit");
+  assert.equal((await patchDraft(withdrawnId, { action: "withdraw", revision: (await readDraft(withdrawnId)).revision }, ramos)).status, 403);
+  await transition(withdrawnId, "withdraw");
+  assert.equal((await readDraft(withdrawnId)).status, "withdrawn");
+  assert.ok(!(await readMessages()).messages.some((message) => message.id === withdrawnId));
+  assert.equal((await readMessages()).messages.length, seedCount + 3);
+  console.log("Persistent routing passed: authenticated sequential approvals, returns/edits, immutable snapshots/history, stale revisions, role revocation, withdrawal, visibility and concurrent release sequencing.");
+
   for (const separator of ["semicolon", "space", "newline"]) {
     const separated = { ...definition, fields: definition.fields.map((field, index) => index === 0 ? { ...field, separator } : field) };
     const published = await publish(separated);
@@ -132,6 +299,11 @@ try {
     const { template: selected } = await published.json();
     const readback = await (await fetch(`${base}/api/message-templates/${selected.id}`)).json();
     assert.equal(readback.template.fields[0].separator, separator);
+    const separatedCreate = await postMessage({ ...messagePayload, requestId: randomUUID(), templateVersionId: selected.versionId, subject: `Separator ${separator}` });
+    assert.equal(separatedCreate.status, 201, await separatedCreate.clone().text());
+    const { message: separatedMessage } = await separatedCreate.json();
+    const separatorText = { semicolon: "; ", space: " ", newline: "\n" }[separator];
+    assert.ok(separatedMessage.renderedText.startsWith(`TO ${commands.commands[1].name}${separatorText}${commands.commands[0].name}\n`));
   }
   assert.equal((await publish({ ...definition, fields: definition.fields.map((field, index) => index === 0 ? { ...field, separator: "comma" } : field) })).status, 400);
   assert.equal((await publish({ ...definition, fields: definition.fields.map((field, index) => index === 1 ? { ...field, separator: "space" } : field) })).status, 400);
@@ -146,6 +318,10 @@ try {
     const { template: result } = await savedChoice.json();
     const readback = await (await fetch(`${base}/api/message-templates/${result.id}`)).json();
     assert.deepEqual(readback.template.fields, choice.fields);
+    const selectedValue = control === "checkbox" ? false : control === "checkbox-group" ? ["Ready", "Not ready"] : "Ready";
+    const choiceCreate = await postMessage({ requestId: randomUUID(), templateVersionId: result.versionId, subject: `Choice ${control}`, precedence: "ROUTINE", values: { Choice: selectedValue } });
+    assert.equal(choiceCreate.status, 201, await choiceCreate.clone().text());
+    assert.equal((await choiceCreate.json()).message.renderedText, control === "checkbox" ? "NO ACK" : control === "checkbox-group" ? "READY FOR TASKING; Not ready" : "READY FOR TASKING");
   }
   assert.equal((await publish({ name: "Old number", description: "", text: "{{ Value }}", fields: [{ name: "Value", control: "number", required: false, options: [] }] })).status, 400);
   assert.equal((await publish({ ...definition, fields: definition.fields.map((field, index) => index === 1 ? { ...field, optionOutputs: { Invalid: "Unknown option" } } : field) })).status, 400);
@@ -188,17 +364,66 @@ try {
   // A second independent browser session must resolve its own user's command.
   const secondId = sql(`INSERT INTO users (login, name, command_id) VALUES ('SecondUser', 'Second User', '${sendingCommandId}') RETURNING id;`).trim();
   const second = await login(secondId);
+  assert.equal((await readMessages(second.cookie)).messages.length, seedCount);
+  assert.equal((await fetch(`${base}/api/messages/${savedMessage.id}`, { headers: { Cookie: second.cookie } })).status, 404);
+  const automaticPayload = { requestId: randomUUID(), templateVersionId: autoTemplate.versionId, subject: "Other user's automatic draft", precedence: "ROUTINE", values: {} };
+  assert.equal((await postMessage({ ...automaticPayload, values: { Originator: "SPOOFED" } }, second.cookie)).status, 400);
+  const secondCreated = await postMessage(automaticPayload, second.cookie);
+  assert.equal(secondCreated.status, 201, await secondCreated.clone().text());
+  const { message: secondMessage } = await secondCreated.json();
+  assert.ok(secondMessage.renderedText.startsWith("FROM ORIGINATOR EXAMPLE\n"));
+  assert.ok(!secondMessage.renderedText.includes("{{"));
+  assert.equal((await fetch(`${base}/api/messages/${secondMessage.id}`, { headers: { Cookie: sessionCookie } })).status, 404);
   const otherGenerated = await (await preview({ ...automatic, userId: seededUser.id, commandId: signedIn.user.commandId }, base, second.cookie)).json();
   assert.equal(otherGenerated.values.Originator, "ORIGINATOR EXAMPLE");
   assert.equal((await (await preview(automatic)).json()).values.Originator, "COMSUBLANT NORFOLK VA");
   sql(`UPDATE commands SET name = 'RENAMED ORIGINATOR' WHERE id = '${sendingCommandId}';`);
   const changed = await (await preview(automatic, base, second.cookie)).json();
   assert.equal(changed.values.Originator, "RENAMED ORIGINATOR");
+  const unchangedSnapshot = await (await fetch(`${base}/api/messages/${secondMessage.id}`, { headers: { Cookie: second.cookie } })).json();
+  assert.equal(unchangedSnapshot.message.renderedText, secondMessage.renderedText);
   sql(`UPDATE users SET active = false WHERE id = '${secondId}';`);
   assert.equal((await preview(automatic, base, second.cookie)).status, 401);
   sql(`UPDATE users SET active = true WHERE id = '${secondId}';`);
   sql(`UPDATE user_sessions SET created_at = now() - interval '10 hours', expires_at = now() - interval '1 hour' WHERE user_id = '${secondId}';`);
   assert.equal((await preview(automatic, base, second.cookie)).status, 401);
+  if (process.argv.includes("--browser")) {
+    const { chromium, expect } = await import("@playwright/test");
+    const browser = await chromium.launch({ channel: process.env.E2E_BROWSER_CHANNEL || undefined, headless: true });
+    try {
+      const page = await browser.newPage();
+      const loginResponse = await page.request.post(`${base}/api/session`, { data: { userId: seededUser.id } });
+      assert.equal(loginResponse.status(), 200);
+      await page.goto(`${base}/messages`);
+      const main = page.getByRole("main");
+      await expect(page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link", { name: "Create Message", exact: true })).toBeVisible();
+      await main.getByRole("link", { name: "Create Message", exact: true }).click();
+      await page.getByRole("combobox", { name: "Message template", exact: true }).selectOption(template.id);
+      await page.getByRole("textbox", { name: "Message subject", exact: true }).fill("Browser-created draft");
+      const recipients = page.getByRole("group", { name: /^Recipients/ });
+      await recipients.getByRole("textbox", { name: "Search commands" }).fill(commands.commands[0].name);
+      await recipients.getByRole("checkbox", { name: commands.commands[0].name, exact: true }).check();
+      await page.getByRole("combobox", { name: "Status", exact: true }).selectOption("Ready");
+      await page.getByRole("textbox", { name: "Remarks", exact: true }).fill("Created through the browser");
+      const saved = page.waitForResponse((response) => response.url() === `${base}/api/messages` && response.request().method() === "POST");
+      await page.getByRole("button", { name: "Create message draft", exact: true }).click();
+      const saveResponse = await saved;
+      assert.equal(saveResponse.status(), 201, await saveResponse.text());
+      const { message: browserMessage } = await saveResponse.json();
+      assert.ok(browserMessage.renderedText.includes(commands.commands[0].name));
+      await expect(page).toHaveURL(`${base}/messages`);
+      await main.getByRole("button", { name: "Browser-created draft", exact: true }).waitFor();
+      await page.reload();
+      await main.getByRole("button", { name: "Browser-created draft", exact: true }).click();
+      await expect(page.getByRole("dialog").getByRole("heading", { name: "Browser-created draft", exact: true })).toBeVisible();
+      await page.goto(`${base}/messages/${browserMessage.id}`);
+      await expect(page.getByRole("heading", { name: "Browser-created draft", exact: true })).toBeVisible();
+      await page.goto(`${base}/messages/${browserMessage.id}/print`);
+      await expect(page.getByText("Draft — Not transmitted or released.", { exact: false })).toBeVisible();
+      await page.request.delete(`${base}/api/session`);
+      console.log("Browser message flow passed: template selection, directory IDs, save, reload, reader, and print.");
+    } finally { await browser.close(); }
+  }
   const rotated = await login(seededUser.id, sessionCookie);
   assert.notEqual(rotated.cookie, sessionCookie);
   assert.equal((await preview(automatic, base, sessionCookie)).status, 401);
@@ -240,7 +465,10 @@ try {
   assert.equal(new URL(signedOutPage.url).pathname, "/login");
   const html = await signedOutPage.text();
   assert.ok(html.includes("ANCHOR") && html.includes("Demo sign in"));
-  console.log("API integration tests passed: user seed, user management, sessions, rotation/logout/expiry, per-user originators, Zulu outputs, and template persistence.");
+  console.log("API integration tests passed: message seeds/validation/idempotency/privacy/snapshots, templates, sessions, and Zulu outputs.");
+} catch (error) {
+  console.error(logs);
+  throw error;
 } finally {
   if (app && app.exitCode === null) {
     const exited = new Promise((resolve) => app.once("exit", resolve));

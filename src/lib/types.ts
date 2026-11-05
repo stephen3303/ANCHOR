@@ -56,6 +56,16 @@ export interface MessageSection {
 
 export interface Message {
   id: string;
+  /** Absent on seeded received records; drafts must not use official traffic workflows. */
+  kind?: "draft" | "released";
+  releasedAt?: string;
+  releasedBy?: string;
+  releaseDesignation?: string;
+  localSequence?: string;
+  msn?: string;
+  draftId?: string;
+  renderedText?: string;
+  templateName?: string;
   /** Date-time group, e.g. 151830Z OCT 26 */
   dtg: string;
   /** ISO timestamp for sorting and relative display */

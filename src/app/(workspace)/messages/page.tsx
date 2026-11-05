@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCheck, Download, Filter, Mail, Paperclip, Search, Star } from "lucide-react";
-import { MESSAGES, needsOwnAck } from "@/lib/data";
+import { CheckCheck, Download, Filter, Mail, Paperclip, Search, Star, FilePlus2, RefreshCw } from "lucide-react";
+import { needsOwnAck } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import type { Lifecycle, Message, MessageType, ReadState } from "@/lib/types";
 import { MessageReaderNavigation, StarButton } from "@/components/message";
@@ -21,13 +21,13 @@ import {
   theadRow,
 } from "@/components/ui";
 
-const SOURCES = [...new Set(MESSAGES.map((m) => m.source))];
-const TYPES = [...new Set(MESSAGES.map((m) => m.type))];
-const count = <K extends keyof Message>(k: K, v: Message[K]) => MESSAGES.filter((m) => m[k] === v).length;
 const RETIRED: Lifecycle[] = ["SUPERSEDED", "CANCELLED", "EXPIRED"];
 
 export default function MessagesPage() {
-  const { userState, markAllRead, log, notify } = useStore();
+  const { messages: MESSAGES, messagesLoading, messagesError, refreshMessages, userState, markAllRead, log, notify } = useStore();
+  const SOURCES = [...new Set(MESSAGES.map((m) => m.source))];
+  const TYPES = [...new Set(MESSAGES.map((m) => m.type))];
+  const count = <K extends keyof Message>(k: K, v: Message[K]) => MESSAGES.filter((m) => m[k] === v).length;
   const [q, setQ] = useState("");
   const [sources, setSources] = useState<string[]>([]);
   const [types, setTypes] = useState<MessageType[]>([]);
@@ -46,7 +46,7 @@ export default function MessagesPage() {
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return MESSAGES.filter((m) => {
-      const st = userState[m.id];
+      const st = userState[m.id] ?? { read: "new" as const, starred: false };
       if (needle && ![m.subject, m.reference, m.originator, ...m.sections.flatMap((s) => s.body)].join(" ").toLowerCase().includes(needle)) return false;
       if (sources.length && !sources.includes(m.source)) return false;
       if (types.length && !types.includes(m.type)) return false;
@@ -56,7 +56,7 @@ export default function MessagesPage() {
       if (!showRetired && RETIRED.includes(m.lifecycle)) return false;
       return true;
     });
-  }, [q, sources, types, states, starredOnly, ackOnly, showRetired, userState]);
+  }, [MESSAGES, q, sources, types, states, starredOnly, ackOnly, showRetired, userState]);
 
   // Keep the list mounted and its scroll containers untouched beneath the reader.
   // A same-document history entry also makes browser Back/Forward work.
@@ -68,7 +68,7 @@ export default function MessagesPage() {
     sync();
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
-  }, []);
+  }, [MESSAGES]);
 
   useEffect(() => {
     const dialog = reader.current;
@@ -98,6 +98,7 @@ export default function MessagesPage() {
 
   return (
     <>
+    {messagesError && <div role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{messagesError} <Button size="sm" onClick={() => void refreshMessages()}>Retry</Button></div>}
     <div className="flex flex-col gap-4 xl:flex-row">
       <div className="min-w-0 flex-1 space-y-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -105,6 +106,8 @@ export default function MessagesPage() {
           <h1 className="text-2xl font-bold sm:text-[28px]">
             Messages <span className="font-semibold text-muted">({rows.length} of {MESSAGES.length})</span>
           </h1>
+          <Button href="/drafting" variant="primary" icon={FilePlus2}>Drafting & Release</Button>
+          <Button size="sm" icon={RefreshCw} disabled={messagesLoading} onClick={() => void refreshMessages()}>Refresh</Button>
           <label className="relative ml-auto min-w-[240px] flex-1 sm:max-w-xl">
             <span className="sr-only">Search messages</span>
             <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted" aria-hidden />
@@ -152,7 +155,7 @@ export default function MessagesPage() {
               </thead>
               <tbody>
                 {rows.map((m) => {
-                  const st = userState[m.id];
+                  const st = userState[m.id] ?? { read: "new" as const, starred: false };
                   const retired = RETIRED.includes(m.lifecycle);
                   return (
                     <tr
@@ -177,7 +180,7 @@ export default function MessagesPage() {
                       <td className={cx(td, st.read !== "read" && "font-semibold")}>
                         <span className="flex items-center gap-2">
                           <button type="button" onClick={(e) => { e.stopPropagation(); open(m.id); }} className={cx("text-left hover:underline", retired && "line-through decoration-slate-400")}>{m.subject}</button>
-                          <LifecycleBadge l={m.lifecycle} />
+                          {m.kind === "released" ? <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-900">Released locally</span> : <LifecycleBadge l={m.lifecycle} />}
                           {needsOwnAck(m) && !st.acknowledgedAt && <span className="rounded bg-red-600 px-1.5 text-[10px] font-bold text-white">ACK</span>}
                         </span>
                       </td>
@@ -191,7 +194,7 @@ export default function MessagesPage() {
                 })}
                 {!rows.length && (
                   <tr>
-                    <td colSpan={9} className="py-10 text-center text-sm text-muted">No messages match these filters.</td>
+                    <td colSpan={9} className="py-10 text-center text-sm text-muted">{messagesLoading ? "Loading messages…" : messagesError ? "Messages could not be loaded." : "No messages match these filters."}</td>
                   </tr>
                 )}
               </tbody>
@@ -212,7 +215,7 @@ export default function MessagesPage() {
               <fieldset>
                 <legend className="mb-1 text-sm font-semibold">Status</legend>
                 {(["new", "unread", "read"] as ReadState[]).map((s) => (
-                  <Check key={s} label={s[0].toUpperCase() + s.slice(1)} count={MESSAGES.filter((m) => userState[m.id].read === s).length} checked={states.includes(s)} onChange={() => toggle(states, s, setStates)} />
+                  <Check key={s} label={s[0].toUpperCase() + s.slice(1)} count={MESSAGES.filter((m) => (userState[m.id]?.read ?? "new") === s).length} checked={states.includes(s)} onChange={() => toggle(states, s, setStates)} />
                 ))}
                 <Check label="Starred" checked={starredOnly} onChange={setStarredOnly} />
                 <Check label="Needs acknowledgement" checked={ackOnly} onChange={setAckOnly} />
@@ -235,7 +238,7 @@ export default function MessagesPage() {
     >
       {selected && (
         <MessageReaderNavigation value={open}>
-          <MessageDetail key={selected} id={selected} onBack={close} />
+          {MESSAGES.find((message) => message.id === selected) && <MessageDetail key={selected} message={MESSAGES.find((message) => message.id === selected)!} onBack={close} />}
         </MessageReaderNavigation>
       )}
     </dialog>

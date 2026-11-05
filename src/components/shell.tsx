@@ -134,9 +134,9 @@ function Header({ onMenu }: { onMenu: () => void }) {
 
 function Sidebar({ open, onClose }: { open: boolean | null; onClose: () => void }) {
   const path = usePathname();
-  const { userState, syncQueue, approvals } = useStore();
+  const { messages, userState, syncQueue, approvals } = useStore();
   const { drafts, actorId } = useRouting();
-  const unread = MESSAGES.filter((m) => userState[m.id]?.read !== "read").length;
+  const unread = messages.filter((m) => m.kind !== "draft" && userState[m.id]?.read !== "read").length;
   const routing = drafts.filter((d) => d.status === "in_routing" && d.route.find((s) => s.status === "current")?.personId === actorId).length;
   const badges = { unread, sync: syncQueue.length, approvals: approvals.length, routing };
 
@@ -155,7 +155,7 @@ function Sidebar({ open, onClose }: { open: boolean | null; onClose: () => void 
         </button>
         <ul className="flex-1 overflow-y-auto py-2">
           {NAV.map(({ href, label, icon: Icon, badge }) => {
-            const active = href === "/" ? path === "/" : path.startsWith(href);
+            const active = href === "/" ? path === "/" : href === "/messages" ? path === "/messages" || path.startsWith("/messages/") : path.startsWith(href);
             const count = badge ? badges[badge] : 0;
             return (
               <li key={href}>

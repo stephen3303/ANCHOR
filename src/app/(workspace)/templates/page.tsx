@@ -110,7 +110,8 @@ export default function TemplatesPage() {
       {saved ? <Panel title="Template published">
         <div role="status" className="space-y-3">
           <p><strong>{saved.name}</strong> version {saved.version} is saved in PostgreSQL and available for future message drafting.</p>
-          <p className="text-sm text-muted">Published versions cannot be edited. Message creation is not part of this screen yet.</p>
+          <p className="text-sm text-muted">Published versions cannot be edited. Use Drafting & Release to fill in this template and route a saved draft for approval.</p>
+          <Button variant="primary" href="/drafting">Drafting & Release</Button>
           <Button variant="primary" onClick={reset}>Create another template</Button>
         </div>
       </Panel> : <Panel title={`Create a template — Step ${step} of 3`}>

@@ -3,19 +3,20 @@
 import Link from "next/link";
 import { useNow } from "@/lib/use-now";
 import { ArrowLeft, Printer } from "lucide-react";
-import { messageById } from "@/lib/data";
+import type { Message } from "@/lib/types";
+import { DraftMessage } from "@/components/draft-message";
 import { useCurrentUser } from "@/lib/current-user";
 import { fmtDateTime } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { Button } from "@/components/ui";
 
 /** Official printable / PDF rendition with integrity information on the page. */
-export function PrintView({ id }: { id: string }) {
+export function PrintView({ message: m }: { message: Message }) {
   const CURRENT_USER = useCurrentUser();
-  const m = messageById(id)!;
   const { log } = useStore();
   const now = useNow();
   const printedAt = now ? fmtDateTime(now) : "";
+  if (m.kind === "draft" || m.kind === "released") return <DraftMessage message={m} print />;
   const retired = m.lifecycle !== "ACTIVE" && m.lifecycle !== "AMENDED" && m.lifecycle !== "CORRECTED";
 
   return (

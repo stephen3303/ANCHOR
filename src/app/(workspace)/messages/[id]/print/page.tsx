@@ -1,16 +1,16 @@
 import { Suspense } from "react";
-import { notFound } from "next/navigation";
-import { MESSAGES, messageById } from "@/lib/data";
+import { notFound, redirect } from "next/navigation";
+import { readMessage } from "@/lib/server/messages";
+import { currentSessionUser } from "@/lib/server/session";
 import { PrintView } from "./print-view";
-
-export function generateStaticParams() {
-  return MESSAGES.map((m) => ({ id: m.id }));
-}
 
 async function Rendition({ params }: { params: PageProps<"/messages/[id]/print">["params"] }) {
   const { id } = await params;
-  if (!messageById(id)) notFound();
-  return <PrintView id={id} />;
+  const user = await currentSessionUser();
+  if (!user) redirect("/login");
+  const message = await readMessage(id, user);
+  if (!message) notFound();
+  return <PrintView message={message} />;
 }
 
 export default function Page({ params }: PageProps<"/messages/[id]/print">) {

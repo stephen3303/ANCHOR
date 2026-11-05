@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { ArrowLeft, Bell, Clock, Copy, Download, FileText, Link2, Mail, Plus, Printer, FilePlus2 } from "lucide-react";
-import { messageById } from "@/lib/data";
+import { DraftMessage } from "@/components/draft-message";
 import { useStore } from "@/lib/store";
 import { AckPanel, Attachments, LifecycleNotice, MessageList, MessageTabs, MetadataTable, StarButton } from "@/components/message";
 import { Button, ClassBadge, LifecycleBadge, Panel, PrecedenceBadge, Tag } from "@/components/ui";
 import type { Message } from "@/lib/types";
 
-export function MessageDetail({ id, onBack }: { id: string; onBack?: () => void }) {
-  const m = messageById(id)!;
+export function MessageDetail({ message: m, onBack }: { message: Message; onBack?: () => void }) {
+  const id = m.id;
   const { markRead, markUnread, log, notify, briefing, setBriefing } = useStore();
 
   useEffect(() => {
@@ -19,6 +19,8 @@ export function MessageDetail({ id, onBack }: { id: string; onBack?: () => void 
     // Log once per open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  if (m.kind === "draft" || m.kind === "released") return <DraftMessage message={m} onBack={onBack} />;
 
   const addToBriefing = () => {
     const extra = m.communities.filter((c) => !briefing.communities.includes(c));
@@ -106,7 +108,8 @@ export function MessageDetail({ id, onBack }: { id: string; onBack?: () => void 
 }
 
 function RelatedPanel({ m }: { m: Message }) {
-  const items = m.related.map(messageById).filter(Boolean) as Message[];
+  const { messages } = useStore();
+  const items = m.related.map((id) => messages.find((message) => message.id === id)).filter(Boolean) as Message[];
   if (!items.length) return null;
   return (
     <Panel title={`Related Messages (${items.length})`} bodyClassName="p-2">

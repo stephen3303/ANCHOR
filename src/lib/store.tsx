@@ -1,8 +1,8 @@
 "use client";
 
-// Client-side app state for the prototype. Everything lives in memory and
-// resets on reload; a real build would back this with the ANCHOR API.
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+// Messages are API-backed. Legacy read/star/subscription prototype state remains
+// in memory and resets on reload; none of this replaces server authorization.
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   APPROVAL_QUEUE,
   AUDIT_EVENTS,
@@ -16,7 +16,7 @@ import {
 import { MOCK_NOW } from "./format";
 import { appendEvent, chainLog, type ChainedAuditEvent } from "./audit";
 import { useCurrentUser } from "./current-user";
-import type { Community, MessageUserState, Subscription, SyncItem } from "./types";
+import type { Community, Message, MessageUserState, Subscription, SyncItem } from "./types";
 
 export interface BriefingConfig {
   name: string;
@@ -47,6 +47,10 @@ export const DEFAULT_BRIEFING: BriefingConfig = {
 type ApprovalRequest = (typeof APPROVAL_QUEUE)[number];
 
 interface Store {
+  messages: Message[];
+  messagesLoading: boolean;
+  messagesError: string;
+  refreshMessages: () => Promise<void>;
   userState: Record<string, MessageUserState>;
   markRead: (id: string) => void;
   markUnread: (id: string) => void;
@@ -91,9 +95,46 @@ const Ctx = createContext<Store | null>(null);
 let seq = 0;
 const nextId = (p: string) => `${p}-${Date.now()}-${seq++}`;
 
+async function fetchMessages(signal?: AbortSignal): Promise<Message[]> {
+  const response = await fetch("/api/messages", { cache: "no-store", signal });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Could not load messages.");
+  return data.messages;
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const CURRENT_USER = useCurrentUser();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(true);
+  const [messagesError, setMessagesError] = useState("");
+  const messageRequest = useRef(0);
   const [userState, setUserState] = useState(INITIAL_USER_STATE);
+  const applyMessages = useCallback((items: Message[]) => {
+    setMessages(items);
+    setUserState((current) => ({ ...Object.fromEntries(items.map((item) => [item.id, { read: item.kind === "draft" ? "read" : "new", starred: false }])), ...current }));
+    setMessagesError("");
+  }, []);
+  const refreshMessages = useCallback(async () => {
+    const version = ++messageRequest.current;
+    setMessagesLoading(true);
+    try { const items = await fetchMessages(); if (version === messageRequest.current) applyMessages(items); }
+    catch (reason) { if (version === messageRequest.current) setMessagesError(reason instanceof Error ? reason.message : "Could not load messages."); }
+    finally { if (version === messageRequest.current) setMessagesLoading(false); }
+  }, [applyMessages]);
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible") void refreshMessages(); };
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(refresh, 15000);
+    return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
+  }, [refreshMessages]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const version = ++messageRequest.current;
+    fetchMessages(controller.signal).then((items) => { if (!controller.signal.aborted && version === messageRequest.current) applyMessages(items); })
+      .catch((reason) => { if (!controller.signal.aborted && version === messageRequest.current) setMessagesError(reason instanceof Error ? reason.message : "Could not load messages."); })
+      .finally(() => { if (!controller.signal.aborted && version === messageRequest.current) setMessagesLoading(false); });
+    return () => controller.abort();
+  }, [applyMessages]);
   const [subscriptions, setSubscriptions] = useState(SUBSCRIPTIONS);
   const [approvals, setApprovals] = useState(APPROVAL_QUEUE);
   const [offline, setOfflineState] = useState(false);
@@ -140,10 +181,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const patch = (id: string, p: Partial<MessageUserState>) =>
-    setUserState((s) => ({ ...s, [id]: { ...s[id], ...p } }));
+    setUserState((s) => ({ ...s, [id]: { ...(s[id] ?? { read: "new", starred: false }), ...p } }));
 
   const store: Store = useMemo(
     () => ({
+      messages, messagesLoading, messagesError, refreshMessages,
       userState,
       markRead: (id) => userState[id]?.read !== "read" && patch(id, { read: "read" }),
       markUnread: (id) => patch(id, { read: "unread" }),
@@ -153,7 +195,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ),
       toggleStar: (id) => patch(id, { starred: !userState[id]?.starred }),
       acknowledge: (id) => {
-        const m = MESSAGES.find((x) => x.id === id);
+        const m = messages.find((x) => x.id === id) ?? MESSAGES.find((x) => x.id === id);
         // Use the mock clock so the time lines up with acknowledgements from other commands.
         patch(id, { acknowledgedAt: MOCK_NOW.toISOString(), read: "read" });
         log("Acknowledge", `Message (${m?.reference})`, offline ? "Acknowledged offline; queued for sync." : "Receipt acknowledged.");
@@ -248,7 +290,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toast,
       notify,
     }),
-    [CURRENT_USER, userState, subscriptions, approvals, offline, syncQueue, lastSync, audit, original, watchNotes, checklist, briefing, toast, log, notify, queue],
+    [messages, messagesLoading, messagesError, refreshMessages, CURRENT_USER, userState, subscriptions, approvals, offline, syncQueue, lastSync, audit, original, watchNotes, checklist, briefing, toast, log, notify, queue],
   );
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;

@@ -141,7 +141,7 @@ try {
   const { template } = await response.json();
   const templateTopic = (await readTopics()).find((topic) => topic.name === "TEST");
   assert.ok(templateTopic); assert.equal(templateTopic.messageCount, 0); assert.equal(templateTopic.subscribed, false);
-  assert.deepEqual(templateTopic.templates, ["API test template"], "Each type names the templates that draft it");
+  assert.deepEqual(templateTopic.templates, ["TEST"], "Each type names the templates that draft it");
   sql("INSERT INTO message_topics(name) VALUES ('TEST:SUBTAG');");
   const parentTopics = await readTopics();
   assert.ok(parentTopics.some((topic) => topic.name === "TEST:SUBTAG"));

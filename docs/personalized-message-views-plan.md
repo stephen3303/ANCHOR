@@ -82,8 +82,10 @@ documentation diff check, not application test execution.
 
 ## Interactive design preview
 
-`/personalized-preview` demonstrates the proposed Home layout without replacing
-Home yet. Watch Officer, Training Officer, and Safety Officer are labeled example
+The signed-in Home route (`/`) now displays My Briefing. The old
+`/personalized-preview` address redirects to Home. The redundant Briefings
+navigation entry is removed; existing `/briefings` tools remain reachable by
+direct URL. Watch Officer, Training Officer, and Safety Officer are labeled example
 duties, not official assignments. Users can switch views, filter traffic, open
 source messages, create browser-local topic views, and choose a browser-local
 default. Preferences are scoped to the signed-in account. Department mapping and

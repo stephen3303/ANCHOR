@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
   const user = users.find((u: { login: string }) => u.login === 'LTaylor');
   expect(user).toBeTruthy();
   expect((await page.request.post('/api/session', { data: { userId: user.id } })).ok()).toBeTruthy();
-  await page.goto('/personalized-preview');
+  await page.goto('/');
   await expect(page.getByRole('heading', { name: 'My Briefing', exact: true })).toBeVisible();
 });
 
@@ -46,7 +46,7 @@ test('personal views/defaults survive reload and remain isolated by account', as
   const { users } = await (await page.request.get('/api/users')).json();
   const other = users.find((u: { login: string }) => u.login !== 'LTaylor');
   expect((await page.request.post('/api/session', { data: { userId: other.id } })).ok()).toBeTruthy();
-  await page.goto('/personalized-preview');
+  await page.goto('/');
   await expect(page.getByRole('combobox', { name: 'Viewing as' })).toHaveValue('watch');
   await expect(page.getByRole('combobox', { name: 'Viewing as' })).not.toContainText('Cyber watch');
 });
@@ -65,4 +65,11 @@ test('source reader preserves search/period; permissions and mobile sizing are r
   await page.reload();
   await expect(page.getByRole('heading', { name: 'My Briefing', exact: true })).toBeVisible();
   await page.screenshot({ path: '/tmp/anchor-personalized-home-mobile.png', animations: 'disabled', caret: 'initial' });
+});
+
+test('old personalized preview link redirects to Home', async ({ page }) => {
+  await page.goto('/personalized-preview');
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('heading', { name: 'My Briefing', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Main', exact: true }).getByRole('link', { name: 'Briefings', exact: true })).toHaveCount(0);
 });

@@ -5,23 +5,28 @@
 .DESCRIPTION
   1. Refuses to run if tracked files have uncommitted changes (untracked files
      such as .env and docker-compose.override.yml are fine).
-  2. Switches to main and fast-forwards it from origin.
-  3. Runs npm ci when package-lock.json changed (or node_modules is missing).
-  4. Starts PostgreSQL, waits for its health check, and applies new migrations
+  2. Fetches origin/main and stops, changing nothing, if it contains an
+     .update-hold flag file (main is not ready to deploy). -Force overrides.
+  3. Switches to main and fast-forwards it from origin.
+  4. Runs npm ci when package-lock.json changed (or node_modules is missing).
+  5. Starts PostgreSQL, waits for its health check, and applies new migrations
      (npm run db:migrate is safe to rerun; applied migrations are skipped).
-  5. Optionally reruns the idempotent seed scripts (-Seed).
-  6. Rebuilds and restarts the anchor container, then waits for it to answer.
+  6. Optionally reruns the idempotent seed scripts (-Seed).
+  7. Rebuilds and restarts the anchor container, then waits for it to answer.
 
   Database data is never deleted.
 
 .EXAMPLE
   npm run app:update
   npm run app:update -- -Seed
+  npm run app:update -- -Force
   powershell -ExecutionPolicy Bypass -File scripts/update.ps1 -Seed
 #>
 param(
   # Also run db:seed:commands, users, routing and messages (all safe to rerun).
   [switch]$Seed,
+  # Deploy even when origin/main carries an .update-hold flag file.
+  [switch]$Force,
   # URL used to confirm the app is up after the rebuild.
   [string]$Url = "http://localhost:3000"
 )
@@ -53,6 +58,22 @@ try {
   if ($dirty) {
     Write-Host $dirty
     throw "Tracked files have uncommitted changes. Commit or stash them, then rerun."
+  }
+
+  Step "Checking that main is ready to deploy"
+  # A developer commits .update-hold to main (its text says why) while main is
+  # mid-change, and deletes it when main is ready. Check origin/main before
+  # pulling so a held update leaves the running app and database untouched.
+  Run git @("fetch", "origin", "main")
+  # ls-tree prints the name only if the file exists and writes nothing to
+  # stderr otherwise (Windows PowerShell turns redirected stderr into errors).
+  if (git ls-tree --name-only origin/main -- .update-hold) {
+    $reason = (git show "origin/main:.update-hold") -join "`n"
+    if (-not $Force) {
+      Write-Host $reason -ForegroundColor Yellow
+      throw "main is on hold (.update-hold), so nothing was changed. Rerun once it is removed, or use -Force to deploy anyway."
+    }
+    Write-Host "Deploying despite the hold (-Force):`n$reason" -ForegroundColor Yellow
   }
 
   Step "Pulling main"

@@ -85,12 +85,20 @@ explicitly stopped by you may need those commands to start again.
 ```sh
 npm run app:update            # pull main, migrate, rebuild and restart the app
 npm run app:update -- -Seed   # also rerun the (idempotent) seed scripts
+npm run app:update -- -Force  # deploy even if main is on hold (see below)
 ```
+
+**Holding updates.** While main is not ready to deploy (for example, part of a
+change is merged and the rest is still in review), commit a `.update-hold` file
+at the repo root with one line saying why. `app:update` checks `origin/main` for
+it before pulling and stops without changing the app or the database. Delete the
+file in the PR that makes main ready again.
 
 If PowerShell says `npm.ps1 cannot be loaded because running scripts is disabled`,
 run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once (or use `npm.cmd`).
 
-`scripts/update.ps1` stops if tracked files have uncommitted changes, fast-forwards
+`scripts/update.ps1` stops if tracked files have uncommitted changes or main is on
+hold, fast-forwards
 `main`, runs `npm ci` only when `package-lock.json` changed, applies new migrations
 before rebuilding the `anchor` container, and waits until http://localhost:3000
 answers. It never deletes database data.

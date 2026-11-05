@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "app:update": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/update.ps1",
     "db:seed:commands": "node scripts/seed-commands.mjs",
     "db:migrate": "node scripts/migrate-db.mjs",
     "db:seed:users": "tsx scripts/seed-users.ts",

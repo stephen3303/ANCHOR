@@ -5,8 +5,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useStore } from "./store";
 import { useCurrentUser } from "./current-user";
-import type { ApiDraft, ApiRoutingEvent, DraftAction, RoutingConfiguration } from "./routing-api";
-import type { CommandSettings, Person, ReleaseAuthority, RoutingWorkflow } from "./types";
+import type { ApiDraft, ApiRoutingEvent, DraftAction, RoutingConfiguration, RoutingPerson } from "./routing-api";
+import type { CommandSettings, Person, ReleaseAuthority, RoutingWorkflow, WorkflowStep } from "./types";
 import type { TemplateValues } from "./message-templates";
 
 type Result = { ok: true } | { ok: false; reason: string; fields?: Record<string,string> };
@@ -18,7 +18,7 @@ interface RoutingStore {
   workflows: RoutingWorkflow[];
   authorities: ReleaseAuthority[];
   settings: CommandSettings;
-  people: Person[];
+  people: RoutingPerson[];
   personById: (id?: string) => Person | undefined;
   personName: (id?: string) => string;
   loading: boolean;
@@ -27,6 +27,7 @@ interface RoutingStore {
   refresh: () => Promise<void>;
   act: (draft: ApiDraft, action: DraftAction, comment?: string) => Promise<Result>;
   editDraft: (draft: ApiDraft, input: { subject: string; precedence: string; messageType: string; values: TemplateValues }) => Promise<Result>;
+  saveDraftRoute: (draft: ApiDraft, steps: WorkflowStep[] | null) => Promise<Result>;
   saveWorkflow: (workflow: RoutingWorkflow, expectedRevision?: number) => Promise<Result>;
   toggleWorkflow: (id: string) => Promise<Result>;
   addAuthority: (authority: Omit<ReleaseAuthority,"id">) => Promise<Result>;
@@ -92,6 +93,7 @@ export function RoutingProvider({children}:{children:ReactNode}) {
       personName:(id)=>config.people.find((person)=>person.id===id)?.name??"Unassigned",
       act:(draft,action,comment)=>mutate(`/api/messages/${draft.id}`,{action,revision:draft.revision,...(comment?{comment}:{})}),
       editDraft:(draft,input)=>mutate(`/api/messages/${draft.id}`,{action:"edit",revision:draft.revision,...input}),
+      saveDraftRoute:(draft,steps)=>mutate(`/api/messages/${draft.id}`,{action:"route",revision:draft.revision,steps}),
       saveWorkflow:(workflow,expectedRevision)=>save({...(expectedRevision===undefined?{}:{revision:expectedRevision}),workflows:config.workflows.some((item)=>item.id===workflow.id)?config.workflows.map((item)=>item.id===workflow.id?workflow:item):[...config.workflows,workflow]}),
       toggleWorkflow:(id)=>save({workflows:config.workflows.map((item)=>item.id===id?{...item,active:!item.active}:item)}),
       addAuthority:(authority)=>save({authorities:[...config.authorities,{...authority,id:crypto.randomUUID()}]}),

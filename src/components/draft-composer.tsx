@@ -79,6 +79,7 @@ export function DraftComposer({ draft, onSaved }: { draft?: ApiDraft; onSaved: (
   };
 
   return <div className="space-y-4">
+    {draft && <p role="status" className="rounded bg-amber-50 p-3 text-sm text-amber-900">Saving edits stops any review and clears all approvals. Resubmit the updated message for fresh approval before publishing.</p>}
     <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">UNCLASSIFIED prototype only. Saving does not release or transmit. Drafts stay out of Messages until the full chain releases them.</p>
     {error && <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error} {!definition && <Button size="sm" disabled={busy} onClick={() => { setListLoading(true); setRetry((value) => value + 1); }}>Retry loading</Button>}</p>}
     {!draft && <Panel title="1. Choose a template">

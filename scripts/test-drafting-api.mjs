@@ -215,7 +215,13 @@ try {
   assert.equal((await readDraft(draft.id, ramos)).id, draft.id);
   assert.equal((await patchDraft(draft.id, { action: "advance", revision: draft.revision })).status, 403);
   assert.equal((await patchDraft(draft.id, { action: "release", revision: draft.revision }, walsh)).status, 403);
-  assert.equal((await patchDraft(draft.id, { action: "edit", revision: draft.revision, subject: "Bypass review", precedence: "ROUTINE", values: messagePayload.values })).status, 409);
+  const editingDuringReview = await patchDraft(draft.id, { action: "edit", revision: draft.revision, subject: messagePayload.subject, precedence: "PRIORITY", values: messagePayload.values });
+  assert.equal(editingDuringReview.status, 200, await editingDuringReview.clone().text());
+  assert.equal((await readDraft(draft.id)).status, "drafting");
+  assert.deepEqual((await readDraft(draft.id)).route.map((step) => step.status), ["pending","pending","pending"]);
+  assert.equal((await patchDraft(draft.id, { action: "advance", revision: draft.revision }, ramos)).status, 409, "An author edit invalidates in-flight review requests");
+  await transition(draft.id, "submit");
+  draft = await readDraft(draft.id);
   const doubleEndorsement = await Promise.all([patchDraft(draft.id, { action: "advance", revision: draft.revision }, ramos), patchDraft(draft.id, { action: "advance", revision: draft.revision }, ramos)]);
   assert.deepEqual(doubleEndorsement.map((response) => response.status).sort(), [200,409]);
   draft = await readDraft(draft.id);
@@ -268,6 +274,20 @@ try {
   assert.equal(new Set(releasedHistory.filter((event) => event.revision >= approvalRevision).map((event) => event.snapshotHash)).size, 1);
   assert.throws(() => sql(`UPDATE outgoing_message_events SET comment = 'tampered' WHERE message_id = '${draft.id}';`), /append-only/);
   assert.throws(() => sql(`DELETE FROM outgoing_message_events WHERE message_id = '${draft.id}';`), /append-only/);
+  const frozenRevision = (await readDraft(draft.id)).revision;
+  assert.equal((await patchDraft(draft.id, { ...corrections, revision: frozenRevision })).status, 409);
+  assert.equal((await patchDraft(draft.id, { action: "route", revision: frozenRevision, steps: [] })).status, 409);
+  for (const statement of [
+    `UPDATE outgoing_messages SET workflow_status='drafting' WHERE id='${draft.id}';`,
+    `DELETE FROM outgoing_messages WHERE id='${draft.id}';`,
+    `UPDATE messages SET record=jsonb_set(record,'{subject}','"changed"') WHERE id='${draft.id}';`,
+    `UPDATE messages SET lifecycle='CANCELLED' WHERE id='${draft.id}';`,
+    `DELETE FROM messages WHERE id='${draft.id}';`,
+    `UPDATE message_drafts SET subject='changed' WHERE id='${draft.id}';`,
+    `DELETE FROM message_draft_references WHERE draft_id='${draft.id}';`,
+    `INSERT INTO message_draft_references (draft_id,field_key,position,source_id,command_id,snapshot) SELECT draft_id,'Extra',99,source_id,command_id,snapshot FROM message_draft_references WHERE draft_id='${draft.id}' LIMIT 1;`,
+  ]) assert.throws(() => sql(statement), /immutable/);
+  assert.throws(() => sql("TRUNCATE message_draft_references;"), /append-only/);
   sql(`UPDATE commands SET name = '${commands.commands[0].name}' WHERE id = '${commands.commands[0].id}';`);
   // Two releases lock the same persistent counter and get distinct sequences.
   const parallelIds = [];
@@ -293,6 +313,68 @@ try {
   assert.equal((await readDraft(withdrawnId)).status, "withdrawn");
   assert.ok(!(await readMessages()).messages.some((message) => message.id === withdrawnId));
   assert.equal((await readMessages()).messages.length, seedCount + 3);
+  // Author-specific routes are independent of the shared workflow and can be
+  // adjusted mid-review only by discarding every existing approval.
+  const customCreate = await postMessage({ ...messagePayload, requestId: randomUUID(), subject: "Custom routing" });
+  const customId = (await customCreate.json()).message.id;
+  const reviewStep = (personId, title = "Review") => ({ title, personId, action: "review" });
+  const releaseStep = { title: "Final release", personId: sessions.RWalsh.user.id, action: "release" };
+  let custom = await readDraft(customId);
+  for (const steps of [[], [reviewStep(sessions.MRamos.user.id)], [releaseStep, reviewStep(sessions.MRamos.user.id)], [reviewStep(randomUUID()), releaseStep], [reviewStep(sessions.MRamos.user.id), reviewStep(sessions.MRamos.user.id), releaseStep], [{ ...releaseStep, status: "released" }], [{ ...releaseStep, personId: sessions.MRamos.user.id }]]) {
+    assert.equal((await patchDraft(customId, { action: "route", revision: custom.revision, steps })).status, 400);
+  }
+  const sharedBefore = await configRead();
+  await transition(customId, "route", sessionCookie, { steps: [reviewStep(sessions.MRamos.user.id), reviewStep(sessions.AChen.user.id), releaseStep] });
+  assert.equal((await readDraft(customId)).customRoute, true);
+  await transition(customId, "submit"); await transition(customId, "advance", ramos);
+  custom = await readDraft(customId);
+  assert.equal((await patchDraft(customId, { action: "route", revision: custom.revision, steps: [releaseStep] }, chen)).status, 403);
+  assert.equal((await patchDraft(customId, { action: "edit", revision: custom.revision, subject: "Not owner", precedence: "ROUTINE", values: messagePayload.values }, chen)).status, 403);
+  const inFlight = custom.revision;
+  await transition(customId, "route", sessionCookie, { steps: [reviewStep(sessions.RPatel.user.id, "Added reviewer"), releaseStep] });
+  custom = await readDraft(customId);
+  assert.equal(custom.status, "drafting");
+  assert.deepEqual(custom.route.map((step) => step.status), ["pending","pending"]);
+  assert.equal((await patchDraft(customId, { action: "release", revision: inFlight }, walsh)).status, 409);
+  assert.equal((await readDraft(customId, ramos)), undefined, "Removed reviewers no longer have private draft access");
+  assert.deepEqual(await configRead(), sharedBefore, "Customizing one draft must not change command workflows");
+  await transition(customId, "submit");
+  assert.equal((await readDraft(customId)).route[0].personId, sessions.RPatel.user.id);
+  const beforeEdit = (await readDraft(customId)).revision;
+  await transition(customId, "advance", sessions.RPatel.cookie);
+  await transition(customId, "edit", sessionCookie, { subject: "Edited after endorsement", precedence: "PRIORITY", values: messagePayload.values });
+  custom = await readDraft(customId);
+  assert.equal(custom.status, "drafting"); assert.ok(custom.route.every((step) => step.status === "pending" && !step.actedAt));
+  assert.ok(custom.revision > beforeEdit);
+  await transition(customId, "route", sessionCookie, { steps: null });
+  assert.equal((await readDraft(customId)).customRoute, false);
+  assert.deepEqual((await readDraft(customId)).route.map((step) => step.personId), [sessions.MRamos.user.id,sessions.AChen.user.id,sessions.RWalsh.user.id]);
+  await transition(customId, "withdraw");
+  await transition(customId, "edit", sessionCookie, { subject: "Reopened unpublished message", precedence: "ROUTINE", values: messagePayload.values });
+  assert.equal((await readDraft(customId)).status, "drafting");
+  const customEvents = (await readDesk()).events.filter((event) => event.draftId === customId);
+  assert.ok(customEvents.some((event) => event.routeSnapshot.some((step) => step.personId === sessions.RPatel.user.id)));
+  assert.ok(!(await readMessages()).messages.some((message) => message.id === customId));
+  const racingCreate = await postMessage({ ...messagePayload, requestId: randomUUID(), subject: "Concurrent edit and release" });
+  const racingMessage = (await racingCreate.json()).message;
+  await transition(racingMessage.id, "route", sessionCookie, { steps: [releaseStep] });
+  await transition(racingMessage.id, "submit");
+  const racingRevision = (await readDraft(racingMessage.id)).revision;
+  const racingResponses = await Promise.all([
+    patchDraft(racingMessage.id, { action: "edit", revision: racingRevision, subject: "Changed before publication", precedence: "ROUTINE", values: { ...messagePayload.values, Remarks: "Never publish without new approvals" } }),
+    patchDraft(racingMessage.id, { action: "release", revision: racingRevision }, walsh),
+  ]);
+  assert.deepEqual(racingResponses.map((response) => response.status).sort(), [200,409]);
+  const racingDraft = await readDraft(racingMessage.id);
+  const racingPublished = (await readMessages()).messages.find((message) => message.id === racingMessage.id);
+  if (racingDraft.status === "released") {
+    assert.equal(racingPublished.rawText, racingMessage.rawText);
+    assert.equal(racingPublished.subject, racingMessage.subject);
+  } else {
+    assert.equal(racingDraft.status, "drafting"); assert.equal(racingPublished, undefined);
+    assert.ok(racingDraft.route.every((step) => step.status === "pending"));
+  }
+  console.log("Custom routes passed: authorization, membership/role validation, adding/removing/reordering, resetting approvals, restoring defaults, and editing until publication.");
   console.log("Persistent routing passed: authenticated sequential approvals, returns/edits, immutable snapshots/history, stale revisions, role revocation, withdrawal, visibility and concurrent release sequencing.");
 
   for (const separator of ["semicolon", "space", "newline"]) {
@@ -367,7 +449,7 @@ try {
   // A second independent browser session must resolve its own user's command.
   const secondId = sql(`INSERT INTO users (login, name, command_id) VALUES ('SecondUser', 'Second User', '${sendingCommandId}') RETURNING id;`).trim();
   const second = await login(secondId);
-  assert.equal((await readMessages(second.cookie)).messages.length, seedCount + 3, "Published traffic follows main's shared message-store visibility");
+  assert.equal((await readMessages(second.cookie)).messages.length, (await readMessages()).messages.length, "Published traffic follows main's shared message-store visibility");
   assert.equal((await fetch(`${base}/api/messages/${savedMessage.id}`, { headers: { Cookie: second.cookie } })).status, 200);
   const automaticPayload = { requestId: randomUUID(), templateVersionId: autoTemplate.versionId, subject: "Other user's automatic draft", precedence: "ROUTINE", values: {} };
   assert.equal((await postMessage({ ...automaticPayload, values: { Originator: "SPOOFED" } }, second.cookie)).status, 400);
@@ -431,11 +513,47 @@ try {
         await page.getByRole("button").filter({ hasText: "Browser-created draft" }).click();
         await expect(page.getByRole("heading", { name: "Browser-created draft", exact: true })).toBeVisible();
       };
+      await page.getByRole("button", { name: "Customize routing", exact: true }).click();
+      const patelName = sessions.RPatel.user.name, chenName = sessions.AChen.user.name;
+      await page.getByTestId(`routing-person-${sessions.RPatel.user.id}`).dragTo(page.getByTestId("route-drop-1"));
+      await expect(page.getByTestId(`route-step-${sessions.RPatel.user.id}`)).toBeVisible();
+      await page.getByRole("button", { name: `Move ${patelName} up`, exact: true }).click();
+      await page.getByRole("button", { name: `Move ${patelName} down`, exact: true }).click();
+      await page.getByRole("button", { name: `Remove ${chenName} from route`, exact: true }).click();
+      await page.getByRole("button", { name: `Add ${chenName}`, exact: true }).click();
+      await expect(page.getByRole("button", { name: "Save routing chain", exact: true })).toBeDisabled();
+      await page.getByRole("button", { name: `Move ${chenName} up`, exact: true }).click();
+      await page.getByRole("button", { name: `Remove ${patelName} from route`, exact: true }).click();
+      await actInBrowser("Save routing chain");
+      const customized = await (await page.request.get(`${base}/api/messages?view=drafts`)).json();
+      assert.equal(customized.drafts.find((draft) => draft.id === browserMessage.id).customRoute, true);
       await actInBrowser("Submit for routing");
       await page.reload();
       await page.getByRole("button").filter({ hasText: "Browser-created draft" }).click();
       const beforeRelease = await (await page.request.get(`${base}/api/messages`)).json();
       assert.ok(!beforeRelease.messages.some((message) => message.id === browserMessage.id));
+      await openAs("MRamos"); await actInBrowser("Endorse and advance");
+      await openAs("LTaylor");
+      await page.getByRole("button", { name: "Edit template fields", exact: true }).click();
+      await page.getByRole("textbox", { name: "Remarks", exact: true }).fill("Changed during review");
+      // A reviewer progressing while the author types must not erase local edits
+      // or silently upgrade the author's expected revision.
+      await transition(browserMessage.id, "advance", chen);
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await expect(page.getByRole("button", { name: "Reload latest version (discard edits)", exact: true })).toBeVisible();
+      await expect(page.getByRole("textbox", { name: "Remarks", exact: true })).toHaveValue("Changed during review");
+      const staleSave = page.waitForResponse((response) => response.url() === `${base}/api/messages/${browserMessage.id}` && response.request().method() === "PATCH");
+      await page.getByRole("button", { name: "Save corrections", exact: true }).click();
+      assert.equal((await staleSave).status(), 409);
+      await expect(page.getByRole("textbox", { name: "Remarks", exact: true })).toHaveValue("Changed during review");
+      await page.getByRole("button", { name: "Reload latest version (discard edits)", exact: true }).click();
+      await expect(page.getByRole("textbox", { name: "Remarks", exact: true })).toHaveValue("Created through the browser");
+      await page.getByRole("textbox", { name: "Remarks", exact: true }).fill("Changed during review");
+      await actInBrowser("Save corrections");
+      const revised = await (await page.request.get(`${base}/api/messages?view=drafts`)).json();
+      const revisedDraft = revised.drafts.find((draft) => draft.id === browserMessage.id);
+      assert.equal(revisedDraft.status, "drafting"); assert.ok(revisedDraft.route.every((step) => step.status === "pending"));
+      await actInBrowser("Submit for routing");
       await openAs("MRamos"); await actInBrowser("Endorse and advance");
       await openAs("AChen");
       await page.getByRole("textbox", { name: "Review comment", exact: true }).fill("Correct the remarks in the template.");
@@ -443,12 +561,15 @@ try {
       await openAs("LTaylor");
       await page.getByRole("button", { name: "Edit template fields", exact: true }).click();
       await expect(page.getByRole("button", { name: `Remove ${commands.commands[0].name}`, exact: true })).toBeVisible();
-      await expect(page.getByRole("textbox", { name: "Remarks", exact: true })).toHaveValue("Created through the browser");
+      await expect(page.getByRole("textbox", { name: "Remarks", exact: true })).toHaveValue("Changed during review");
       await page.getByRole("textbox", { name: "Remarks", exact: true }).fill("Corrected in the browser");
       await actInBrowser("Save corrections"); await actInBrowser("Submit for routing");
       await openAs("MRamos"); await actInBrowser("Endorse and advance");
       await openAs("AChen"); await actInBrowser("Endorse and advance");
       await openAs("RWalsh"); await actInBrowser("Release message");
+      await expect(page.getByRole("link", { name: "View released message", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Edit template fields", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Customize routing", exact: true })).toHaveCount(0);
       await page.getByRole("link", { name: "View released message", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Browser-created draft", exact: true })).toBeVisible();
       await expect(page.getByText("Approved message text", { exact: true })).toBeVisible();

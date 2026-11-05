@@ -239,14 +239,28 @@ errors. They revoke their own test sessions without modifying users or templates
 `/drafting` is the single message composer. Select a published template, fill its
 fields, and save through `POST /api/messages`. Private drafts and approval history
 survive reloads; they do not enter the ordinary Messages feed until release.
-Reviewers must sign in as the actual account holding the current step. Returning
-for correction unlocks the owner's template fields; resubmission resets approvals.
-The server enforces ownership, roles, step order and expected revisions.
+Reviewers must sign in as the actual account holding the current step. The drafter
+can edit any unpublished message, including while it is under review or withdrawn.
+Saving text or routing changes stops review, clears every approval, and returns
+the message to drafting; it must be resubmitted before publication. Stale saves
+are rejected without discarding the author's unsaved input.
+
+Use **Customize routing** to drag command people into the chain, reorder them,
+or remove them. Add/Move/Remove buttons support keyboard and touch as well.
+These changes apply only to this draft, not the command's shared workflow.
+The final person must still hold the appropriate release designation and role.
+**Use command default** restores a fresh copy of the matching command chain.
+Saved chains survive reloads and are retained across text edits and resubmissions.
+The server enforces ownership, membership, roles, step order and expected revisions.
 
 Final release atomically freezes the approved text, allocates the command serial,
 and publishes the same message ID into main's artifact-backed message store.
 Existing ingestion, acknowledgements, per-user read state and shared column order
-are preserved. Local releases use `ANCHOR-…` artifact identifiers, not invented
+are preserved. Migration 007 additionally locks released local message records,
+their saved template inputs, reference snapshots and outgoing records against
+updates/deletes in PostgreSQL, not just in the UI. Publication is irreversible;
+changes afterward require a new message. Read-state and acknowledgement resources
+remain separate from the immutable message. Local releases use `ANCHOR-…` artifact identifiers, not invented
 C2OIX receipt numbers. **Publishing locally does not perform external transmission**;
 the network simulator is still separate.
 

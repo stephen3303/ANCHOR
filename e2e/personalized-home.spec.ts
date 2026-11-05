@@ -36,6 +36,7 @@ test('personal views/defaults survive reload and remain isolated by account', as
   await page.getByLabel('Personal view name').fill('Cyber watch');
   await page.getByRole('checkbox', { name: 'Cybersecurity', exact: true }).check();
   await page.getByRole('button', { name: 'Create personal view', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Created “Cyber watch”' })).toBeVisible();
   const id = await page.getByRole('combobox', { name: 'Viewing as' }).inputValue();
   expect(id).toMatch(/^personal-/);
   await page.getByRole('button', { name: 'Set as default', exact: true }).click();
@@ -72,4 +73,35 @@ test('old personalized preview link redirects to Home', async ({ page }) => {
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole('heading', { name: 'My Briefing', exact: true })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Main', exact: true }).getByRole('link', { name: 'Briefings', exact: true })).toHaveCount(0);
+});
+
+test('personal views can be created when randomUUID is unavailable on HTTP', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(window.crypto, 'randomUUID', { value: undefined, configurable: true }));
+  await page.reload();
+  await page.getByRole('button', { name: 'Manage views', exact: true }).click();
+  await page.getByLabel('Personal view name').fill('HTTP personal view');
+  await page.getByRole('checkbox', { name: 'Cybersecurity', exact: true }).check();
+  await page.getByRole('button', { name: 'Create personal view', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Viewing as' })).not.toHaveValue('watch');
+  await expect(page.getByRole('combobox', { name: 'Viewing as' })).toContainText('HTTP personal view');
+  await page.reload();
+  await expect(page.getByRole('combobox', { name: 'Viewing as' })).toContainText('HTTP personal view');
+});
+
+test('sidebar personal-view shortcut brings the creation form into view', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 700 });
+  await page.getByRole('button', { name: 'Create a personal view', exact: true }).click();
+  await expect(page.getByLabel('Personal view name')).toBeInViewport();
+  await expect(page.getByLabel('Personal view name')).toBeFocused();
+});
+
+test('creation preserves the warning when browser storage is blocked', async ({ page }) => {
+  await page.addInitScript(() => { Storage.prototype.setItem = () => { throw new DOMException('Blocked storage', 'SecurityError'); }; });
+  await page.reload();
+  await page.getByRole('button', { name: 'Manage views', exact: true }).click();
+  await page.getByLabel('Personal view name').fill('Session-only view');
+  await page.getByRole('checkbox', { name: 'Safety', exact: true }).check();
+  await page.getByRole('button', { name: 'Create personal view', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Viewing as' })).toContainText('Session-only view');
+  await expect(page.getByRole('status').filter({ hasText: 'Browser storage is unavailable' })).toBeVisible();
 });

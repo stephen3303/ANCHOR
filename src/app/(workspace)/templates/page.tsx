@@ -5,6 +5,7 @@ import { DRAFT_KEYS, isKnownKey, keyName } from "@/lib/message-types";
 import { FilePlus2, RefreshCw } from "lucide-react";
 import { Button, PageHeader, Panel } from "@/components/ui";
 import { TemplatePreview, templateInputClass } from "@/components/template-preview";
+import { useStore } from "@/lib/store";
 import { defaultGeneratorBinding, GENERATED_OUTPUTS, isGeneratedOutputKey } from "@/lib/generated-inputs";
 import { COMMAND_SEPARATORS, validateStandardTemplateText, INPUT_TYPES, isStaticChoice, validateTemplateForPublication, type CommandSeparator, type InputType, type TemplateDefinition, type TemplateField, type TemplateSummary } from "@/lib/message-templates";
 
@@ -36,6 +37,7 @@ function fieldConfig(field: FieldEditor): TemplateField {
 }
 
 export default function TemplatesPage() {
+  const { refreshTopics } = useStore();
   const [step, setStep] = useState(1);
   const [editing, setEditing] = useState<{ id: string; versionId: string; version: number } | null>(null);
   const [name, setName] = useState("");
@@ -98,7 +100,7 @@ export default function TemplatesPage() {
       if (!response.ok) throw new Error(data.error || "Could not publish the template.");
       setSaved(data.template);
       setInspected(null);
-      await loadTemplates();
+      await Promise.all([loadTemplates(), refreshTopics()]);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not publish the template. Your inputs have been preserved."); }
     finally { setBusy(false); }
   };

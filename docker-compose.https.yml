@@ -1,0 +1,35 @@
+# Opt-in TLS front door. Requires Docker Compose 2.24.4+ (!reset support).
+# Run with: docker compose -f docker-compose.yml -f docker-compose.https.yml ...
+services:
+  anchor:
+    # Do not leave a plaintext port available alongside Secure session cookies.
+    ports: !reset []
+    environment:
+      SESSION_COOKIE_SECURE: "true"
+
+  https:
+    image: caddy:2.11.2-alpine@sha256:834468128c7696cec0ceea6172f7d692daf645ae51983ca76e39da54a97c570d
+    ports:
+      - "${ANCHOR_HTTPS_BIND:-127.0.0.1}:${ANCHOR_HTTPS_PORT:-3443}:443"
+    volumes:
+      - type: bind
+        source: ./deploy/Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./certificates/anchor.pem
+        target: /certificates/anchor.pem
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./certificates/anchor-key.pem
+        target: /certificates/anchor-key.pem
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      - anchor
+    restart: unless-stopped

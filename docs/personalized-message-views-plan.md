@@ -79,3 +79,14 @@ personal view creation, source drill-down, account isolation, and mobile layout.
 Run the build/type checks and relevant existing message/navigation tests when
 implementation changes are introduced. This planning-only commit requires a
 documentation diff check, not application test execution.
+
+## Interactive design preview
+
+`/personalized-preview` demonstrates the proposed Home layout without replacing
+Home yet. Watch Officer, Training Officer, and Safety Officer are labeled example
+duties, not official assignments. Users can switch views, filter traffic, open
+source messages, create browser-local topic views, and choose a browser-local
+default. Preferences are scoped to the signed-in account. Department mapping and
+command alert configuration are not connected. Existing acknowledgement permissions
+remain enforced. The preview uses the explicitly labeled mock reporting clock so
+its 24-hour default aligns with the bundled fictional traffic.

@@ -61,6 +61,7 @@ test("compiles every supported control into a JSON schema and UI definition", ()
     assert.equal(compiled.uiSchema.fields[0].control, control);
     assert.equal(compiled.outputDefinition.body, definition.text);
     if (control.startsWith("command-")) assert.equal(compiled.uiSchema.fields[0].reference?.source, "recipient-commands");
+    if (control === "reference-list") assert.equal(compiled.uiSchema.fields[0].reference?.source, "local-messages");
   }
 });
 
@@ -213,4 +214,22 @@ test("bounded server rendering stops repeated-placeholder output expansion", () 
 test("preview is single-pass plaintext substitution, not code or HTML evaluation", () => {
   assert.equal(renderTemplatePreview("{{ Name }} {{ List }} {{ Flag }} {{ Missing }}", { Name: "{{ Flag }} <b>text</b>", List: ["A", "B"], Flag: false }), "{{ Flag }} <b>text</b> A; B NO {{ Missing }}");
   assert.equal(renderTemplatePreview("{{ constructor }}", {}), "{{ constructor }}");
+});
+
+test("a References input renders REF sets with AMPN or NARR, and no line when empty", () => {
+  const definition = validateTemplateDefinition({ name: "Refs", description: "", text: "SUBJ/{{ Subject }}//\n{{ References }}\nPOC/X//", fields: [
+    { name: "Subject", control: "text", required: true, options: [] },
+    { name: "References", control: "reference-list", required: false, options: [] },
+  ] });
+  const one = JSON.stringify([{ kind: "GENADMIN", originator: "COMSUBLANT N3", dtg: "021430ZOCT26", serial: "COMSUBLANT 061/26", notations: [], amplification: "QUAL REPORTING", directive: "SUPERSEDES" }]);
+  assert.equal(renderTemplatePreview(definition.text, { Subject: "S", References: one }, definition.fields),
+    "SUBJ/S//\nREF/A/GENADMIN/COMSUBLANT N3/021430ZOCT26/COMSUBLANT 061/26//\nAMPN/THIS MSG SUPERSEDES REF A. QUAL REPORTING//\nPOC/X//");
+  const two = JSON.stringify([{ kind: "CASREP", originator: "USS X", dtg: "010000ZNOV26", notations: ["NOTAL"] }, { kind: "DOC", originator: "OPNAV", dtg: "01OCT26", notations: [], amplification: "OPNAVINST 5239.1" }]);
+  assert.equal(renderTemplatePreview(definition.text, { Subject: "S", References: two }, definition.fields),
+    "SUBJ/S//\nREF/A/CASREP/USS X/010000ZNOV26/-/NOTAL//\nREF/B/DOC/OPNAV/01OCT26//\nNARR/REF B IS OPNAVINST 5239.1.//\nPOC/X//");
+  assert.equal(renderTemplatePreview(definition.text, { Subject: "S", References: "" }, definition.fields), "SUBJ/S//\nPOC/X//");
+  assert.equal(renderTemplatePreview(definition.text, { Subject: "S", References: "not json" }, definition.fields), "SUBJ/S//\n{{ References }}\nPOC/X//");
+  assert.throws(() => validateTemplateDefinition({ name: "Two", description: "", text: "{{ A }} {{ B }}", fields: [
+    { name: "A", control: "reference-list", required: false, options: [] }, { name: "B", control: "reference-list", required: false, options: [] },
+  ] }), /only one References input/);
 });

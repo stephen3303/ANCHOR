@@ -5,6 +5,7 @@ import { Button } from "@/components/ui";
 import { fmtDateTime, ZULU_DATETIME_PATTERN } from "@/lib/format";
 import { GENERATED_OUTPUTS, type GeneratedInputResult } from "@/lib/generated-inputs";
 import { commandMatchParts, COMMAND_SEARCH_PAGE_SIZE } from "@/lib/command-search";
+import { ReferencesEditor } from "@/components/references-editor";
 import { draftManagedValues, isDraftManagedField, PRECEDENCE_FIELD, renderGeneratedMessage, type TemplateDefinition, type TemplateValues } from "@/lib/message-templates";
 
 export const templateInputClass = "w-full rounded-md border border-line bg-white px-3 py-2 text-sm focus:outline-2 focus:outline-navy-600";
@@ -147,6 +148,8 @@ export function TemplateForm({ definition, onSubmit, disabled = false, fieldErro
               <output id={id} aria-label={field.name} className="block rounded-md border border-line bg-slate-50 px-3 py-2 text-sm">{resolving ? "Resolving automatically…" : error ? "Unavailable" : textValue}</output>
               {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
             </div>;
+          } else if (field.control === "reference-list") {
+            control = <ReferencesEditor id={id} value={value} onChange={(next) => set(field.name, next)} />;
           } else if (field.control.startsWith("command-")) {
             control = <CommandPicker multiple={field.control === "command-multiple"} initial={initialCommands[field.name]} onChange={(commands) => {
               set(field.name, field.control === "command-multiple" ? commands.map((command) => command.id) : commands[0]?.id ?? "");

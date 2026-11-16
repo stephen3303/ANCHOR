@@ -1,7 +1,7 @@
 {
   "name": "Standard Message",
   "description": "Template for a typical message",
-  "text": "{{ Precedence }} {{ DateTime }}\nFM {{ Origin }}\nTO {{ Recipients }}\nINFO {{ Info }}\nBT\n{{ Classification }}//\nMSGID/{{ Type }}/{{ Origin }}//\nSUBJ/{{ Subject }}//\nPOC/{{ POC }}//\nRMKS/{{ Body }}//\nBT\n{{ Message Number }}\nNNNN",
+  "text": "{{ Precedence }} {{ DateTime }}\nFM {{ Origin }}\nTO {{ Recipients }}\nINFO {{ Info }}\nBT\n{{ Classification }}//\nMSGID/{{ Type }}/{{ Origin }}//\nSUBJ/{{ Subject }}//\n{{ References }}\nPOC/{{ POC }}//\nRMKS/{{ Body }}//\nBT\n{{ Message Number }}\nNNNN",
   "fields": [
     {
       "name": "Precedence",
@@ -40,6 +40,7 @@
     { "name": "Classification", "control": "text", "required": true, "options": [] },
     { "name": "Type", "control": "text", "required": true, "options": [] },
     { "name": "Subject", "control": "text", "required": true, "options": [] },
+    { "name": "References", "control": "reference-list", "required": false, "options": [] },
     { "name": "POC", "control": "text", "required": true, "options": [] },
     { "name": "Body", "control": "textarea", "required": true, "options": [] },
     { "name": "Message Number", "control": "text", "required": true, "options": [] }

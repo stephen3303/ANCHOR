@@ -157,7 +157,7 @@ try {
   const list = await (await fetch(`${base}/api/message-templates`)).json();
   assert.equal(list.templates[0].id, template.id);
   assert.equal(list.templates[0].variableCount, definition.fields.length);
-  assert.equal(sql("SELECT count(*) FROM message_template_versions WHERE published_at IS NOT NULL;").trim(), "2");
+  assert.equal(sql("SELECT count(*) FROM message_template_versions WHERE published_at IS NOT NULL;").trim(), "3", "Standard Message v1, its References version (migration 015), and TEST");
   assert.equal((await fetch(`${base}/api/message-templates/not-an-id`)).status, 400);
   assert.equal((await fetch(`${base}/api/message-templates/00000000-0000-0000-0000-000000000000`)).status, 404);
   const commands = await (await fetch(`${base}/api/reference-data/commands?q=TEST`)).json();
@@ -591,7 +591,7 @@ try {
   assert.deepEqual(authorFields(savedAuto.template.fields), automatic.fields);
   // Precedence comes from the draft and DateTime is stamped at release, so neither is a drafter input.
   const typedInputNames = standardInputNames.filter((name) => !["Precedence", "DateTime"].includes(name));
-  assert.deepEqual(Object.keys(JSON.parse(sql(`SELECT input_schema->'properties' FROM message_template_versions WHERE id = '${autoTemplate.versionId}';`))).sort(), [...typedInputNames].sort());
+  assert.deepEqual(Object.keys(JSON.parse(sql(`SELECT input_schema->'properties' FROM message_template_versions WHERE id = '${autoTemplate.versionId}';`))).sort(), [...typedInputNames, "References"].sort(), "References is an optional standard input");
   assert.deepEqual(JSON.parse(sql(`SELECT input_schema->'required' FROM message_template_versions WHERE id = '${autoTemplate.versionId}';`)).sort(), [...typedInputNames].sort());
   const preview = (body, origin = base, cookie = sessionCookie) => fetch(`${base}/api/message-templates/preview-generated`, { method: "POST", headers: { "Content-Type": "application/json", Origin: origin, Cookie: cookie }, body: JSON.stringify(body) });
   assert.equal((await preview(automatic, base, "")).status, 401);
@@ -892,6 +892,33 @@ try {
   assert.equal((await admin(`/${patel.id}`, "PATCH", { active: true })).status, 200);
   const crossOrigin = await fetch(`${base}/api/admin/users/${patel.id}`, { method: "PATCH", headers: { Origin: "https://untrusted.example", Cookie: sessionCookie, "Content-Type": "application/json" }, body: "{\"active\":false}" });
   assert.equal(crossOrigin.status, 403);
+
+  // References: a pick from this server is filled from the held message, never from what the client sent.
+  const held = JSON.parse(sql("SELECT record::text FROM messages WHERE id='comsublant-061-26';"));
+  const picked = { messageId: held.id, kind: "SPOOFED", originator: "SPOOFED", dtg: "010000ZJAN26", notations: ["NOTAL"], directive: "SUPERSEDES" };
+  const doc = { kind: "DOC", originator: "COMSUBLANT", dtg: "01OCT26", notations: [], amplification: "COMSUBLANTINST 3500.1A" };
+  const withRefs = (refs) => postMessage({ ...messagePayload, requestId: randomUUID(), subject: "References draft", values: { ...messagePayload.values, References: JSON.stringify(refs) } });
+  const refsResponse = await withRefs([picked, doc]);
+  assert.equal(refsResponse.status, 201, await refsResponse.clone().text());
+  const refsMessage = (await refsResponse.json()).message;
+  const heldKind = (held.subtag ? `${held.type}:${held.subtag}` : held.type).toUpperCase();
+  const heldDtg = held.dtg.replace(/\s+/g, "").toUpperCase();
+  // Lines wrap at 69 characters; sets rejoin with a space, as the parser reads them.
+  const refsText = refsMessage.renderedText.replace(/\n/g, " ");
+  assert.ok(refsText.includes(`REF/A/${heldKind}/${held.originator}/${heldDtg}/${held.reference}/NOTAL//`), refsMessage.renderedText);
+  assert.ok(refsText.includes("REF/B/DOC/COMSUBLANT/01OCT26//"));
+  assert.ok(refsText.includes("NARR/THIS MSG SUPERSEDES REF A."), refsMessage.renderedText);
+  assert.ok(!refsMessage.renderedText.includes("SPOOFED"));
+  assert.deepEqual(refsMessage.refs.map((r) => [r.letter, r.kind, r.originator, r.dtg]), [["A", heldKind, held.originator, heldDtg], ["B", "DOC", "COMSUBLANT", "01OCT26"]]);
+  assert.ok(!Object.hasOwn(refsMessage.refs[0], "messageId"), "Stored references keep only REF fields");
+  assert.ok(!messagePayload.values.References && !savedMessage.rawText.includes("REF/"), "No references, no REF line");
+  const notHeld = await withRefs([{ ...picked, messageId: "not-held-01" }]);
+  assert.equal(notHeld.status, 400);
+  assert.match((await notHeld.json()).fields.References, /no longer held/);
+  const unexplained = await withRefs([{ ...doc, amplification: "" }]);
+  assert.equal(unexplained.status, 400);
+  assert.match((await unexplained.json()).fields.References, /must be explained in AMPN/);
+  console.log("References passed: held picks filled from the server, typed references, one NARR with the directive, and NTP rule errors on the field.");
 
   const retainedResponse = await postMessage({ ...messagePayload, requestId: randomUUID(), subject: "Retained after template deletion" });
   assert.equal(retainedResponse.status, 201);

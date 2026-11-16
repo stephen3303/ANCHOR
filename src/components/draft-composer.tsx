@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, Panel } from "@/components/ui";
 import { TemplateForm, templateInputClass } from "@/components/template-preview";
+import { referenceFromMessage } from "@/components/references-editor";
 import type { TemplateDefinition, TemplateSummary, TemplateValues } from "@/lib/message-templates";
 import { MessageInputError, PRECEDENCES, validateMessageInputs } from "@/lib/message-inputs";
 import { DRAFT_KEYS, keyOption, messageKey, splitKey } from "@/lib/message-types";
@@ -12,9 +13,10 @@ import { useRouting } from "@/lib/routing-store";
 import { useStore } from "@/lib/store";
 
 type PublishedTemplate = TemplateDefinition & { id: string; versionId: string; version: number };
-export function DraftComposer({ draft, onSaved, initialTemplateId = "" }: { draft?: ApiDraft; onSaved: (id: string) => void; /** Start from this template, as the Templates page's Draft button does. */ initialTemplateId?: string }) {
+export function DraftComposer({ draft, onSaved, initialTemplateId = "", initialReferenceId = "" }: { draft?: ApiDraft; onSaved: (id: string) => void; /** Start from this template, as the Templates page's Draft button does. */ initialTemplateId?: string; /** Cite this held message as REF A, as a message's References tab does. */ initialReferenceId?: string }) {
   const routing = useRouting();
-  const { notify, log, offline } = useStore();
+  const { notify, log, offline, messageById } = useStore();
+  const cited = initialReferenceId ? messageById(initialReferenceId) : undefined;
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [selected, setSelected] = useState(draft ? "" : initialTemplateId);
   const [definition, setDefinition] = useState<PublishedTemplate | null>(draft ? { ...draft.definition, id: draft.templateVersionId, versionId: draft.templateVersionId, version: draft.templateVersion } : null);
@@ -52,6 +54,8 @@ export function DraftComposer({ draft, onSaved, initialTemplateId = "" }: { draf
   // A template's Type field writes MSGID field 2 (TYPE or TYPE:SUBTAG), and the rendered line decides the type.
   const typeField = definition?.fields.find((field) => field.name === "Type" || field.name === "Msg Type");
   const typeFromTemplate = !!typeField;
+  const referenceField = definition?.fields.find((field) => field.control === "reference-list");
+  const startValues = draft?.inputValues ?? (cited && referenceField ? { [referenceField.name]: JSON.stringify([referenceFromMessage(cited)]) } : undefined);
   const save = async (raw: TemplateValues) => {
     if (!definition || busy) return;
     setError(""); setFieldErrors({});
@@ -85,6 +89,7 @@ export function DraftComposer({ draft, onSaved, initialTemplateId = "" }: { draf
     {draft && <p role="status" className="rounded bg-amber-50 p-3 text-sm text-amber-900">Saving edits stops any review and clears all approvals. Resubmit the updated message for fresh approval before publishing.</p>}
     <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">UNCLASSIFIED prototype only. Saving does not release or transmit. Drafts stay out of Messages until the full chain releases them.</p>
     {error && <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error} {!definition && <Button size="sm" disabled={busy} onClick={() => { setListLoading(true); setRetry((value) => value + 1); }}>Retry loading</Button>}</p>}
+    {!draft && cited && <p role="status" className="rounded-md border border-line bg-navy-50 p-3 text-sm">Citing <span className="font-semibold">{cited.reference}: {cited.subject}</span> as REF A.{definition && !referenceField ? " This template has no References field, so it can't carry the reference. Choose another template." : ""}</p>}
     {!draft && <Panel title="1. Choose a template">
       {listLoading ? <p role="status">Loading published templates…</p> : templates.length ? <label className="block space-y-1 text-sm font-semibold">Message template<select className={templateInputClass} value={selected} disabled={busy} onChange={(event) => { setSelected(event.target.value); setDefinition(null); setError(""); setFieldErrors({}); submission.current = null; }}>
         <option value="">Select a template…</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.name} — Version {template.version}</option>)}
@@ -99,7 +104,7 @@ export function DraftComposer({ draft, onSaved, initialTemplateId = "" }: { draf
           : <label className="block space-y-1 text-sm font-semibold">Message type<select className={templateInputClass} value={messageType} disabled={busy} onChange={(event) => setMessageType(event.target.value)}>{DRAFT_KEYS.map((key) => <option key={key} value={key}>{splitKey(key)[1] ? "\u00a0\u00a0" : ""}{keyOption(key)}</option>)}</select></label>}
         <label className="block space-y-1 text-sm font-semibold">Precedence<select aria-describedby="draft-precedence-help" className={templateInputClass} value={precedence} disabled={busy} onChange={(event) => setPrecedence(event.target.value as Precedence)}>{PRECEDENCES.map((value) => <option key={value}>{value}</option>)}</select><span id="draft-precedence-help" className="block text-xs font-normal text-muted">Also fills the precedence prosign in the heading.</span></label>
       </div>
-      <TemplateForm key={definition.versionId} definition={definition} precedence={precedence} initialValues={draft?.inputValues} initialCommands={draft?.commandSelections} onSubmit={save} disabled={busy || routing.busy} fieldErrors={fieldErrors} submitLabel={draft ? "Save corrections" : "Save draft"} />
+      <TemplateForm key={definition.versionId} definition={definition} precedence={precedence} initialValues={startValues} initialCommands={draft?.commandSelections} onSubmit={save} disabled={busy || routing.busy} fieldErrors={fieldErrors} submitLabel={draft ? "Save corrections" : "Save draft"} />
     </Panel>}
   </div>;
 }

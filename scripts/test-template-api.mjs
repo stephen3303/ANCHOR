@@ -129,7 +129,7 @@ try {
   const list = await (await fetch(`${base}/api/message-templates`)).json();
   assert.equal(list.templates[0].id, template.id);
   assert.equal(list.templates[0].variableCount, definition.fields.length);
-  assert.equal(sql("SELECT count(*) FROM message_template_versions WHERE published_at IS NOT NULL;").trim(), "2");
+  assert.equal(sql("SELECT count(*) FROM message_template_versions WHERE published_at IS NOT NULL;").trim(), "3", "Standard Message v1, its References version (migration 015), and TEST");
   const readTopics = async () => {
     const response = await fetch(`${base}/api/subscriptions`, { headers: { Cookie: sessionCookie } });
     assert.equal(response.status, 200, await response.clone().text());
@@ -199,8 +199,10 @@ try {
   const { template: autoTemplate } = await autoPublished.json();
   const savedAuto = await (await fetch(`${base}/api/message-templates/${autoTemplate.id}`)).json();
   assert.deepEqual(authorFields(savedAuto.template.fields), automatic.fields);
-  assert.deepEqual(Object.keys(JSON.parse(sql(`SELECT input_schema->'properties' FROM message_template_versions WHERE id = '${autoTemplate.versionId}';`))).sort(), [...standardInputNames].sort());
-  assert.deepEqual(JSON.parse(sql(`SELECT input_schema->'required' FROM message_template_versions WHERE id = '${autoTemplate.versionId}';`)).sort(), [...standardInputNames].sort());
+  // Precedence and DateTime come from the draft and release; References is an optional standard input.
+  const typedInputNames = standardInputNames.filter((name) => !["Precedence", "DateTime"].includes(name));
+  assert.deepEqual(Object.keys(JSON.parse(sql(`SELECT input_schema->'properties' FROM message_template_versions WHERE id = '${autoTemplate.versionId}';`))).sort(), [...typedInputNames, "References"].sort());
+  assert.deepEqual(JSON.parse(sql(`SELECT input_schema->'required' FROM message_template_versions WHERE id = '${autoTemplate.versionId}';`)).sort(), [...typedInputNames].sort());
   const preview = (body, origin = base, cookie = sessionCookie) => fetch(`${base}/api/message-templates/preview-generated`, { method: "POST", headers: { "Content-Type": "application/json", Origin: origin, Cookie: cookie }, body: JSON.stringify(body) });
   assert.equal((await preview(automatic, base, "")).status, 401);
   assert.equal((await preview(automatic, base, "anchor_session=LTaylor")).status, 401);

@@ -68,3 +68,19 @@ test("drafters never type Precedence or the release DTG; the draft supplies both
   // The marker is only replaced in the heading, never in the body.
   assert.equal(stampReleaseDtg(`R X\nBT\n${RELEASE_DTG_MARKER}\nBT`, "D"), `R X\nBT\n${RELEASE_DTG_MARKER}\nBT`);
 });
+
+test("references are a JSON list that must follow NTP 3(J)", () => {
+  const field: TemplateField = { name: "References", control: "reference-list", required: false, options: [] };
+  const errorOf = (value: unknown, f = field) => {
+    try { validateMessageInputs([f], { References: value }); return ""; } catch (error) { return (error as MessageInputError).fields.References; }
+  };
+  assert.deepEqual(validateMessageInputs([field], {}), { References: "" });
+  assert.equal(errorOf(JSON.stringify([{ kind: "DOC", originator: "OPNAV", dtg: "01OCT26", notations: [], amplification: "OPNAVINST 5239.1" }])), "");
+  assert.match(errorOf(JSON.stringify([{ kind: "DOC", originator: "OPNAV", dtg: "01OCT26", notations: [] }])), /must be explained in AMPN/);
+  assert.match(errorOf(JSON.stringify([{ kind: "TEL", originator: "N3", dtg: "", notations: [], amplification: "X" }])), /originator and date-time group/);
+  assert.match(errorOf("{"), /must be a list/);
+  assert.match(errorOf(["x"]), /must be a list/);
+  const two = { kind: "CASREP", originator: "USS X", dtg: "010000ZNOV26", notations: [], directive: "CANCELS" };
+  assert.match(errorOf(JSON.stringify([two, two])), /Only one reference/);
+  assert.match(errorOf("", { ...field, required: true }), /at least one reference/);
+});

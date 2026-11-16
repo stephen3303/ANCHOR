@@ -115,20 +115,92 @@ export function formatReferenceSet(r: MessageReference): string {
 /**
  * The REF lines followed by one AMPN (one reference) or one NARR (several), or
  * by nothing when no reference is amplified. Each NARR part starts "REF X"
- * unless the drafter already wrote that.
+ * unless the drafter already wrote that. A lifecycle directive ("THIS MSG
+ * SUPERSEDES REF A.") opens the AMPN or NARR, where the parser reads it.
  */
-export function formatReferences(refs: readonly MessageReference[]): string[] {
+export function formatReferences(refs: readonly MessageReference[], directive?: { kind: Directive; letter: string }): string[] {
   const lines = refs.map(formatReferenceSet);
   const amplified = refs.filter((r) => r.amplification?.trim());
-  if (!amplified.length) return lines;
+  if (!amplified.length && !directive) return lines;
   const text = (s: string) => clean(s).replace(/\/\//g, "/");
-  if (refs.length === 1) return [...lines, `AMPN/${text(refs[0].amplification!)}//`];
+  const sentence = (p: string) => (/[.!?]$/.test(p) ? p : `${p}.`);
+  const lead = directive ? [`THIS MSG ${directive.kind} REF ${directive.letter}.`] : [];
+  // A single AMPN is the subject as written; only the directive is its own sentence.
+  if (refs.length === 1) return [...lines, `AMPN/${[...lead, ...amplified.map((r) => text(r.amplification!))].join(" ")}//`];
   const parts = amplified.map((r) => {
     const a = text(r.amplification!);
-    return new RegExp(`^REFS? ${r.letter}\\b`).test(a) ? a : `REF ${r.letter} IS ${a}`;
+    return sentence(new RegExp(`^REFS? ${r.letter}\\b`).test(a) ? a : `REF ${r.letter} IS ${a}`);
   });
-  return [...lines, `NARR/${parts.map((p) => (/[.!?]$/.test(p) ? p : `${p}.`)).join(" ")}//`];
+  return [...lines, `NARR/${[...lead, ...parts].join(" ")}//`];
 }
+
+export const DIRECTIVES = ["SUPERSEDES", "CANCELS", "CORRECTS", "AMENDS"] as const;
+export type Directive = (typeof DIRECTIVES)[number];
+
+/** A reference as the drafter enters it: from a message held on this server (messageId), or typed in. */
+export interface DraftReference extends MessageReference {
+  messageId?: string;
+  /** This message supersedes, cancels, corrects or amends the referenced one. At most one per message. */
+  directive?: Directive;
+}
+
+const MAX_FIELD = 200;
+const MAX_AMPLIFICATION = 2000;
+
+/**
+ * Reads a References input value: a JSON list of draft references, or "" for
+ * none. Letters are reassigned A, B, C in list order. Throws with a message for
+ * the drafter when the value is malformed.
+ */
+export function parseReferenceValue(value: unknown): DraftReference[] {
+  if (value === "" || value === undefined) return [];
+  if (typeof value !== "string" || value.length > 100000) throw new Error("References must be a list.");
+  let list: unknown;
+  try { list = JSON.parse(value); } catch { throw new Error("References must be a list."); }
+  if (!Array.isArray(list)) throw new Error("References must be a list.");
+  if (list.length > MAX_REFERENCES) throw new Error(`A message can list at most ${MAX_REFERENCES} references (A to Z).`);
+  return list.map((item, i): DraftReference => {
+    const letter = String.fromCharCode(65 + i);
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error(`REF ${letter} is not a reference.`);
+    const r = item as Record<string, unknown>;
+    const str = (key: string, max = MAX_FIELD) => {
+      const v = r[key] ?? "";
+      if (typeof v !== "string" || v.length > max || /[\0\r\n]/.test(v)) throw new Error(`REF ${letter} ${key} must be one line of at most ${max} characters.`);
+      return v.trim();
+    };
+    const notations = r.notations ?? [];
+    if (!Array.isArray(notations) || notations.some((n) => !(NOTATIONS as readonly unknown[]).includes(n))) throw new Error(`REF ${letter} notations must be NOTAL, PASEP or BOM.`);
+    if (r.directive !== undefined && !(DIRECTIVES as readonly unknown[]).includes(r.directive)) throw new Error(`REF ${letter} has an unknown directive.`);
+    const messageId = str("messageId");
+    if (messageId && !/^[a-z0-9-]{1,120}$/.test(messageId)) throw new Error(`REF ${letter} names an invalid message.`);
+    const serial = str("serial");
+    const amplification = str("amplification", MAX_AMPLIFICATION);
+    return {
+      letter, kind: str("kind").toUpperCase(), originator: str("originator").toUpperCase(), dtg: normDtg(str("dtg")),
+      ...(serial ? { serial: serial.toUpperCase() } : {}), notations: [...new Set(notations as Notation[])],
+      ...(amplification ? { amplification } : {}), ...(messageId ? { messageId } : {}),
+      ...(r.directive ? { directive: r.directive as Directive } : {}),
+    };
+  });
+}
+
+/** Everything wrong with drafted references, for the drafter to fix before saving. */
+export function draftReferenceIssues(refs: readonly DraftReference[]): string[] {
+  const issues = validateReferences(refs);
+  if (refs.filter((r) => r.directive).length > 1) issues.push("Only one reference can be superseded, cancelled, corrected or amended by a message.");
+  return issues;
+}
+
+/** The REF, AMPN and NARR lines for drafted references, with any directive. */
+export function formatDraftReferences(refs: readonly DraftReference[]): string[] {
+  const target = refs.find((r) => r.directive);
+  const plain = refs.map((r): MessageReference => ({ letter: r.letter, kind: r.kind, originator: r.originator, dtg: r.dtg, ...(r.serial ? { serial: r.serial } : {}), notations: r.notations, ...(r.amplification ? { amplification: r.amplification } : {}) }));
+  return formatReferences(plain, target ? { kind: target.directive!, letter: target.letter } : undefined);
+}
+
+/** The references as a stored message keeps them: what the parser would read back. */
+export const storedReferences = (refs: readonly DraftReference[]): MessageReference[] =>
+  refs.map((r) => ({ letter: r.letter, kind: r.kind, originator: r.originator, dtg: r.dtg, ...(r.serial ? { serial: r.serial } : {}), notations: r.notations, ...(r.amplification ? { amplification: r.amplification } : {}) }));
 
 /** Rules the drafter or the sender broke. An empty list means the references follow NTP 3(J). */
 export function validateReferences(refs: readonly MessageReference[], sets: { ampn: number; narr: number; ampnMisplaced?: boolean } = { ampn: 0, narr: 0 }): string[] {

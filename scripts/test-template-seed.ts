@@ -85,9 +85,11 @@ try {
   // Applied migrations retain the historical variable spelling; the seed
   // source uses Type for newly seeded definitions.
   const historicalNames: Record<string, string> = { Type: "Msg Type", Origin: "Origin Command", DateTime: "Message DateTime", Recipients: "Recipient Commands", Info: "Info Commands", POC: "Point of Contact" };
-  const historical = compileTemplate({ ...definition,
-    text: "TODO: figure out header\n" + definition.text.replace(/{{([^{}]*)}}/g, (placeholder, raw: string) => historicalNames[raw.trim()] ? `{{ ${historicalNames[raw.trim()]} }}` : placeholder),
-    fields: definition.fields.map((field) => ({ ...field, name: historicalNames[field.name] ?? field.name })),
+  // 006 predates References, which migration 015 adds as a new version.
+  const before015 = { ...definition, text: definition.text.replace("{{ References }}\n", ""), fields: definition.fields.filter((field) => field.name !== "References") };
+  const historical = compileTemplate({ ...before015,
+    text: "TODO: figure out header\n" + before015.text.replace(/{{([^{}]*)}}/g, (placeholder, raw: string) => historicalNames[raw.trim()] ? `{{ ${historicalNames[raw.trim()]} }}` : placeholder),
+    fields: before015.fields.map((field) => ({ ...field, name: historicalNames[field.name] ?? field.name })),
   });
   assert.deepEqual(automatic.input_schema, historical.inputSchema);
   assert.deepEqual(automatic.ui_schema, historical.uiSchema);
